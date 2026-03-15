@@ -1,6 +1,14 @@
-{
-  "teamId": "team06",
-  "teamName": "Team 06",
-  "projectName": "eventticketing",
-  "members": []
-}
+[
+  {
+    "studentId": "55-11997",
+    "name": "Anas Tamer Osman",
+    "githubUsername": "anastamerr",
+    "service": "event-service"
+  },
+  {
+    "studentId": "55-11997",
+    "name": "Anas Tamer Osman",
+    "githubUsername": "anastamerr",
+    "service": "sales-service"
+  }
+]
