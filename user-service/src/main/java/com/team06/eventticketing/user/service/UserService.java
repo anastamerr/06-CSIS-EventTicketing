@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class UserService {
@@ -44,6 +45,17 @@ public class UserService {
     public void deleteUser(Long id) {
         getUserById(id);
         userRepository.deleteById(id);
+    }
+
+    public User updatePreferences(Long id, Map<String, Object> incoming) {
+        User user = getUserById(id);
+        Map<String, Object> existing = user.getPreferences();
+        if (existing == null) {
+            existing = new java.util.LinkedHashMap<>();
+        }
+        existing.putAll(incoming);
+        user.setPreferences(existing);
+        return userRepository.save(user);
     }
 
     public List<User> filterByPreference(String key, String value) {
