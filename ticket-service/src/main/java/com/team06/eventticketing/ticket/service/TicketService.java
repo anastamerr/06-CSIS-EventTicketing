@@ -37,6 +37,14 @@ public class TicketService {
         ticketRepository.deleteById(id);
     }
 
+    public Ticket getLatestTicketForBooking(Long bookingId) {
+        if (!ticketRepository.existsBookingById(bookingId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+        return ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
+    }
+
     @Transactional
     public Map<String, Object> batchIssue(Long bookingId, List<Ticket> tickets) {
         if (bookingId == null || !ticketRepository.existsBookingById(bookingId)) {
