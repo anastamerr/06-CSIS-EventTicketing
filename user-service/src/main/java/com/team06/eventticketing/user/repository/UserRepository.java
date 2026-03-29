@@ -22,4 +22,20 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query(value = "SELECT * FROM users WHERE preferences->>:key = :value", nativeQuery = true)
     List<User> findByPreferenceKeyValue(@Param("key") String key, @Param("value") String value);
+
+    @Query(value = """
+            SELECT
+                u.id AS user_id,
+                u.name AS name,
+                COUNT(b.id) AS total_bookings,
+                COALESCE(SUM(CASE WHEN b.status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completed_bookings,
+                COALESCE(SUM(CASE WHEN b.status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_bookings,
+                COALESCE(SUM(CASE WHEN b.status = 'COMPLETED' THEN COALESCE(b.total_amount, 0) ELSE 0 END), 0) AS total_spent,
+                COALESCE(AVG(CASE WHEN b.status = 'COMPLETED' THEN COALESCE(b.total_amount, 0) END), 0) AS average_booking_amount
+            FROM users u
+            LEFT JOIN bookings b ON b.user_id = u.id
+            WHERE u.id = :userId
+            GROUP BY u.id, u.name
+            """, nativeQuery = true)
+    List<Object[]> findBookingSummaryByUserId(@Param("userId") Long userId);
 }
