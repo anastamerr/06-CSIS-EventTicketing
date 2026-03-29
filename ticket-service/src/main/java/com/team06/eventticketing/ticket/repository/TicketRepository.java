@@ -16,6 +16,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     List<Ticket> findByStatus(TicketStatus status);
 
+    Optional<Ticket> findTopByBookingIdOrderByIssuedAtDesc(Long bookingId);
+
     @Query(value = "SELECT EXISTS (SELECT 1 FROM bookings WHERE id = :bookingId)", nativeQuery = true)
     boolean existsBookingById(@Param("bookingId") Long bookingId);
 }
