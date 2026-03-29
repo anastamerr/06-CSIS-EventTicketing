@@ -1,9 +1,12 @@
 package com.team06.eventticketing.user.service;
 
+import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
+import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -12,9 +15,11 @@ import java.util.List;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final FavoriteVenueRepository favoriteVenueRepository;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, FavoriteVenueRepository favoriteVenueRepository) {
         this.userRepository = userRepository;
+        this.favoriteVenueRepository = favoriteVenueRepository;
     }
 
     public List<User> getAllUsers() { return userRepository.findAll(); }
@@ -46,5 +51,19 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Key and value must not be blank");
         }
         return userRepository.findByPreferenceKeyValue(key, value);
+    }
+
+    @Transactional
+    public User setDefaultVenue(Long userId, Long venueId) {
+        User user = getUserById(userId);
+        FavoriteVenue venue = favoriteVenueRepository.findById(venueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Venue not found"));
+        if (!venue.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Venue does not belong to this user");
+        }
+        favoriteVenueRepository.resetDefaultForUser(userId);
+        venue.setIsDefault(true);
+        favoriteVenueRepository.save(venue);
+        return getUserById(userId);
     }
 }
