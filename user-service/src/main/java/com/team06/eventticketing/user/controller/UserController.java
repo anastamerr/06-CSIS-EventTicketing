@@ -27,7 +27,10 @@ public class UserController {
 
     @GetMapping("/{id}")
     public User getUserById(@PathVariable Long id) { return userService.getUserById(id); }
-
+    @PutMapping("/{userId}/venues/{venueId}/default")
+    public User setDefaultVenue(@PathVariable Long userId, @PathVariable Long venueId) {
+        return userService.setDefaultVenue(userId, venueId);
+    }
     @PutMapping("/{id}")
     public User updateUser(@PathVariable Long id, @RequestBody User user) { return userService.updateUser(id, user); }
 
