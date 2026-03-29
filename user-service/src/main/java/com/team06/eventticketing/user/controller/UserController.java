@@ -2,16 +2,17 @@ package com.team06.eventticketing.user.controller;
 
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
+import com.team06.eventticketing.user.dto.UserProfileDTO;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.service.UserService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
@@ -43,6 +44,11 @@ public class UserController {
     @GetMapping("/{id}")
     public User getUserById(@PathVariable Long id) { return userService.getUserById(id); }
 
+    @GetMapping("/{id}/profile")
+    public UserProfileDTO getUserProfile(@PathVariable Long id) {
+        return userService.getUserProfile(id);
+    }
+
     @GetMapping("/{id}/booking-summary")
     public UserBookingSummaryDTO getUserBookingSummary(@PathVariable Long id) {
         return userService.getUserBookingSummary(id);
@@ -52,6 +58,12 @@ public class UserController {
     public User setDefaultVenue(@PathVariable Long userId, @PathVariable Long venueId) {
         return userService.setDefaultVenue(userId, venueId);
     }
+
+    @PutMapping("/{id}/preferences")
+    public User updatePreferences(@PathVariable Long id, @RequestBody Map<String, Object> preferences) {
+        return userService.updatePreferences(id, preferences);
+    }
+
     @PutMapping("/{id}")
     public User updateUser(@PathVariable Long id, @RequestBody User user) { return userService.updateUser(id, user); }
 
