@@ -28,6 +28,20 @@ public class FavoriteVenueController {
         return favoriteVenueService.getVenues(userId);
     }
 
+    @GetMapping("/{venueId}")
+    public FavoriteVenue getVenue(@PathVariable Long userId, @PathVariable Long venueId) {
+        return favoriteVenueService.getVenue(userId, venueId);
+    }
+
+    @PutMapping("/{venueId}")
+    public FavoriteVenue updateVenue(
+            @PathVariable Long userId,
+            @PathVariable Long venueId,
+            @RequestBody FavoriteVenue venue
+    ) {
+        return favoriteVenueService.updateVenue(userId, venueId, venue);
+    }
+
     @DeleteMapping("/{venueId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteVenue(@PathVariable Long userId, @PathVariable Long venueId) {

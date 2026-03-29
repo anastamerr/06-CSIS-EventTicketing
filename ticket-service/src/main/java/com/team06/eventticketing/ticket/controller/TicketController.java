@@ -30,6 +30,11 @@ public class TicketController {
     @ResponseStatus(HttpStatus.CREATED)
     public Ticket createTicket(@RequestBody Ticket ticket) { return ticketService.createTicket(ticket); }
 
+    @PutMapping("/{id}")
+    public Ticket updateTicket(@PathVariable Long id, @RequestBody Ticket ticket) {
+        return ticketService.updateTicket(id, ticket);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteTicket(@PathVariable Long id) { ticketService.deleteTicket(id); }
@@ -37,6 +42,11 @@ public class TicketController {
     @DeleteMapping("/purge")
     public PurgeTicketsResponseDTO purgeTickets(@RequestParam long olderThanDays) {
         return ticketService.purgeTickets(olderThanDays);
+    }
+
+    @GetMapping("/booking/{bookingId}/latest")
+    public Ticket getLatestTicketForBooking(@PathVariable Long bookingId) {
+        return ticketService.getLatestTicketForBooking(bookingId);
     }
 
     @PostMapping("/batch")
