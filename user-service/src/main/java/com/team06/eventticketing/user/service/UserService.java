@@ -55,15 +55,20 @@ public class UserService {
 
     @Transactional
     public User setDefaultVenue(Long userId, Long venueId) {
-        User user = getUserById(userId);
+        getUserById(userId);
         FavoriteVenue venue = favoriteVenueRepository.findById(venueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Venue not found"));
         if (!venue.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Venue does not belong to this user");
         }
-        favoriteVenueRepository.resetDefaultForUser(userId);
-        venue.setIsDefault(true);
-        favoriteVenueRepository.save(venue);
-        return getUserById(userId);
+
+        List<FavoriteVenue> favoriteVenues = favoriteVenueRepository.findByUserIdOrderByIdAsc(userId);
+        for (FavoriteVenue favoriteVenue : favoriteVenues) {
+            favoriteVenue.setIsDefault(favoriteVenue.getId().equals(venueId));
+        }
+        favoriteVenueRepository.saveAll(favoriteVenues);
+
+        return userRepository.findByIdWithFavoriteVenues(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 }
