@@ -5,6 +5,8 @@ import com.team06.eventticketing.user.service.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 import java.util.List;
 
 @RestController
@@ -31,6 +33,11 @@ public class UserController {
     public User setDefaultVenue(@PathVariable Long userId, @PathVariable Long venueId) {
         return userService.setDefaultVenue(userId, venueId);
     }
+    @PutMapping("/{id}/preferences")
+    public User updatePreferences(@PathVariable Long id, @RequestBody Map<String, Object> preferences) {
+        return userService.updatePreferences(id, preferences);
+    }
+
     @PutMapping("/{id}")
     public User updateUser(@PathVariable Long id, @RequestBody User user) { return userService.updateUser(id, user); }
 
