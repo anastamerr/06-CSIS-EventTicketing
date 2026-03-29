@@ -84,6 +84,39 @@ class TicketServiceTest {
         assertEquals(2, response.get("count"));
     }
 
+    @Test
+    void getLatestTicketThrowsNotFoundForNonexistentBooking() {
+        when(ticketRepository.existsBookingById(99L)).thenReturn(false);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.getLatestTicketForBooking(99L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getLatestTicketThrowsNotFoundWhenNoTicketsExist() {
+        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.getLatestTicketForBooking(55L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getLatestTicketReturnsLatestByIssuedAt() {
+        Ticket latest = ticket("Ahmed", "TIX-3");
+
+        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.of(latest));
+
+        Ticket result = ticketService.getLatestTicketForBooking(55L);
+
+        assertEquals(latest, result);
+    }
+
     private Ticket ticket(String attendeeName, String ticketCode) {
         Ticket ticket = new Ticket();
         ticket.setAttendeeName(attendeeName);

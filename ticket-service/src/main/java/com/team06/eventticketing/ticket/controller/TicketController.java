@@ -38,6 +38,11 @@ public class TicketController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteTicket(@PathVariable Long id) { ticketService.deleteTicket(id); }
 
+    @GetMapping("/booking/{bookingId}/latest")
+    public Ticket getLatestTicketForBooking(@PathVariable Long bookingId) {
+        return ticketService.getLatestTicketForBooking(bookingId);
+    }
+
     @PostMapping("/batch")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> batchIssue(@RequestBody Map<String, Object> request) {
