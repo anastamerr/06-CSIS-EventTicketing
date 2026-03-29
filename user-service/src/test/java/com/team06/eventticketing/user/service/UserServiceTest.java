@@ -45,6 +45,36 @@ class UserServiceTest {
     }
 
     @Test
+    void updatePreferencesThrowsNotFoundForUnknownUser() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.updatePreferences(999L, Map.of("language", "en")));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void updatePreferencesMergesIncomingKeepsExistingAndOverwritesMatchingKeys() {
+        User user = new User();
+        user.setId(1L);
+        Map<String, Object> existing = new java.util.LinkedHashMap<>();
+        existing.put("language", "en");
+        existing.put("favoriteCategory", "CONCERT");
+        user.setPreferences(existing);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        Map<String, Object> incoming = Map.of("favoriteCategory", "SPORTS", "ticketTier", "VIP");
+        User result = userService.updatePreferences(1L, incoming);
+
+        assertEquals("en", result.getPreferences().get("language"));
+        assertEquals("SPORTS", result.getPreferences().get("favoriteCategory"));
+        assertEquals("VIP", result.getPreferences().get("ticketTier"));
+    }
+
+    @Test
     void filterByPreferenceRejectsBlankKeyOrValue() {
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> userService.filterByPreference(" ", "CONCERT"));
