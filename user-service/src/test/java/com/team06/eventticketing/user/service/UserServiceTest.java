@@ -11,8 +11,10 @@ import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
+import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
+import java.util.ArrayList;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
@@ -48,6 +50,101 @@ class UserServiceTest {
     @BeforeEach
     void setUp() {
         userService = new UserService(userRepository, favoriteVenueRepository);
+    }
+
+    @Test
+    void getUserProfileThrowsNotFoundForUnknownUser() {
+        when(userRepository.findByIdWithFavoriteVenues(999L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getUserProfile(999L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void updatePreferencesThrowsNotFoundForUnknownUser() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.updatePreferences(999L, Map.of("language", "en")));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void updatePreferencesMergesIncomingKeepsExistingAndOverwritesMatchingKeys() {
+        User user = new User();
+        user.setId(1L);
+        Map<String, Object> existing = new java.util.LinkedHashMap<>();
+        existing.put("language", "en");
+        existing.put("favoriteCategory", "CONCERT");
+        user.setPreferences(existing);
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.save(user)).thenReturn(user);
+
+        Map<String, Object> incoming = Map.of("favoriteCategory", "SPORTS", "ticketTier", "VIP");
+        User result = userService.updatePreferences(1L, incoming);
+
+        assertEquals("en", result.getPreferences().get("language"));
+        assertEquals("SPORTS", result.getPreferences().get("favoriteCategory"));
+        assertEquals("VIP", result.getPreferences().get("ticketTier"));
+    }
+
+    @Test
+    void getUserProfileReturnsCorrectDTOWithVenues() {
+        User user = new User();
+        user.setId(1L);
+        user.setName("Ahmed");
+        user.setEmail("ahmed@mail.com");
+        user.setPhone("+201011111111");
+        user.setPreferences(Map.of("language", "en"));
+
+        FavoriteVenue firstVenue = venue(11L, user, true);
+        firstVenue.setLabel("Go-To");
+        firstVenue.setVenueName("Cairo Opera");
+        firstVenue.setLocation("Zamalek");
+        FavoriteVenue secondVenue = venue(12L, user, false);
+        secondVenue.setLabel("Weekend");
+        secondVenue.setVenueName("Cairo Stadium");
+        secondVenue.setLocation("Nasr City");
+        FavoriteVenue thirdVenue = venue(13L, user, false);
+        thirdVenue.setLabel("Home");
+        thirdVenue.setVenueName("CFC Arena");
+        thirdVenue.setLocation("New Cairo");
+
+        user.setFavoriteVenues(new ArrayList<>(List.of(firstVenue, secondVenue, thirdVenue)));
+
+        when(userRepository.findByIdWithFavoriteVenues(1L)).thenReturn(Optional.of(user));
+
+        UserProfileDTO dto = userService.getUserProfile(1L);
+
+        assertEquals(1L, dto.getUserId());
+        assertEquals("Ahmed", dto.getName());
+        assertEquals("ahmed@mail.com", dto.getEmail());
+        assertEquals(3, dto.getTotalFavoriteVenues());
+        assertEquals(3, dto.getFavoriteVenues().size());
+        assertEquals("Cairo Opera", dto.getFavoriteVenues().getFirst().getVenueName());
+        assertEquals(Boolean.TRUE, dto.getFavoriteVenues().getFirst().getIsDefault());
+    }
+
+    @Test
+    void getUserProfileWithNoVenuesReturnsEmptyListAndZeroCount() {
+        User user = new User();
+        user.setId(2L);
+        user.setName("Sara");
+        user.setEmail("sara@mail.com");
+        user.setPhone("+201022222222");
+        user.setPreferences(Map.of());
+        user.setFavoriteVenues(new ArrayList<>());
+
+        when(userRepository.findByIdWithFavoriteVenues(2L)).thenReturn(Optional.of(user));
+
+        UserProfileDTO dto = userService.getUserProfile(2L);
+
+        assertEquals(0, dto.getTotalFavoriteVenues());
+        assertEquals(0, dto.getFavoriteVenues().size());
     }
 
     @Test
@@ -269,6 +366,9 @@ class UserServiceTest {
         venue.setId(id);
         venue.setUser(user);
         venue.setIsDefault(isDefault);
+        venue.setLabel("Label " + id);
+        venue.setVenueName("Venue " + id);
+        venue.setLocation("Location " + id);
         venue.setMetadata(Map.of());
         return venue;
     }
