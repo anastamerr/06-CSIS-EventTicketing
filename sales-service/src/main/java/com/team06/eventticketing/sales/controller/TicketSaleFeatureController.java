@@ -1,0 +1,24 @@
+package com.team06.eventticketing.sales.controller;
+
+import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
+import com.team06.eventticketing.sales.service.TicketSaleService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/sales")
+public class TicketSaleFeatureController {
+
+    private final TicketSaleService ticketSaleService;
+
+    public TicketSaleFeatureController(TicketSaleService ticketSaleService) {
+        this.ticketSaleService = ticketSaleService;
+    }
+
+    @GetMapping("/{saleId}/details")
+    public SaleDetailsDTO getTicketSaleDetails(@PathVariable Long saleId) {
+        return ticketSaleService.getTicketSaleDetails(saleId);
+    }
+}

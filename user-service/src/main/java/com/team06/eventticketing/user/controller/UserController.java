@@ -1,9 +1,12 @@
 package com.team06.eventticketing.user.controller;
 
+import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.service.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 import java.util.List;
 
@@ -27,10 +30,20 @@ public class UserController {
 
     @GetMapping("/{id}")
     public User getUserById(@PathVariable Long id) { return userService.getUserById(id); }
+
+    @GetMapping("/{id}/profile")
+    public UserProfileDTO getUserProfile(@PathVariable Long id) {
+        return userService.getUserProfile(id);
+    }
     @PutMapping("/{userId}/venues/{venueId}/default")
     public User setDefaultVenue(@PathVariable Long userId, @PathVariable Long venueId) {
         return userService.setDefaultVenue(userId, venueId);
     }
+    @PutMapping("/{id}/preferences")
+    public User updatePreferences(@PathVariable Long id, @RequestBody Map<String, Object> preferences) {
+        return userService.updatePreferences(id, preferences);
+    }
+
     @PutMapping("/{id}")
     public User updateUser(@PathVariable Long id, @RequestBody User user) { return userService.updateUser(id, user); }
 

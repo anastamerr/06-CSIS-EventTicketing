@@ -18,6 +18,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     List<Ticket> findByStatus(TicketStatus status);
 
+    Optional<Ticket> findTopByBookingIdOrderByIssuedAtDesc(Long bookingId);
+
     @Query(value = """
             SELECT COUNT(*)
             FROM tickets
