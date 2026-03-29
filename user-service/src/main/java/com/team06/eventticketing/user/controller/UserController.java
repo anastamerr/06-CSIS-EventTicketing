@@ -1,5 +1,6 @@
 package com.team06.eventticketing.user.controller;
 
+import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.service.UserService;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,11 @@ public class UserController {
 
     @GetMapping("/{id}")
     public User getUserById(@PathVariable Long id) { return userService.getUserById(id); }
+
+    @GetMapping("/{id}/profile")
+    public UserProfileDTO getUserProfile(@PathVariable Long id) {
+        return userService.getUserProfile(id);
+    }
     @PutMapping("/{userId}/venues/{venueId}/default")
     public User setDefaultVenue(@PathVariable Long userId, @PathVariable Long venueId) {
         return userService.setDefaultVenue(userId, venueId);
