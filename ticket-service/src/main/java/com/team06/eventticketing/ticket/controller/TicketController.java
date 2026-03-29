@@ -1,5 +1,6 @@
 package com.team06.eventticketing.ticket.controller;
 
+import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.service.TicketService;
 import org.springframework.http.HttpStatus;
@@ -32,6 +33,11 @@ public class TicketController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteTicket(@PathVariable Long id) { ticketService.deleteTicket(id); }
+
+    @DeleteMapping("/purge")
+    public PurgeTicketsResponseDTO purgeTickets(@RequestParam long olderThanDays) {
+        return ticketService.purgeTickets(olderThanDays);
+    }
 
     @PostMapping("/batch")
     @ResponseStatus(HttpStatus.CREATED)
