@@ -6,6 +6,7 @@ import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,37 @@ public class EventService {
     public EventService(EventRepository eventRepository, EventSessionRepository eventSessionRepository) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
+    }
+
+    public List<Event> getAllEvents() {
+        return eventRepository.findAll();
+    }
+
+    public Event getEventById(Long id) {
+        return eventRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+    }
+
+    public Event createEvent(Event event) {
+        return eventRepository.save(event);
+    }
+
+    public Event updateEvent(Long id, Event event) {
+        Event existingEvent = getEventById(id);
+        existingEvent.setName(event.getName());
+        existingEvent.setVenue(event.getVenue());
+        existingEvent.setEventDate(event.getEventDate());
+        existingEvent.setCategory(event.getCategory());
+        existingEvent.setStatus(event.getStatus());
+        existingEvent.setRating(event.getRating());
+        existingEvent.setTotalRatings(event.getTotalRatings());
+        existingEvent.setDetails(event.getDetails());
+        return eventRepository.save(existingEvent);
+    }
+
+    public void deleteEvent(Long id) {
+        getEventById(id);
+        eventRepository.deleteById(id);
     }
 
     @Transactional
