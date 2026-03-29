@@ -32,6 +32,17 @@ public class TicketService {
         return ticketRepository.save(ticket);
     }
 
+    public Ticket updateTicket(Long id, Ticket ticket) {
+        Ticket existingTicket = getTicketById(id);
+        existingTicket.setBookingId(ticket.getBookingId());
+        existingTicket.setAttendeeName(ticket.getAttendeeName());
+        existingTicket.setTicketCode(ticket.getTicketCode());
+        existingTicket.setStatus(ticket.getStatus());
+        existingTicket.setIssuedAt(ticket.getIssuedAt());
+        existingTicket.setMetadata(ticket.getMetadata());
+        return ticketRepository.save(existingTicket);
+    }
+
     public void deleteTicket(Long id) {
         getTicketById(id);
         ticketRepository.deleteById(id);

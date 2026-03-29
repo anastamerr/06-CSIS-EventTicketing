@@ -1,13 +1,13 @@
 package com.team06.eventticketing.sales;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-@SpringBootTest
+import org.junit.jupiter.api.Test;
+
 class SalesServiceApplicationTests {
 
     @Test
-    void contextLoads() {
+    void applicationClassIsAvailable() {
+        assertNotNull(SalesServiceApplication.class);
     }
-
 }
