@@ -4,7 +4,10 @@ import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventStatus;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface EventRepository extends JpaRepository<Event, Long> {
 
@@ -13,4 +16,10 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     List<Event> findByStatus(EventStatus status);
 
     List<Event> findByNameContainingIgnoreCase(String name);
+
+    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.eventSessions WHERE e.id = :id")
+    Optional<Event> findByIdWithEventSessions(@Param("id") Long id);
+
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM users WHERE id = :userId AND role = 'ADMIN')", nativeQuery = true)
+    boolean existsAdminUserById(@Param("userId") Long userId);
 }
