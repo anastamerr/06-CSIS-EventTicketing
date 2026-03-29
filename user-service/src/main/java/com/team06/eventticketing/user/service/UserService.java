@@ -1,5 +1,6 @@
 package com.team06.eventticketing.user.service;
 
+import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
@@ -44,6 +46,20 @@ public class UserService {
     public void deleteUser(Long id) {
         getUserById(id);
         userRepository.deleteById(id);
+    }
+
+    public UserProfileDTO getUserProfile(Long id) {
+        User user = userRepository.findByIdWithFavoriteVenues(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        List<UserProfileDTO.VenueDTO> venueDTOs = user.getFavoriteVenues().stream()
+                .map(v -> new UserProfileDTO.VenueDTO(
+                        v.getLabel(), v.getVenueName(), v.getLocation(),
+                        v.getCapacity(), v.getIsDefault(), v.getMetadata()))
+                .collect(Collectors.toList());
+
+        return new UserProfileDTO(user.getId(), user.getName(), user.getEmail(),
+                user.getPhone(), user.getPreferences(), venueDTOs);
     }
 
     public List<User> filterByPreference(String key, String value) {
