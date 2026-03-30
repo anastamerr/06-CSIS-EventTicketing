@@ -35,6 +35,19 @@ public class UserService {
         return userRepository.findAll();
     }
 
+    public List<User> searchUsers(String name, String email, String role) {
+        if (name != null && name.isBlank()) {
+            name = null;
+        }
+        if (email != null && email.isBlank()) {
+            email = null;
+        }
+        if (role != null && role.isBlank()) {
+            role = null;
+        }
+        return userRepository.searchByOptionalNameEmailRole(name, email, role);
+    }
+
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
