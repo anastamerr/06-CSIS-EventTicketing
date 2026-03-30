@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
+import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
@@ -351,6 +352,48 @@ class EventServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
         verify(eventRepository, never()).save(org.mockito.ArgumentMatchers.any(Event.class));
+    }
+
+    @Test
+    void getEventsWithUnverifiedSessionsReturnsOnlyUnverifiedSessionsPerEvent() {
+        Event firstEvent = new Event();
+        firstEvent.setId(10L);
+        firstEvent.setName("Event A");
+        firstEvent.setStatus(EventStatus.UPCOMING);
+        EventSession unverified = session(20L, firstEvent, LocalDateTime.now().plusDays(1));
+        EventSession verified = session(21L, firstEvent, LocalDateTime.now().plusDays(2));
+        verified.setVerified(Boolean.TRUE);
+        firstEvent.setEventSessions(List.of(unverified, verified));
+
+        Event secondEvent = new Event();
+        secondEvent.setId(11L);
+        secondEvent.setName("Event C");
+        secondEvent.setStatus(EventStatus.ONGOING);
+        EventSession secondUnverified = session(22L, secondEvent, LocalDateTime.now().plusDays(3));
+        secondEvent.setEventSessions(List.of(secondUnverified));
+
+        when(eventRepository.findEventsWithUnverifiedSessions()).thenReturn(List.of(firstEvent, secondEvent));
+
+        List<EventSessionAlertDTO> result = eventService.getEventsWithUnverifiedSessions();
+
+        assertEquals(2, result.size());
+        assertEquals(10L, result.get(0).getEventId());
+        assertEquals("Event A", result.get(0).getEventName());
+        assertEquals(EventStatus.UPCOMING, result.get(0).getEventStatus());
+        assertEquals(1, result.get(0).getUnverifiedCount());
+        assertEquals(List.of(unverified), result.get(0).getUnverifiedSessions());
+        assertEquals(11L, result.get(1).getEventId());
+        assertEquals(1, result.get(1).getUnverifiedCount());
+        assertEquals(List.of(secondUnverified), result.get(1).getUnverifiedSessions());
+    }
+
+    @Test
+    void getEventsWithUnverifiedSessionsReturnsEmptyListWhenRepositoryHasNoMatches() {
+        when(eventRepository.findEventsWithUnverifiedSessions()).thenReturn(List.of());
+
+        List<EventSessionAlertDTO> result = eventService.getEventsWithUnverifiedSessions();
+
+        assertEquals(List.of(), result);
     }
 
     @Test
