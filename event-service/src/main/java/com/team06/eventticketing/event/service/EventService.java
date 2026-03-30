@@ -3,6 +3,7 @@ package com.team06.eventticketing.event.service;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
+import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
 import java.time.LocalDateTime;
@@ -63,6 +64,13 @@ public class EventService {
         event.setDetails(details);
 
         return eventRepository.save(event);
+    }
+
+    public List<Event> findByDetailAttribute(String key, String value, EventStatus status) {
+        if (status == null) {
+            return eventRepository.findByDetailsAttribute(key, value);
+        }
+        return eventRepository.findByDetailsAttributeAndStatus(key, value, status.name());
     }
 
     public void deleteEvent(Long id) {
