@@ -1,16 +1,23 @@
 package com.team06.eventticketing.booking.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.team06.eventticketing.booking.dto.AddBookingItemsRequest;
+import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +61,9 @@ class BookingControllerIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUpSchema() {
@@ -149,5 +159,154 @@ class BookingControllerIntegrationTest {
         item.setStatus(status);
         item.setMetadata(new LinkedHashMap<>());
         return item;
+    }
+
+    @Test
+    void addItemsToPendingBookingCreatesItemsWithCorrectEventOrder() throws Exception {
+        Booking booking = new Booking();
+        booking.setUserId(1L);
+        booking.setEventId(1L);
+        booking.setContactEmail("test@example.com");
+        booking.setStatus(BookingStatus.PENDING);
+        booking = bookingRepository.saveAndFlush(booking);
+
+        AddBookingItemsRequest request = new AddBookingItemsRequest();
+        List<BookingItemRequest> items = new ArrayList<>();
+
+        BookingItemRequest item1 = new BookingItemRequest();
+        item1.setSessionId(101L);
+        item1.setSessionTitle("Session 101");
+        item1.setQuantity(2);
+        item1.setUnitPrice(50.0);
+        items.add(item1);
+
+        BookingItemRequest item2 = new BookingItemRequest();
+        item2.setSessionId(102L);
+        item2.setSessionTitle("Session 102");
+        item2.setQuantity(1);
+        item2.setUnitPrice(75.0);
+        items.add(item2);
+
+        request.setItems(items);
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingItems.length()").value(2))
+                .andExpect(jsonPath("$.bookingItems[0].eventOrder").value(1))
+                .andExpect(jsonPath("$.bookingItems[0].sessionId").value(101))
+                .andExpect(jsonPath("$.bookingItems[0].sessionTitle").value("Session 101"))
+                .andExpect(jsonPath("$.bookingItems[0].status").value("RESERVED"))
+                .andExpect(jsonPath("$.bookingItems[1].eventOrder").value(2))
+                .andExpect(jsonPath("$.bookingItems[1].sessionId").value(102))
+                .andExpect(jsonPath("$.bookingItems[1].sessionTitle").value("Session 102"))
+                .andExpect(jsonPath("$.bookingItems[1].status").value("RESERVED"));
+    }
+
+    @Test
+    void addMoreItemsContinuesEventOrder() throws Exception {
+        Booking booking = new Booking();
+        booking.setUserId(1L);
+        booking.setEventId(1L);
+        booking.setContactEmail("test@example.com");
+        booking.setStatus(BookingStatus.PENDING);
+        booking.addBookingItem(bookingItem(1, 1, 100.0, BookingItemStatus.RESERVED));
+        booking.addBookingItem(bookingItem(2, 1, 100.0, BookingItemStatus.RESERVED));
+        booking = bookingRepository.saveAndFlush(booking);
+
+        AddBookingItemsRequest request = new AddBookingItemsRequest();
+        List<BookingItemRequest> items = new ArrayList<>();
+
+        BookingItemRequest item = new BookingItemRequest();
+        item.setSessionId(103L);
+        item.setSessionTitle("Session 103");
+        item.setQuantity(3);
+        item.setUnitPrice(25.0);
+        items.add(item);
+
+        request.setItems(items);
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingItems.length()").value(3))
+                .andExpect(jsonPath("$.bookingItems[2].eventOrder").value(3))
+                .andExpect(jsonPath("$.bookingItems[2].sessionId").value(103));
+    }
+
+    @Test
+    void addItemsToCompletedBookingReturns400() throws Exception {
+        Booking booking = new Booking();
+        booking.setUserId(1L);
+        booking.setEventId(1L);
+        booking.setContactEmail("test@example.com");
+        booking.setStatus(BookingStatus.COMPLETED);
+        booking = bookingRepository.saveAndFlush(booking);
+
+        AddBookingItemsRequest request = new AddBookingItemsRequest();
+        List<BookingItemRequest> items = new ArrayList<>();
+
+        BookingItemRequest item = new BookingItemRequest();
+        item.setSessionId(101L);
+        item.setSessionTitle("Session 101");
+        item.setQuantity(1);
+        item.setUnitPrice(50.0);
+        items.add(item);
+
+        request.setItems(items);
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addItemWithMissingSessionTitleReturns400() throws Exception {
+        Booking booking = new Booking();
+        booking.setUserId(1L);
+        booking.setEventId(1L);
+        booking.setContactEmail("test@example.com");
+        booking.setStatus(BookingStatus.PENDING);
+        booking = bookingRepository.saveAndFlush(booking);
+
+        AddBookingItemsRequest request = new AddBookingItemsRequest();
+        List<BookingItemRequest> items = new ArrayList<>();
+
+        BookingItemRequest item = new BookingItemRequest();
+        item.setSessionId(101L);
+        // sessionTitle is missing
+        item.setQuantity(1);
+        item.setUnitPrice(50.0);
+        items.add(item);
+
+        request.setItems(items);
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addItemsToNonExistentBookingReturns404() throws Exception {
+        AddBookingItemsRequest request = new AddBookingItemsRequest();
+        List<BookingItemRequest> items = new ArrayList<>();
+
+        BookingItemRequest item = new BookingItemRequest();
+        item.setSessionId(101L);
+        item.setSessionTitle("Session 101");
+        item.setQuantity(1);
+        item.setUnitPrice(50.0);
+        items.add(item);
+
+        request.setItems(items);
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", 99999L)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound());
     }
 }

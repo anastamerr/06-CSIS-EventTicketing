@@ -1,5 +1,6 @@
 package com.team06.eventticketing.booking.controller;
 
+import com.team06.eventticketing.booking.dto.AddBookingItemsRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.service.BookingService;
@@ -49,6 +50,11 @@ public class BookingController {
     @PutMapping("/{id}/complete")
     public Booking completeBooking(@PathVariable Long id) {
         return bookingService.completeBooking(id);
+    }
+
+    @PostMapping("/{bookingId}/items")
+    public Booking addItemsToBooking(@PathVariable Long bookingId, @RequestBody AddBookingItemsRequest request) {
+        return bookingService.addItemsToBooking(bookingId, request);
     }
 
     @DeleteMapping("/{id}")
