@@ -3,9 +3,11 @@ package com.team06.eventticketing.ticket.controller;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
+import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.service.TicketService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -48,6 +50,31 @@ public class TicketController {
     @GetMapping("/booking/{bookingId}/latest")
     public Ticket getLatestTicketForBooking(@PathVariable Long bookingId) {
         return ticketService.getLatestTicketForBooking(bookingId);
+    }
+
+    @PostMapping("/booking/{bookingId}")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Ticket issueTicketWithMetadata(@PathVariable Long bookingId, @RequestBody Map<String, Object> request) {
+        String attendeeName = (String) request.get("attendeeName");
+        String ticketCode = (String) request.get("ticketCode");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) request.get("metadata");
+
+        if (attendeeName == null || attendeeName.isBlank() || ticketCode == null || ticketCode.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "attendeeName and ticketCode are required");
+        }
+
+        return ticketService.issueTicketWithMetadata(bookingId, attendeeName, ticketCode, metadata);
+    }
+
+    @GetMapping("/history")
+    public List<Ticket> getTicketHistory(
+            @RequestParam(name = "startDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate startDate,
+            @RequestParam(name = "endDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate endDate,
+            @RequestParam(name = "status", required = false) TicketStatus status) {
+        java.time.LocalDateTime startDateTime = startDate.atStartOfDay();
+        java.time.LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
+        return ticketService.getTicketsHistory(startDateTime, endDateTime, status);
     }
 
     @GetMapping("/nearby")

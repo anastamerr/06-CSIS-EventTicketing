@@ -39,6 +39,36 @@ public class TicketService {
         return ticketRepository.save(ticket);
     }
 
+    @Transactional
+    public Ticket issueTicketWithMetadata(Long bookingId, String attendeeName, String ticketCode, Map<String, Object> metadata) {
+        if (bookingId == null || !ticketRepository.existsBookingById(bookingId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+
+        if (ticketRepository.findByTicketCode(ticketCode).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket code already exists");
+        }
+
+        Ticket ticket = new Ticket();
+        ticket.setBookingId(bookingId);
+        ticket.setAttendeeName(attendeeName);
+        ticket.setTicketCode(ticketCode);
+        ticket.setStatus(TicketStatus.VALID);
+        ticket.setIssuedAt(LocalDateTime.now(clock));
+        ticket.setMetadata(metadata != null ? metadata : Map.of());
+
+        return ticketRepository.save(ticket);
+    }
+
+    public List<Ticket> getTicketsHistory(LocalDateTime startDateTime, LocalDateTime endDateTime, TicketStatus status) {
+        if (startDateTime.isAfter(endDateTime)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must not be after endDate");
+        }
+
+        String statusValue = status == null ? null : status.name();
+        return ticketRepository.findByIssuedAtBetweenAndStatus(startDateTime, endDateTime, statusValue);
+    }
+
     public Ticket updateTicket(Long id, Ticket ticket) {
         Ticket existingTicket = getTicketById(id);
         existingTicket.setBookingId(ticket.getBookingId());
