@@ -191,38 +191,25 @@ public class BookingService {
     }
 
     public List<Booking> searchBookings(BookingStatus status, LocalDate startDate, LocalDate endDate) {
-        LocalDateTime startDateTime = startDate != null ? startDate.atStartOfDay() : null;
-        LocalDateTime endDateTime = endDate != null ? endDate.atTime(LocalTime.MAX) : null;
-        if (status != null && startDateTime != null && endDateTime != null) {
-            return bookingRepository.findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
-                    status, startDateTime, endDateTime
-            );
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
         }
-        if (status == null && startDateTime != null && endDateTime != null) {
-            return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(
-                    startDateTime, endDateTime
-            );
-        }
-        if (status != null && startDateTime != null) {
-            return bookingRepository.findByStatusAndBookingDateGreaterThanEqualOrderByBookingDateDesc(
-                    status, startDateTime
-            );
-        }
-        if (status != null && endDateTime != null) {
-            return bookingRepository.findByStatusAndBookingDateLessThanEqualOrderByBookingDateDesc(
-                    status, endDateTime
-            );
-        }
-        if (status == null && startDateTime != null) {
-            return bookingRepository.findByBookingDateGreaterThanEqualOrderByBookingDateDesc(startDateTime);
-        }
-        if (status == null && endDateTime != null) {
-            return bookingRepository.findByBookingDateLessThanEqualOrderByBookingDateDesc(endDateTime);
-        }
-        if (status != null) {
-            return bookingRepository.findByStatusOrderByBookingDateDesc(status);
-        }
-        return bookingRepository.findAllByOrderByBookingDateDesc();
-    }
 
+        if (endDate.isBefore(startDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must not be before startDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        if (status != null) {
+            return bookingRepository.findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                    status,
+                    startDateTime,
+                    endDateTime
+            );
+        }
+
+        return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime);
+    }
 }
