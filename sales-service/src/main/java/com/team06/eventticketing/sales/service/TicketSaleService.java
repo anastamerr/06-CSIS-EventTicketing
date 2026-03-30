@@ -236,7 +236,10 @@ public class TicketSaleService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
 
-        List<TicketSale> sales = ticketSaleRepository.findByCreatedAtBetween(startDateTime, endDateTime);
+        List<TicketSale> sales = ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                startDateTime,
+                endDateTime
+        );
 
         double totalRevenue = sales.stream()
                 .filter(sale -> sale.getStatus() == TicketSaleStatus.COMPLETED)

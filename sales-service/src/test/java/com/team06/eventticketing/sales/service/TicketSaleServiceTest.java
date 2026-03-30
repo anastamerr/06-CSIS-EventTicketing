@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
+import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
@@ -18,6 +19,7 @@ import com.team06.eventticketing.sales.model.TicketSaleMethod;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -387,5 +389,79 @@ class TicketSaleServiceTest {
                 () -> ticketSaleService.refundTicketSale(404L, request));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getRevenueReportAggregatesCompletedAndRefundedSales() {
+        TicketSale completedOne = sale(1L, 200.0, TicketSaleStatus.COMPLETED);
+        TicketSale completedTwo = sale(2L, 400.0, TicketSaleStatus.COMPLETED);
+        TicketSale completedThree = sale(3L, 600.0, TicketSaleStatus.COMPLETED);
+        TicketSale completedFour = sale(4L, 800.0, TicketSaleStatus.COMPLETED);
+        TicketSale completedFive = sale(5L, 1000.0, TicketSaleStatus.COMPLETED);
+        TicketSale refundedOne = sale(6L, 300.0, TicketSaleStatus.REFUNDED);
+        TicketSale refundedTwo = sale(7L, 500.0, TicketSaleStatus.REFUNDED);
+
+        when(ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        )).thenReturn(List.of(
+                completedOne,
+                completedTwo,
+                completedThree,
+                completedFour,
+                completedFive,
+                refundedOne,
+                refundedTwo
+        ));
+
+        RevenueReportDTO report = ticketSaleService.getRevenueReport(
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31)
+        );
+
+        assertEquals(3000.0, report.getTotalRevenue());
+        assertEquals(5L, report.getTotalTransactions());
+        assertEquals(600.0, report.getAverageSale());
+        assertEquals(800.0, report.getRefundedAmount());
+        assertEquals(2L, report.getRefundCount());
+    }
+
+    @Test
+    void getRevenueReportUsesEndDateAsExclusiveUpperBound() {
+        when(ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        )).thenReturn(List.of());
+
+        RevenueReportDTO report = ticketSaleService.getRevenueReport(
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31)
+        );
+
+        assertEquals(0.0, report.getTotalRevenue());
+        assertEquals(0L, report.getTotalTransactions());
+        assertEquals(0.0, report.getAverageSale());
+        assertEquals(0.0, report.getRefundedAmount());
+        assertEquals(0L, report.getRefundCount());
+    }
+
+    @Test
+    void getRevenueReportRejectsStartDateAfterEndDate() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.getRevenueReport(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 3, 31)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    private TicketSale sale(Long id, double amount, TicketSaleStatus status) {
+        TicketSale sale = new TicketSale();
+        sale.setId(id);
+        sale.setBookingId(100L + id);
+        sale.setUserId(200L + id);
+        sale.setAmount(amount);
+        sale.setMethod(TicketSaleMethod.CREDIT_CARD);
+        sale.setStatus(status);
+        sale.setTransactionDetails(new LinkedHashMap<>());
+        return sale;
     }
 }

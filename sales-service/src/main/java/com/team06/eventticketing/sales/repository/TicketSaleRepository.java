@@ -48,6 +48,9 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
             WHERE ts.id = :id
             """)
     Optional<TicketSale> findByIdWithSalePromotionsForUpdate(@Param("id") Long id);
-    List<TicketSale> findByCreatedAtBetween(LocalDateTime startDateTime, LocalDateTime endDateTime);
+    List<TicketSale> findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    );
 
 }
