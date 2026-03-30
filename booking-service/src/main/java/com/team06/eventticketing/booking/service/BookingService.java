@@ -1,5 +1,7 @@
 package com.team06.eventticketing.booking.service;
 
+import com.team06.eventticketing.booking.dto.AddBookingItemsRequest;
+import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
@@ -74,6 +76,63 @@ public class BookingService {
                 resolvePaymentMethod(booking),
                 buildTransactionDetails(booking, totalAmount)
         );
+
+        return bookingRepository.save(booking);
+    }
+
+    @Transactional
+    public Booking addItemsToBooking(Long bookingId, AddBookingItemsRequest request) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+
+        // Validate booking status
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot add items to a booking with status " + booking.getStatus()
+            );
+        }
+
+        // Validate request has items
+        if (request == null || request.getItems() == null || request.getItems().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Items list is required");
+        }
+
+        // Validate each item
+        for (BookingItemRequest itemRequest : request.getItems()) {
+            if (itemRequest.getSessionId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sessionId is required for all items");
+            }
+            if (itemRequest.getSessionTitle() == null || itemRequest.getSessionTitle().trim().isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sessionTitle is required for all items");
+            }
+            if (itemRequest.getQuantity() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "quantity is required for all items");
+            }
+            if (itemRequest.getUnitPrice() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unitPrice is required for all items");
+            }
+        }
+
+        // Determine the current max eventOrder
+        int maxEventOrder = booking.getBookingItems().stream()
+                .mapToInt(item -> item.getEventOrder() != null ? item.getEventOrder() : 0)
+                .max()
+                .orElse(0);
+
+        // Create and add new items
+        for (BookingItemRequest itemRequest : request.getItems()) {
+            maxEventOrder++;
+            BookingItem newItem = new BookingItem();
+            newItem.setEventOrder(maxEventOrder);
+            newItem.setSessionId(itemRequest.getSessionId());
+            newItem.setSessionTitle(itemRequest.getSessionTitle());
+            newItem.setQuantity(itemRequest.getQuantity());
+            newItem.setUnitPrice(itemRequest.getUnitPrice());
+            newItem.setStatus(BookingItemStatus.RESERVED);
+            newItem.setMetadata(itemRequest.getMetadata() != null ? itemRequest.getMetadata() : new LinkedHashMap<>());
+
+            booking.addBookingItem(newItem);
+        }
 
         return bookingRepository.save(booking);
     }
