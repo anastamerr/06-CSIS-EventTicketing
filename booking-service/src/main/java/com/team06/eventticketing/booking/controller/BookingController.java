@@ -46,6 +46,11 @@ public class BookingController {
         return bookingService.updateBooking(id, request);
     }
 
+    @PutMapping("/{id}/complete")
+    public Booking completeBooking(@PathVariable Long id) {
+        return bookingService.completeBooking(id);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteBooking(@PathVariable Long id) {
