@@ -4,6 +4,7 @@ import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -47,4 +48,9 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
             WHERE ts.id = :id
             """)
     Optional<TicketSale> findByIdWithSalePromotionsForUpdate(@Param("id") Long id);
+    List<TicketSale> findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    );
+
 }
