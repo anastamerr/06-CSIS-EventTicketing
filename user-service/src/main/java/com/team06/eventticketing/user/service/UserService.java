@@ -36,16 +36,10 @@ public class UserService {
     }
 
     public List<User> searchUsers(String name, String email, String role) {
-        if (name != null && name.isBlank()) {
-            name = null;
-        }
-        if (email != null && email.isBlank()) {
-            email = null;
-        }
-        if (role != null && role.isBlank()) {
-            role = null;
-        }
-        return userRepository.searchByOptionalNameEmailRole(name, email, role);
+        return userRepository.searchByOptionalNameEmailRole(
+                normalizeFilter(name),
+                normalizeFilter(email),
+                normalizeFilter(role));
     }
 
     public User getUserById(Long id) {
@@ -237,5 +231,12 @@ public class UserService {
             return new BigDecimal(number.toString());
         }
         return new BigDecimal(value.toString());
+    }
+
+    private String normalizeFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }
