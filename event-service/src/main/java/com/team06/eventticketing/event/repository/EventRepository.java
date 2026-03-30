@@ -17,6 +17,16 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     List<Event> findByNameContainingIgnoreCase(String name);
 
+    @Query(value = "select * from events e where e.details ->> :key = :value", nativeQuery = true)
+    List<Event> findByDetailsAttribute(@Param("key") String key, @Param("value") String value);
+
+    @Query(value = "select * from events e where e.details ->> :key = :value and e.status = :status", nativeQuery = true)
+    List<Event> findByDetailsAttributeAndStatus(
+            @Param("key") String key,
+            @Param("value") String value,
+            @Param("status") String status
+    );
+
     @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.eventSessions WHERE e.id = :id")
     Optional<Event> findByIdWithEventSessions(@Param("id") Long id);
 
