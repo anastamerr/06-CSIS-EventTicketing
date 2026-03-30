@@ -2,19 +2,30 @@ package com.team06.eventticketing.booking.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
+import com.team06.eventticketing.booking.model.BookingItem;
+import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
-import java.time.LocalDateTime;
+import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -26,11 +37,17 @@ class BookingServiceTest {
     @Mock
     private BookingRepository bookingRepository;
 
+    @Mock
+    private TicketSaleJdbcRepository ticketSaleJdbcRepository;
+
+    @Captor
+    private ArgumentCaptor<Map<String, Object>> transactionDetailsCaptor;
+
     private BookingService bookingService;
 
     @BeforeEach
     void setUp() {
-        bookingService = new BookingService(bookingRepository);
+        bookingService = new BookingService(bookingRepository, ticketSaleJdbcRepository);
     }
 
     @Test
@@ -67,11 +84,112 @@ class BookingServiceTest {
     }
 
     @Test
+    void completeBookingCalculatesTotalCreatesSaleAndCompletesBooking() {
+        Booking booking = new Booking();
+        booking.setId(5L);
+        booking.setUserId(11L);
+        booking.setEventId(22L);
+        booking.setContactEmail("buyer@example.com");
+        booking.setStatus(BookingStatus.CHECKED_IN);
+        booking.setMetadata(new LinkedHashMap<>(Map.of("paymentMethod", "credit_card")));
+        booking.addBookingItem(bookingItem(1, 2, 100.0, BookingItemStatus.RESERVED));
+        booking.addBookingItem(bookingItem(2, 1, 250.0, BookingItemStatus.RESERVED));
+        booking.addBookingItem(bookingItem(3, 4, 50.0, BookingItemStatus.RESERVED));
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
+        when(ticketSaleJdbcRepository.existsByBookingId(5L)).thenReturn(false);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.completeBooking(5L);
+
+        assertEquals(BookingStatus.COMPLETED, result.getStatus());
+        assertEquals(650.0, result.getTotalAmount());
+
+        verify(ticketSaleJdbcRepository).createPendingSale(
+                eq(5L),
+                eq(11L),
+                eq(650.0),
+                eq("CREDIT_CARD"),
+                transactionDetailsCaptor.capture()
+        );
+
+        Map<String, Object> transactionDetails = transactionDetailsCaptor.getValue();
+        assertEquals(650.0, transactionDetails.get("bookingTotalAmount"));
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    void completeBookingRejectsPendingBooking() {
+        Booking booking = new Booking();
+        booking.setId(5L);
+        booking.setStatus(BookingStatus.PENDING);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.completeBooking(5L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketSaleJdbcRepository, never()).existsByBookingId(any());
+        verify(ticketSaleJdbcRepository, never()).createPendingSale(any(), any(), anyDouble(), anyString(), any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void completeBookingRejectsDuplicateTicketSale() {
+        Booking booking = new Booking();
+        booking.setId(5L);
+        booking.setUserId(11L);
+        booking.setEventId(22L);
+        booking.setStatus(BookingStatus.CHECKED_IN);
+        booking.addBookingItem(bookingItem(1, 1, 100.0, BookingItemStatus.RESERVED));
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
+        when(ticketSaleJdbcRepository.existsByBookingId(5L)).thenReturn(true);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.completeBooking(5L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketSaleJdbcRepository, never()).createPendingSale(any(), any(), anyDouble(), anyString(), any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void completeBookingRejectsAlreadyCompletedBooking() {
+        Booking booking = new Booking();
+        booking.setId(5L);
+        booking.setStatus(BookingStatus.COMPLETED);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.completeBooking(5L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketSaleJdbcRepository, never()).existsByBookingId(any());
+        verify(ticketSaleJdbcRepository, never()).createPendingSale(any(), any(), anyDouble(), anyString(), any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
     void getAllBookingsUsesFetchJoinRepository() {
         when(bookingRepository.findAllWithBookingItems()).thenReturn(List.of());
 
         bookingService.getAllBookings();
 
         verify(bookingRepository).findAllWithBookingItems();
+    }
+
+    private BookingItem bookingItem(int eventOrder, int quantity, double unitPrice, BookingItemStatus status) {
+        BookingItem bookingItem = new BookingItem();
+        bookingItem.setEventOrder(eventOrder);
+        bookingItem.setSessionId((long) eventOrder);
+        bookingItem.setSessionTitle("Session " + eventOrder);
+        bookingItem.setQuantity(quantity);
+        bookingItem.setUnitPrice(unitPrice);
+        bookingItem.setStatus(status);
+        bookingItem.setMetadata(new LinkedHashMap<>());
+        return bookingItem;
     }
 }
