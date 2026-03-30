@@ -5,6 +5,7 @@ import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
+import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
 import java.math.BigDecimal;
@@ -59,6 +60,16 @@ public class UserService {
         existing.setRole(user.getRole());
         existing.setPreferences(user.getPreferences());
         return userRepository.save(existing);
+    }
+
+    @Transactional
+    public User deactivateUser(Long id) {
+        User user = getUserById(id);
+        if (userRepository.existsActiveBookingsByUserId(id)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User has active bookings");
+        }
+        user.setStatus(UserStatus.DEACTIVATED);
+        return userRepository.save(user);
     }
 
     public void deleteUser(Long id) {
