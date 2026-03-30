@@ -7,6 +7,7 @@ import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,7 +27,7 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final TicketSaleJdbcRepository ticketSaleJdbcRepository;
 
-    public BookingService(BookingRepository bookingRepository, TicketSaleJdbcRepository ticketSaleJdbcRepository) {
+    public BookingService(BookingRepository bookingRepository, TicketSaleJdbcRepository ticketSaleJdbcRepository ){
         this.bookingRepository = bookingRepository;
         this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
     }
@@ -184,5 +185,21 @@ public class BookingService {
 
     private double safeUnitPrice(BookingItem item) {
         return item.getUnitPrice() == null ? 0.0 : item.getUnitPrice();
+    }
+    @Transactional
+    public Booking cancelBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Booking not found"
+                ));
+        if (booking.getStatus() != BookingStatus.PENDING &&
+                booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only PENDING or CONFIRMED bookings can be cancelled"
+            );
+        }
+        booking.setStatus(BookingStatus.CANCELLED);
+        return bookingRepository.save(booking);
     }
 }
