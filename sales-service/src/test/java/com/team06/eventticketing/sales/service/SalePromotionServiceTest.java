@@ -142,6 +142,7 @@ class SalePromotionServiceTest {
         Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 25.0, 3, 0, true);
 
         when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
         when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
         when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(false);
         when(salePromotionRepository.saveAndFlush(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -165,6 +166,7 @@ class SalePromotionServiceTest {
         Promotion promotion = promotion(2L, PromotionDiscountType.FIXED, 100.0, 5, 0, true);
 
         when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
         when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
         when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(false);
         when(salePromotionRepository.saveAndFlush(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -202,6 +204,22 @@ class SalePromotionServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
         verify(salePromotionRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void applyPromotionToTicketSaleRejectsInactivePromotion() {
+        TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.PENDING);
+        Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 20.0, 3, 0, false);
+
+        when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(salePromotionRepository, never()).saveAndFlush(any());
+        verify(promotionRepository, never()).save(any());
     }
 
     @Test
