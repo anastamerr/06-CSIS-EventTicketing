@@ -1,6 +1,7 @@
 package com.team06.eventticketing.sales.controller;
 
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
+import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
 import com.team06.eventticketing.sales.model.TicketSale;
@@ -42,5 +43,10 @@ public class TicketSaleFeatureController {
     @PutMapping("/{id}/retry")
     public TicketSale retrySale(@PathVariable Long id) {
         return ticketSaleService.retryFailedSale(id);
+    }
+
+    @PutMapping("/{id}/refund")
+    public TicketSale refundSale(@PathVariable Long id, @RequestBody RefundRequest request) {
+        return ticketSaleService.refundTicketSale(id, request);
     }
 }
