@@ -9,4 +9,6 @@ public interface SalePromotionRepository extends JpaRepository<SalePromotion, Lo
     List<SalePromotion> findByTicketSaleId(Long ticketSaleId);
 
     List<SalePromotion> findByPromotionId(Long promotionId);
+
+    boolean existsByTicketSaleIdAndPromotionId(Long ticketSaleId, Long promotionId);
 }

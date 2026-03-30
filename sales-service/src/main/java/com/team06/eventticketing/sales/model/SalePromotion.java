@@ -1,6 +1,7 @@
 package com.team06.eventticketing.sales.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -11,10 +12,14 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "sale_promotions")
+@Table(
+        name = "sale_promotions",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"ticket_sale_id", "promotion_id"})
+)
 public class SalePromotion {
 
     @Id
@@ -32,7 +37,7 @@ public class SalePromotion {
     @JoinColumn(name = "ticket_sale_id", nullable = false)
     private TicketSale ticketSale;
 
-    @JsonIgnore
+    @JsonIgnoreProperties("salePromotions")
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "promotion_id", nullable = false)
     private Promotion promotion;
