@@ -7,6 +7,7 @@ import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.service.EventService;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
+import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -102,6 +103,10 @@ public class EventController {
     @ResponseStatus(HttpStatus.OK)
     public void updateEventStatus(@PathVariable Long id, @RequestBody UpdateEventStatusRequest request) {
         eventService.updateEventStatus(id, request);
+    }
+    @GetMapping("/sessions/unverified")
+    public List<EventSessionAlertDTO> getEventsWithUnverifiedSessions() {
+        return eventService.getEventsWithUnverifiedSessions();
     }
 
 }
