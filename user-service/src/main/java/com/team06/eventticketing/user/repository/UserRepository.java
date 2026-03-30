@@ -51,6 +51,21 @@ public interface UserRepository extends JpaRepository<User, Long> {
                                              @Param("role") String role);
 
     @Query(value = """
+            SELECT u.*
+            FROM users u
+            LEFT JOIN bookings b
+                ON b.user_id = u.id
+               AND b.status = 'COMPLETED'
+            WHERE u.preferences->>'favoriteCategory' = :category
+            GROUP BY u.id
+            HAVING COUNT(b.id) >= :minBookings
+            ORDER BY u.id ASC
+            """, nativeQuery = true)
+    List<User> findByCategoryAndMinCompletedBookings(
+            @Param("category") String category,
+            @Param("minBookings") int minBookings);
+
+    @Query(value = """
             SELECT
                 u.id AS user_id,
                 u.name AS name,
