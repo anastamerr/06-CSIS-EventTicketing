@@ -8,6 +8,7 @@ import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,18 +56,18 @@ public class TicketService {
         ticket.setTicketCode(ticketCode);
         ticket.setStatus(TicketStatus.VALID);
         ticket.setIssuedAt(LocalDateTime.now(clock));
-        ticket.setMetadata(metadata != null ? metadata : Map.of());
+        ticket.setMetadata(metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata));
 
         return ticketRepository.save(ticket);
     }
 
-    public List<Ticket> getTicketsHistory(LocalDateTime startDateTime, LocalDateTime endDateTime, TicketStatus status) {
-        if (startDateTime.isAfter(endDateTime)) {
+    public List<Ticket> getTicketsHistory(LocalDateTime startDateTime, LocalDateTime endExclusive, TicketStatus status) {
+        if (!startDateTime.isBefore(endExclusive)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must not be after endDate");
         }
 
         String statusValue = status == null ? null : status.name();
-        return ticketRepository.findByIssuedAtBetweenAndStatus(startDateTime, endDateTime, statusValue);
+        return ticketRepository.findByIssuedAtBetweenAndStatus(startDateTime, endExclusive, statusValue);
     }
 
     public Ticket updateTicket(Long id, Ticket ticket) {

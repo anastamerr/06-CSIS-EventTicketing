@@ -24,13 +24,13 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             SELECT *
             FROM tickets
             WHERE issued_at >= :startDate
-              AND issued_at <= :endDate
+              AND issued_at < :endExclusive
               AND (:status IS NULL OR status = :status)
-            ORDER BY issued_at ASC
+            ORDER BY issued_at ASC, id ASC
             """, nativeQuery = true)
     List<Ticket> findByIssuedAtBetweenAndStatus(
             @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate,
+            @Param("endExclusive") LocalDateTime endExclusive,
             @Param("status") String status);
 
     @Query(value = """
