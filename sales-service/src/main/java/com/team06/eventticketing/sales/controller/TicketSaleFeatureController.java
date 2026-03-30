@@ -6,6 +6,11 @@ import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
 import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.service.TicketSaleService;
+import com.team06.eventticketing.sales.dto.RevenueReportDTO;
+import java.time.LocalDate;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.RequestParam;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,4 +54,12 @@ public class TicketSaleFeatureController {
     public TicketSale refundSale(@PathVariable Long id, @RequestBody RefundRequest request) {
         return ticketSaleService.refundTicketSale(id, request);
     }
+    @GetMapping("/reports/revenue")
+    public RevenueReportDTO getRevenueReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return ticketSaleService.getRevenueReport(startDate, endDate);
+    }
+
 }
