@@ -1,10 +1,14 @@
 package com.team06.eventticketing.sales.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.SalePromotionRequest;
 import com.team06.eventticketing.sales.dto.SalePromotionResponse;
 import com.team06.eventticketing.sales.model.Promotion;
@@ -42,6 +46,9 @@ class SalePromotionServiceTest {
     @Mock
     private PromotionRepository promotionRepository;
 
+    @Mock
+    private TicketSaleService ticketSaleService;
+
     @Captor
     private ArgumentCaptor<SalePromotion> salePromotionCaptor;
 
@@ -49,7 +56,12 @@ class SalePromotionServiceTest {
 
     @BeforeEach
     void setUp() {
-        salePromotionService = new SalePromotionService(salePromotionRepository, ticketSaleRepository, promotionRepository);
+        salePromotionService = new SalePromotionService(
+                salePromotionRepository,
+                ticketSaleRepository,
+                promotionRepository,
+                ticketSaleService
+        );
     }
 
     @Test
@@ -127,5 +139,130 @@ class SalePromotionServiceTest {
                 () -> salePromotionService.createSalePromotion(request));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void applyPromotionToTicketSaleCreatesJoinAndIncrementsUses() {
+        TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.PENDING);
+        Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 25.0, 3, 0, true);
+
+        SaleDetailsDTO details = new SaleDetailsDTO();
+        details.setSaleId(1L);
+        details.setOriginalAmount(800.0);
+        details.setTotalDiscount(200.0);
+        details.setFinalAmount(600.0);
+
+        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+        when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(false);
+        when(salePromotionRepository.save(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketSaleService.getTicketSaleDetails(1L)).thenReturn(details);
+
+        SaleDetailsDTO result = salePromotionService.applyPromotionToTicketSale(1L, 2L);
+
+        SalePromotion savedPromotion = salePromotionCaptor.getValue();
+        assertEquals(200.0, savedPromotion.getDiscountApplied());
+        assertSame(ticketSale, savedPromotion.getTicketSale());
+        assertSame(promotion, savedPromotion.getPromotion());
+        assertEquals(1, promotion.getCurrentUses());
+        assertSame(details, result);
+        verify(promotionRepository).save(promotion);
+        verify(ticketSaleService).getTicketSaleDetails(1L);
+    }
+
+    @Test
+    void applyPromotionToTicketSaleCapsFixedDiscountAtSaleAmount() {
+        TicketSale ticketSale = ticketSale(1L, 80.0, TicketSaleStatus.PENDING);
+        Promotion promotion = promotion(2L, PromotionDiscountType.FIXED, 100.0, 5, 0, true);
+
+        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+        when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(false);
+        when(salePromotionRepository.save(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketSaleService.getTicketSaleDetails(1L)).thenReturn(new SaleDetailsDTO());
+
+        salePromotionService.applyPromotionToTicketSale(1L, 2L);
+
+        assertEquals(80.0, salePromotionCaptor.getValue().getDiscountApplied());
+    }
+
+    @Test
+    void applyPromotionToTicketSaleRejectsNonPendingSale() {
+        TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.COMPLETED);
+
+        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(promotionRepository, never()).findById(any());
+        verify(salePromotionRepository, never()).save(any());
+    }
+
+    @Test
+    void applyPromotionToTicketSaleRejectsExpiredPromotion() {
+        TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.PENDING);
+        Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 20.0, 3, 0, true);
+        promotion.setExpiryDate(LocalDateTime.now().minusMinutes(1));
+
+        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(salePromotionRepository, never()).save(any());
+        verify(ticketSaleService, never()).getTicketSaleDetails(any());
+    }
+
+    @Test
+    void applyPromotionToTicketSaleRejectsDuplicatePromotion() {
+        TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.PENDING);
+        Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 25.0, 3, 0, true);
+
+        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+        when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(true);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(salePromotionRepository, never()).save(any());
+        verify(promotionRepository, never()).save(any());
+    }
+
+    private TicketSale ticketSale(Long id, double amount, TicketSaleStatus status) {
+        TicketSale ticketSale = new TicketSale();
+        ticketSale.setId(id);
+        ticketSale.setBookingId(10L);
+        ticketSale.setUserId(20L);
+        ticketSale.setAmount(amount);
+        ticketSale.setMethod(TicketSaleMethod.CREDIT_CARD);
+        ticketSale.setStatus(status);
+        ticketSale.setTransactionDetails(new LinkedHashMap<>());
+        return ticketSale;
+    }
+
+    private Promotion promotion(
+            Long id,
+            PromotionDiscountType discountType,
+            double discountValue,
+            int maxUses,
+            int currentUses,
+            boolean active
+    ) {
+        Promotion promotion = new Promotion();
+        promotion.setId(id);
+        promotion.setCode("SHOW25");
+        promotion.setDiscountType(discountType);
+        promotion.setDiscountValue(discountValue);
+        promotion.setMaxUses(maxUses);
+        promotion.setCurrentUses(currentUses);
+        promotion.setExpiryDate(LocalDateTime.now().plusDays(1));
+        promotion.setActive(active);
+        return promotion;
     }
 }
