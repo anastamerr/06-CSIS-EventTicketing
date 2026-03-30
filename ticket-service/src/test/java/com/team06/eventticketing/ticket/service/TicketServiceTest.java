@@ -8,12 +8,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
+import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -157,11 +160,125 @@ class TicketServiceTest {
         assertEquals(latest, result);
     }
 
+    @Test
+    void findTicketsNearVenueRejectsInvalidLatitude() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.findTicketsNearVenue(91.0, 31.0, 10.0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    void findTicketsNearVenueRejectsInvalidLongitude() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.findTicketsNearVenue(30.0, 181.0, 10.0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    void findTicketsNearVenueRejectsNonPositiveRadius() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.findTicketsNearVenue(30.0, 31.0, 0.0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    void findTicketsNearVenueMapsRepositoryResults() {
+        NearbyTicketProjection projection = new TestNearbyTicketProjection(
+                7L, "Mariam", 55L, "Jazz Night", 30.0444, 31.2357, 1.25
+        );
+
+        when(ticketRepository.findTicketsNearVenue(30.0444, 31.2357, 5.0)).thenReturn(List.of(projection));
+
+        List<NearbyTicketResponseDTO> result = ticketService.findTicketsNearVenue(30.0444, 31.2357, 5.0);
+
+        assertEquals(1, result.size());
+        assertEquals(7L, result.get(0).getTicketId());
+        assertEquals("Mariam", result.get(0).getAttendeeName());
+        assertEquals(55L, result.get(0).getBookingId());
+        assertEquals("Jazz Night", result.get(0).getEventName());
+        assertEquals(30.0444, result.get(0).getEventLat());
+        assertEquals(31.2357, result.get(0).getEventLon());
+        assertEquals(1.25, result.get(0).getDistanceKm());
+    }
+
     private Ticket ticket(String attendeeName, String ticketCode) {
         Ticket ticket = new Ticket();
         ticket.setAttendeeName(attendeeName);
         ticket.setTicketCode(ticketCode);
         ticket.setMetadata(Map.of());
         return ticket;
+    }
+
+    private static class TestNearbyTicketProjection implements NearbyTicketProjection {
+
+        private final Long ticketId;
+        private final String attendeeName;
+        private final Long bookingId;
+        private final String eventName;
+        private final Double eventLat;
+        private final Double eventLon;
+        private final Double distanceKm;
+
+        private TestNearbyTicketProjection(
+                Long ticketId,
+                String attendeeName,
+                Long bookingId,
+                String eventName,
+                Double eventLat,
+                Double eventLon,
+                Double distanceKm
+        ) {
+            this.ticketId = ticketId;
+            this.attendeeName = attendeeName;
+            this.bookingId = bookingId;
+            this.eventName = eventName;
+            this.eventLat = eventLat;
+            this.eventLon = eventLon;
+            this.distanceKm = distanceKm;
+        }
+
+        @Override
+        public Long getTicketId() {
+            return ticketId;
+        }
+
+        @Override
+        public String getAttendeeName() {
+            return attendeeName;
+        }
+
+        @Override
+        public Long getBookingId() {
+            return bookingId;
+        }
+
+        @Override
+        public String getEventName() {
+            return eventName;
+        }
+
+        @Override
+        public Double getEventLat() {
+            return eventLat;
+        }
+
+        @Override
+        public Double getEventLon() {
+            return eventLon;
+        }
+
+        @Override
+        public Double getDistanceKm() {
+            return distanceKm;
+        }
     }
 }
