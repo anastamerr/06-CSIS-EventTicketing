@@ -106,4 +106,11 @@ public class UserController {
     public List<User> filterByPreference(@RequestParam String key, @RequestParam String value) {
         return userService.filterByPreference(key, value);
     }
+
+    @GetMapping("/preferences/category")
+    public List<User> getUsersByFavoriteCategory(
+            @RequestParam String category,
+            @RequestParam int minBookings) {
+        return userService.getUsersByFavoriteCategoryAndMinBookings(category, minBookings);
+    }
 }
