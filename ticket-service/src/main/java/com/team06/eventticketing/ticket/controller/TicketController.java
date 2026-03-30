@@ -1,5 +1,6 @@
 package com.team06.eventticketing.ticket.controller;
 
+import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.service.TicketService;
@@ -47,6 +48,15 @@ public class TicketController {
     @GetMapping("/booking/{bookingId}/latest")
     public Ticket getLatestTicketForBooking(@PathVariable Long bookingId) {
         return ticketService.getLatestTicketForBooking(bookingId);
+    }
+
+    @GetMapping("/nearby")
+    public List<NearbyTicketResponseDTO> findTicketsNearVenue(
+            @RequestParam double latitude,
+            @RequestParam double longitude,
+            @RequestParam double radiusKm
+    ) {
+        return ticketService.findTicketsNearVenue(latitude, longitude, radiusKm);
     }
 
     @PostMapping("/batch")

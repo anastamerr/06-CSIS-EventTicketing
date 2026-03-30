@@ -1,8 +1,10 @@
 package com.team06.eventticketing.ticket.service;
 
+import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
+import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -61,6 +63,13 @@ public class TicketService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
     }
 
+    public List<NearbyTicketResponseDTO> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
+        validateGeoParameters(latitude, longitude, radiusKm);
+        return ticketRepository.findTicketsNearVenue(latitude, longitude, radiusKm).stream()
+                .map(this::toNearbyTicketResponse)
+                .toList();
+    }
+
     @Transactional
     public PurgeTicketsResponseDTO purgeTickets(long olderThanDays) {
         if (olderThanDays < 0) {
@@ -102,5 +111,34 @@ public class TicketService {
         ticketRepository.saveAll(tickets);
 
         return Map.of("count", tickets.size());
+    }
+
+    private void validateGeoParameters(double latitude, double longitude, double radiusKm) {
+        if (latitude < -90.0 || latitude > 90.0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "latitude must be between -90 and 90");
+        }
+        if (longitude < -180.0 || longitude > 180.0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "longitude must be between -180 and 180");
+        }
+        if (radiusKm <= 0.0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "radiusKm must be greater than zero");
+        }
+    }
+
+    private NearbyTicketResponseDTO toNearbyTicketResponse(NearbyTicketProjection projection) {
+        NearbyTicketResponseDTO response = new NearbyTicketResponseDTO();
+        response.setTicketId(projection.getTicketId());
+        response.setBookingId(projection.getBookingId());
+        response.setEventId(projection.getEventId());
+        response.setEventName(projection.getEventName());
+        response.setVenue(projection.getVenue());
+        response.setAttendeeName(projection.getAttendeeName());
+        response.setTicketCode(projection.getTicketCode());
+        response.setTicketStatus(projection.getTicketStatus());
+        response.setIssuedAt(projection.getIssuedAt());
+        response.setVenueLatitude(projection.getVenueLatitude());
+        response.setVenueLongitude(projection.getVenueLongitude());
+        response.setDistanceKm(projection.getDistanceKm());
+        return response;
     }
 }
