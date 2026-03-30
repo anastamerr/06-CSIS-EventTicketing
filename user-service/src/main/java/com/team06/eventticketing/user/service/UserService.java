@@ -123,6 +123,16 @@ public class UserService {
         return mapUserBookingSummaryRow(user, summaryRows.getFirst());
     }
 
+    public List<User> getUsersByFavoriteCategoryAndMinBookings(String category, int minBookings) {
+        if (category == null || category.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Category must not be blank");
+        }
+        if (minBookings < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minBookings must not be negative");
+        }
+        return userRepository.findByCategoryAndMinCompletedBookings(category, minBookings);
+    }
+
     public List<User> filterByPreference(String key, String value) {
         if (key == null || key.isBlank() || value == null || value.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Key and value must not be blank");
