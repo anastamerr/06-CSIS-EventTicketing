@@ -97,7 +97,7 @@ class BookingServiceTest {
         booking.addBookingItem(bookingItem(2, 1, 150.0, BookingItemStatus.CONFIRMED));
         booking.addBookingItem(bookingItem(3, 5, 999.0, BookingItemStatus.REFUNDED));
 
-        when(bookingRepository.findByIdWithBookingItems(5L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
         when(ticketSaleJdbcRepository.existsByBookingId(5L)).thenReturn(false);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -130,7 +130,7 @@ class BookingServiceTest {
         booking.setId(5L);
         booking.setStatus(BookingStatus.PENDING);
 
-        when(bookingRepository.findByIdWithBookingItems(5L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> bookingService.completeBooking(5L));
@@ -150,7 +150,7 @@ class BookingServiceTest {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.addBookingItem(bookingItem(1, 1, 100.0, BookingItemStatus.RESERVED));
 
-        when(bookingRepository.findByIdWithBookingItems(5L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
         when(ticketSaleJdbcRepository.existsByBookingId(5L)).thenReturn(true);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
