@@ -10,6 +10,8 @@ import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
+import com.team06.eventticketing.sales.dto.RevenueReportDTO;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -225,4 +227,44 @@ public class TicketSaleService {
 
         return transactionDetails;
     }
+    @Transactional(readOnly = true)
+    public RevenueReportDTO getRevenueReport(LocalDate startDate, LocalDate endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
+
+        List<TicketSale> sales = ticketSaleRepository.findByCreatedAtBetween(startDateTime, endDateTime);
+
+        double totalRevenue = sales.stream()
+                .filter(sale -> sale.getStatus() == TicketSaleStatus.COMPLETED)
+                .mapToDouble(sale -> sale.getAmount() == null ? 0.0 : sale.getAmount())
+                .sum();
+
+        long totalTransactions = sales.stream()
+                .filter(sale -> sale.getStatus() == TicketSaleStatus.COMPLETED)
+                .count();
+
+        double averageSale = totalTransactions == 0 ? 0.0 : totalRevenue / totalTransactions;
+
+        double refundedAmount = sales.stream()
+                .filter(sale -> sale.getStatus() == TicketSaleStatus.REFUNDED)
+                .mapToDouble(sale -> sale.getAmount() == null ? 0.0 : sale.getAmount())
+                .sum();
+
+        long refundCount = sales.stream()
+                .filter(sale -> sale.getStatus() == TicketSaleStatus.REFUNDED)
+                .count();
+
+        return new RevenueReportDTO(
+                totalRevenue,
+                totalTransactions,
+                averageSale,
+                refundedAmount,
+                refundCount
+        );
+    }
+
 }
