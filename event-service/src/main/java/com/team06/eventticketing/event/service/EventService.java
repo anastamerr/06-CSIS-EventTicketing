@@ -8,6 +8,8 @@ import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
+import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
+import java.util.stream.Collectors;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -195,6 +197,26 @@ public class EventService {
         }
         event.setStatus(request.getStatus());
         eventRepository.save(event);
+    }
+    @Transactional(readOnly = true)
+    public List<EventSessionAlertDTO> getEventsWithUnverifiedSessions() {
+        return eventRepository.findEventsWithUnverifiedSessions()
+                .stream()
+                .map(event -> {
+                    List<EventSession> unverifiedSessions = event.getEventSessions()
+                            .stream()
+                            .filter(session -> Boolean.FALSE.equals(session.getVerified()))
+                            .collect(Collectors.toList());
+
+                    return new EventSessionAlertDTO(
+                            event.getId(),
+                            event.getName(),
+                            event.getStatus(),
+                            unverifiedSessions,
+                            unverifiedSessions.size()
+                    );
+                })
+                .toList();
     }
 
 

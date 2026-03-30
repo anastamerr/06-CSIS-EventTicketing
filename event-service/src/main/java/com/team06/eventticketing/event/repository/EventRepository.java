@@ -69,4 +69,12 @@ public interface EventRepository extends JpaRepository<Event, Long> {
         """, nativeQuery = true)
     boolean existsActiveBookingsForEvent(@Param("eventId") Long eventId);
 
+    @Query("""
+        SELECT DISTINCT e
+        FROM Event e
+        JOIN FETCH e.eventSessions s
+        WHERE s.verified = false
+        """)
+    List<Event> findEventsWithUnverifiedSessions();
+
 }
