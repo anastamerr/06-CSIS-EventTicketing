@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -168,6 +169,31 @@ class UserServiceTest {
         when(userRepository.findByPreferenceKeyValue("favoriteCategory", "CONCERT")).thenReturn(expectedUsers);
 
         List<User> actualUsers = userService.filterByPreference("favoriteCategory", "CONCERT");
+
+        assertIterableEquals(expectedUsers, actualUsers);
+    }
+
+    @Test
+    void searchUsersNormalizesBlankFiltersBeforeDelegating() {
+        List<User> expectedUsers = List.of(new User());
+        when(userRepository.searchByOptionalNameEmailRole(isNull(), isNull(), isNull())).thenReturn(expectedUsers);
+
+        List<User> actualUsers = userService.searchUsers(" ", "\t", "");
+
+        assertIterableEquals(expectedUsers, actualUsers);
+    }
+
+    @Test
+    void searchUsersDelegatesToRepositoryWithProvidedFilters() {
+        User firstMatch = new User();
+        firstMatch.setId(1L);
+        User secondMatch = new User();
+        secondMatch.setId(2L);
+        List<User> expectedUsers = List.of(firstMatch, secondMatch);
+
+        when(userRepository.searchByOptionalNameEmailRole("Ahmed", null, "ADMIN")).thenReturn(expectedUsers);
+
+        List<User> actualUsers = userService.searchUsers("Ahmed", null, "ADMIN");
 
         assertIterableEquals(expectedUsers, actualUsers);
     }

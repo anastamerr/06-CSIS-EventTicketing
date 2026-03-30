@@ -24,7 +24,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class UserBookingSummaryIntegrationTest {
 
     @Container
@@ -139,11 +139,11 @@ class UserBookingSummaryIntegrationTest {
 
     @Test
     void searchUsersByFiltersWorks() throws Exception {
-        User userA = saveUser("Ahmed", "ahmed@example.com", "01000000005");
+        saveUser("Ahmed", "ahmed@example.com", "01000000005");
         User userB = saveUser("Sara", "sara@example.com", "01000000006");
         userB.setRole(UserRole.ADMIN);
         userRepository.save(userB);
-        User userC = saveUser("Ahmed Ali", "ahmed.ali@example.com", "01000000007");
+        saveUser("Ahmed Ali", "ahmed.ali@example.com", "01000000007");
 
         mockMvc.perform(get("/api/users/search").param("name", "Ahmed"))
                 .andExpect(status().isOk())
@@ -160,6 +160,10 @@ class UserBookingSummaryIntegrationTest {
         mockMvc.perform(get("/api/users/search").param("name", "ahmed"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
+
+        mockMvc.perform(get("/api/users/search").param("email", "EXAMPLE.COM"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3));
     }
 
     private User saveUser(String name, String email, String phone) {

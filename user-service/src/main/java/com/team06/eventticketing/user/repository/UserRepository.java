@@ -28,9 +28,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query(value = """
             SELECT *
             FROM users u
-            WHERE (:name IS NULL OR LOWER(u.name) LIKE '%' || LOWER(:name) || '%')
-              AND (:email IS NULL OR LOWER(u.email) LIKE '%' || LOWER(:email) || '%')
-              AND (:role IS NULL OR u.role = :role)
+            WHERE (
+                    (:name IS NOT NULL AND LOWER(u.name) LIKE '%' || LOWER(:name) || '%')
+                 OR (:email IS NOT NULL AND LOWER(u.email) LIKE '%' || LOWER(:email) || '%')
+                OR (:role IS NOT NULL AND LOWER(u.role) = LOWER(:role))
+                 OR (:name IS NULL AND :email IS NULL AND :role IS NULL)
+            )
             ORDER BY u.id ASC
             """, nativeQuery = true)
     List<User> searchByOptionalNameEmailRole(@Param("name") String name,
