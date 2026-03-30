@@ -10,6 +10,9 @@ import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -97,6 +100,24 @@ public class BookingService {
         );
 
         return bookingRepository.save(booking);
+    }
+
+    public List<Booking> searchBookings(BookingStatus status, LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be on or before endDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+        if (status != null) {
+            return bookingRepository.findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                    status, startDateTime, endDateTime
+            );
+        }
+        return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime);
     }
 
     @Transactional
