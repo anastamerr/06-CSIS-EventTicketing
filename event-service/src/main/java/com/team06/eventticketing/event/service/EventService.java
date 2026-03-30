@@ -1,11 +1,14 @@
 package com.team06.eventticketing.event.service;
 
+import com.team06.eventticketing.event.dto.EventRevenueDTO;
+import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,6 +69,28 @@ public class EventService {
         return eventRepository.save(event);
     }
 
+    @Transactional(readOnly = true)
+    public EventRevenueDTO getEventRevenueSummary(Long eventId, LocalDate startDate, LocalDate endDate) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
+        List<Object[]> results = eventRepository.findEventRevenueSummary(eventId, startDateTime, endDateTime);
+        if (results.isEmpty()) {
+            return new EventRevenueDTO(event.getId(), event.getName(), 0L, 0.0, 0.0);
+        }
+        Object[] result = results.get(0);
+
+        return new EventRevenueDTO(
+                ((Number) result[0]).longValue(),
+                (String) result[1],
+                ((Number) result[2]).longValue(),
+                result[3] == null ? 0.0 : ((Number) result[3]).doubleValue(),
+                result[4] == null ? 0.0 : ((Number) result[4]).doubleValue()
+        );
+    }
+
     public List<Event> findByDetailAttribute(String key, String value, EventStatus status) {
         if (status == null) {
             return eventRepository.findByDetailsAttribute(key, value);
@@ -76,6 +101,45 @@ public class EventService {
     public void deleteEvent(Long id) {
         getEventById(id);
         eventRepository.deleteById(id);
+    }
+
+    @Transactional
+    public void rateEvent(Long eventId, RateEventRequest request) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+
+        if (request == null || request.getBookingId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required");
+        }
+
+        List<Object[]> bookings = eventRepository.findBookingById(request.getBookingId());
+        if (bookings.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+        Object[] booking = bookings.get(0);
+
+        Long bookingEventId = booking[1] == null ? null : ((Number) booking[1]).longValue();
+        String bookingStatus = booking[2] == null ? null : booking[2].toString();
+
+        if (!eventId.equals(bookingEventId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking does not belong to the specified event");
+        }
+
+        if (!"COMPLETED".equals(bookingStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed");
+        }
+
+        if (request.getRating() < 1 || request.getRating() > 5) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
+        }
+
+        double oldRating = event.getRating() == null ? 0.0 : event.getRating();
+        int totalRatings = event.getTotalRatings() == null ? 0 : event.getTotalRatings();
+        double newRating = ((oldRating * totalRatings) + request.getRating()) / (totalRatings + 1);
+
+        event.setRating(newRating);
+        event.setTotalRatings(totalRatings + 1);
+        eventRepository.save(event);
     }
 
     @Transactional

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
+import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
@@ -329,6 +330,61 @@ class TicketSaleServiceTest {
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketSaleService.retryFailedSale(404L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void refundTicketSaleMarksSaleRefundedAndMergesTransactionDetails() {
+        TicketSale ticketSale = new TicketSale();
+        ticketSale.setId(30L);
+        ticketSale.setStatus(TicketSaleStatus.COMPLETED);
+        ticketSale.setTransactionDetails(new LinkedHashMap<>(Map.of(
+                "gatewayResponse", "approved",
+                "cardLastFour", "4242"
+        )));
+
+        RefundRequest request = new RefundRequest();
+        request.setReason("event cancelled");
+
+        when(ticketSaleRepository.findById(30L)).thenReturn(Optional.of(ticketSale));
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TicketSale refunded = ticketSaleService.refundTicketSale(30L, request);
+
+        assertEquals(TicketSaleStatus.REFUNDED, refunded.getStatus());
+        assertEquals("approved", refunded.getTransactionDetails().get("gatewayResponse"));
+        assertEquals("4242", refunded.getTransactionDetails().get("cardLastFour"));
+        assertEquals("event cancelled", refunded.getTransactionDetails().get("refundReason"));
+        verify(ticketSaleRepository).save(ticketSale);
+    }
+
+    @Test
+    void refundTicketSaleRejectsNonCompletedSale() {
+        TicketSale ticketSale = new TicketSale();
+        ticketSale.setId(31L);
+        ticketSale.setStatus(TicketSaleStatus.FAILED);
+
+        RefundRequest request = new RefundRequest();
+        request.setReason("event cancelled");
+
+        when(ticketSaleRepository.findById(31L)).thenReturn(Optional.of(ticketSale));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.refundTicketSale(31L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void refundTicketSaleThrowsNotFoundForUnknownSale() {
+        RefundRequest request = new RefundRequest();
+        request.setReason("event cancelled");
+
+        when(ticketSaleRepository.findById(404L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.refundTicketSale(404L, request));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
     }

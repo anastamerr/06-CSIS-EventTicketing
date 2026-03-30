@@ -1,6 +1,7 @@
 package com.team06.eventticketing.sales.service;
 
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
+import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
@@ -135,6 +136,22 @@ public class TicketSaleService {
         sale.setTransactionDetails(details);
         sale.setStatus(TicketSaleStatus.COMPLETED);
 
+        return ticketSaleRepository.save(sale);
+    }
+
+    @Transactional
+    public TicketSale refundTicketSale(Long id, RefundRequest request) {
+        TicketSale sale = findTicketSale(id);
+        if (sale.getStatus() != TicketSaleStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket sale must be completed before refund");
+        }
+
+        Map<String, Object> details = new LinkedHashMap<>(copyTransactionDetails(sale.getTransactionDetails()));
+        details.put("refundReason", request == null ? null : request.getReason());
+        details.put("refundedAt", LocalDateTime.now().toString());
+
+        sale.setTransactionDetails(details);
+        sale.setStatus(TicketSaleStatus.REFUNDED);
         return ticketSaleRepository.save(sale);
     }
 

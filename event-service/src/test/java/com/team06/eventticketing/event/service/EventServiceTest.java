@@ -7,12 +7,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.event.dto.EventRevenueDTO;
+import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +43,166 @@ class EventServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, eventSessionRepository);
+    }
+
+    @Test
+    void getEventRevenueSummaryReturnsAggregatedMetrics() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setName("Spring Concert");
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findEventRevenueSummary(
+                10L,
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        )).thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{10L, "Spring Concert", 5L, 3500.0, 700.0}));
+
+        EventRevenueDTO dto = eventService.getEventRevenueSummary(
+                10L,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31)
+        );
+
+        assertEquals(10L, dto.getEventId());
+        assertEquals("Spring Concert", dto.getName());
+        assertEquals(5L, dto.getTotalBookings());
+        assertEquals(3500.0, dto.getTotalRevenue());
+        assertEquals(700.0, dto.getAverageBookingAmount());
+    }
+
+    @Test
+    void getEventRevenueSummaryReturnsZeroesWhenNoBookingsExist() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setName("Spring Concert");
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findEventRevenueSummary(
+                10L,
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        )).thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{10L, "Spring Concert", 0L, 0.0, 0.0}));
+
+        EventRevenueDTO dto = eventService.getEventRevenueSummary(
+                10L,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31)
+        );
+
+        assertEquals(0L, dto.getTotalBookings());
+        assertEquals(0.0, dto.getTotalRevenue());
+        assertEquals(0.0, dto.getAverageBookingAmount());
+    }
+
+    @Test
+    void getEventRevenueSummaryRejectsUnknownEvent() {
+        when(eventRepository.findById(404L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.getEventRevenueSummary(404L, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31)));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void rateEventUpdatesRunningAverage() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setRating(5.0);
+        event.setTotalRatings(1);
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(3);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L))
+                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 10L, "COMPLETED"}));
+
+        eventService.rateEvent(10L, request);
+
+        assertEquals(4.0, event.getRating());
+        assertEquals(2, event.getTotalRatings());
+        verify(eventRepository).save(event);
+    }
+
+    @Test
+    void rateEventRejectsUnknownBooking() {
+        Event event = new Event();
+        event.setId(10L);
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(4);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L)).thenReturn(List.of());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void rateEventRejectsBookingForDifferentEvent() {
+        Event event = new Event();
+        event.setId(10L);
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(4);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L))
+                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 99L, "COMPLETED"}));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventRepository, never()).save(event);
+    }
+
+    @Test
+    void rateEventRejectsNonCompletedBooking() {
+        Event event = new Event();
+        event.setId(10L);
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(4);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L))
+                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 10L, "PENDING"}));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventRepository, never()).save(event);
+    }
+
+    @Test
+    void rateEventRejectsOutOfRangeRating() {
+        Event event = new Event();
+        event.setId(10L);
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(6);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L))
+                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 10L, "COMPLETED"}));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventRepository, never()).save(event);
     }
 
     @Test
