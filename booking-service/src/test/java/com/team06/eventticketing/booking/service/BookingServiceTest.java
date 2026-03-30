@@ -17,6 +17,8 @@ import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -179,6 +181,68 @@ class BookingServiceTest {
         bookingService.getAllBookings();
 
         verify(bookingRepository).findAllWithBookingItems();
+    }
+
+    @Test
+    void searchBookingsFiltersByStatusWithinDateRange() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        List<Booking> bookings = List.of(new Booking(), new Booking());
+
+        when(bookingRepository.findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                eq(BookingStatus.COMPLETED),
+                eq(startDate.atStartOfDay()),
+                eq(endDate.atTime(LocalTime.MAX))
+        )).thenReturn(bookings);
+
+        List<Booking> result = bookingService.searchBookings(BookingStatus.COMPLETED, startDate, endDate);
+
+        assertEquals(bookings, result);
+        verify(bookingRepository).findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                BookingStatus.COMPLETED,
+                startDate.atStartOfDay(),
+                endDate.atTime(LocalTime.MAX)
+        );
+    }
+
+    @Test
+    void searchBookingsWithoutStatusUsesDateRangeOnly() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        List<Booking> bookings = List.of(new Booking(), new Booking(), new Booking());
+
+        when(bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(
+                eq(startDate.atStartOfDay()),
+                eq(endDate.atTime(LocalTime.MAX))
+        )).thenReturn(bookings);
+
+        List<Booking> result = bookingService.searchBookings(null, startDate, endDate);
+
+        assertEquals(bookings, result);
+        verify(bookingRepository).findByBookingDateBetweenOrderByBookingDateDesc(
+                startDate.atStartOfDay(),
+                endDate.atTime(LocalTime.MAX)
+        );
+    }
+
+    @Test
+    void searchBookingsRejectsMissingDateRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchBookings(BookingStatus.COMPLETED, null, LocalDate.of(2026, 3, 31)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void searchBookingsRejectsInvalidDateRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchBookings(
+                        BookingStatus.COMPLETED,
+                        LocalDate.of(2026, 3, 31),
+                        LocalDate.of(2026, 3, 1)
+                ));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
     }
 
     private BookingItem bookingItem(int eventOrder, int quantity, double unitPrice, BookingItemStatus status) {

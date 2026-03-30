@@ -31,8 +31,6 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findAllWithBookingItems();
 
 
-    List<Booking> findAllByOrderByBookingDateDesc();
-    List<Booking> findByStatusOrderByBookingDateDesc(BookingStatus status);
     List<Booking> findByBookingDateBetweenOrderByBookingDateDesc(
             LocalDateTime startDate,
             LocalDateTime endDate
@@ -42,16 +40,4 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             LocalDateTime startDate,
             LocalDateTime endDate
     );
-    List<Booking> findByBookingDateGreaterThanEqualOrderByBookingDateDesc(LocalDateTime startDate);
-    List<Booking> findByBookingDateLessThanEqualOrderByBookingDateDesc(LocalDateTime endDate);
-    List<Booking> findByStatusAndBookingDateGreaterThanEqualOrderByBookingDateDesc(
-            BookingStatus status,
-            LocalDateTime startDate
-    );
-    List<Booking> findByStatusAndBookingDateLessThanEqualOrderByBookingDateDesc(
-            BookingStatus status,
-            LocalDateTime endDate
-    );
 }
-
-

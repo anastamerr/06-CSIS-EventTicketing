@@ -1,6 +1,7 @@
 package com.team06.eventticketing.booking.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -10,6 +11,7 @@ import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -116,6 +118,71 @@ class BookingControllerIntegrationTest {
         assertEquals(0L, saleCount);
     }
 
+    @Test
+    void searchBookingsReturnsStatusMatchesMostRecentFirst() throws Exception {
+        bookingRepository.saveAndFlush(bookingWithDate("march-older@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 3, 10, 10, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("march-latest@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 3, 20, 12, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("march-pending@example.com",
+                BookingStatus.PENDING,
+                LocalDateTime.of(2026, 3, 15, 9, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("feb-one@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 2, 20, 12, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("feb-two@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 2, 25, 12, 0)));
+
+        mockMvc.perform(get("/api/bookings/search")
+                        .param("status", "COMPLETED")
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].contactEmail").value("march-latest@example.com"))
+                .andExpect(jsonPath("$[1].contactEmail").value("march-older@example.com"));
+    }
+
+    @Test
+    void searchBookingsWithoutStatusReturnsAllMatchesInDateRange() throws Exception {
+        bookingRepository.saveAndFlush(bookingWithDate("march-older@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 3, 10, 10, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("march-latest@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 3, 20, 12, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("march-pending@example.com",
+                BookingStatus.PENDING,
+                LocalDateTime.of(2026, 3, 15, 9, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("feb-one@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 2, 20, 12, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate("feb-two@example.com",
+                BookingStatus.COMPLETED,
+                LocalDateTime.of(2026, 2, 25, 12, 0)));
+
+        mockMvc.perform(get("/api/bookings/search")
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].contactEmail").value("march-latest@example.com"))
+                .andExpect(jsonPath("$[1].contactEmail").value("march-pending@example.com"))
+                .andExpect(jsonPath("$[2].contactEmail").value("march-older@example.com"));
+    }
+
+    @Test
+    void searchBookingsRejectsInvalidDateRange() throws Exception {
+        mockMvc.perform(get("/api/bookings/search")
+                        .param("status", "COMPLETED")
+                        .param("startDate", "2026-03-31")
+                        .param("endDate", "2026-03-01"))
+                .andExpect(status().isBadRequest());
+    }
+
     private Booking checkedInBooking() {
         Booking booking = new Booking();
         booking.setUserId(44L);
@@ -136,6 +203,16 @@ class BookingControllerIntegrationTest {
         booking.setContactEmail("buyer@example.com");
         booking.setStatus(BookingStatus.PENDING);
         booking.addBookingItem(bookingItem(1, 1, 100.0, BookingItemStatus.RESERVED));
+        return booking;
+    }
+
+    private Booking bookingWithDate(String email, BookingStatus status, LocalDateTime bookingDate) {
+        Booking booking = new Booking();
+        booking.setUserId(60L);
+        booking.setEventId(77L);
+        booking.setContactEmail(email);
+        booking.setStatus(status);
+        booking.setBookingDate(bookingDate);
         return booking;
     }
 
