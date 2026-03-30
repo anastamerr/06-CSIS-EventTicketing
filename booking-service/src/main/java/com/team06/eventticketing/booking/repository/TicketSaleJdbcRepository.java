@@ -27,6 +27,14 @@ public class TicketSaleJdbcRepository {
         return Boolean.TRUE.equals(exists);
     }
 
+    public Double getAverageSessionCapacity(Long eventId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT AVG(capacity) FROM event_sessions WHERE event_id = ?",
+                Double.class,
+                eventId
+        );
+    }
+
     public void createPendingSale(
             Long bookingId,
             Long userId,

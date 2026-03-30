@@ -1,5 +1,7 @@
 package com.team06.eventticketing.booking.service;
 
+import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
@@ -33,6 +35,33 @@ public class BookingService {
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAllWithBookingItems();
+    }
+
+    public BookingCostEstimateDTO estimateBookingCost(BookingEstimateRequest request) {
+        Double avgCapacity = ticketSaleJdbcRepository.getAverageSessionCapacity(request.eventId());
+        if (avgCapacity == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event sessions not found for event ID: " + request.eventId());
+        }
+
+        double basePrice = avgCapacity / 10.0;
+        double tierMultiplier = "VIP".equalsIgnoreCase(request.ticketTier()) ? 2.5 : 1.0;
+        double ticketCost = basePrice * tierMultiplier * request.ticketCount();
+
+        double serviceFee = ticketCost * 0.15;
+
+        long activeBookingsCount = bookingRepository.countActiveBookingsByEventId(request.eventId());
+        double demandMultiplier;
+        if (activeBookingsCount <= 50) {
+            demandMultiplier = 1.0;
+        } else if (activeBookingsCount <= 200) {
+            demandMultiplier = 1.25;
+        } else {
+            demandMultiplier = 1.5;
+        }
+
+        double estimatedTotal = (ticketCost + serviceFee) * demandMultiplier;
+
+        return new BookingCostEstimateDTO(ticketCost, serviceFee, estimatedTotal, demandMultiplier);
     }
 
     public Booking getBookingById(Long id) {

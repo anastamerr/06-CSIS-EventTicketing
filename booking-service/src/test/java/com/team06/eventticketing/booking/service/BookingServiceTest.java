@@ -10,6 +10,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
@@ -48,6 +50,51 @@ class BookingServiceTest {
     @BeforeEach
     void setUp() {
         bookingService = new BookingService(bookingRepository, ticketSaleJdbcRepository);
+    }
+
+    @Test
+    void estimateBookingCostCalculatesCorrectlyForStandardTier() {
+        Long eventId = 1L;
+        BookingEstimateRequest request = new BookingEstimateRequest(eventId, 2, "standard");
+
+        when(ticketSaleJdbcRepository.getAverageSessionCapacity(eventId)).thenReturn(500.0);
+        when(bookingRepository.countActiveBookingsByEventId(eventId)).thenReturn(10L);
+
+        BookingCostEstimateDTO result = bookingService.estimateBookingCost(request);
+
+        assertEquals(100.0, result.ticketCost());
+        assertEquals(15.0, result.serviceFee());
+        assertEquals(1.0, result.demandMultiplier());
+        assertEquals(115.0, result.estimatedTotal());
+    }
+
+    @Test
+    void estimateBookingCostCalculatesCorrectlyForVIPTierWithHighDemand() {
+        Long eventId = 2L;
+        BookingEstimateRequest request = new BookingEstimateRequest(eventId, 3, "VIP");
+
+        when(ticketSaleJdbcRepository.getAverageSessionCapacity(eventId)).thenReturn(1000.0);
+        when(bookingRepository.countActiveBookingsByEventId(eventId)).thenReturn(250L);
+
+        BookingCostEstimateDTO result = bookingService.estimateBookingCost(request);
+
+        assertEquals(750.0, result.ticketCost());
+        assertEquals(112.5, result.serviceFee());
+        assertEquals(1.5, result.demandMultiplier());
+        assertEquals(1293.75, result.estimatedTotal());
+    }
+
+    @Test
+    void estimateBookingCostThrowsNotFoundWhenNoSessions() {
+        Long eventId = 3L;
+        BookingEstimateRequest request = new BookingEstimateRequest(eventId, 1, "standard");
+
+        when(ticketSaleJdbcRepository.getAverageSessionCapacity(eventId)).thenReturn(null);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.estimateBookingCost(request));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
     }
 
     @Test
