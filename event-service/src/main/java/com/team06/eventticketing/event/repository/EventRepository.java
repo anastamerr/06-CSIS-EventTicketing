@@ -58,4 +58,15 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     @Query(value = "SELECT id, event_id, status FROM bookings WHERE id = :bookingId", nativeQuery = true)
     List<Object[]> findBookingById(@Param("bookingId") Long bookingId);
+
+    @Query(value = """
+        SELECT EXISTS (
+            SELECT 1
+            FROM bookings
+            WHERE event_id = :eventId
+              AND status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+        )
+        """, nativeQuery = true)
+    boolean existsActiveBookingsForEvent(@Param("eventId") Long eventId);
+
 }
