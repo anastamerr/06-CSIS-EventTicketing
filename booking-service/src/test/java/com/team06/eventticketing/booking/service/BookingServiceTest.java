@@ -16,6 +16,7 @@ import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
+import com.team06.eventticketing.booking.repository.TicketJdbcRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +41,9 @@ class BookingServiceTest {
     @Mock
     private TicketSaleJdbcRepository ticketSaleJdbcRepository;
 
+    @Mock
+    private TicketJdbcRepository ticketJdbcRepository;
+
     @Captor
     private ArgumentCaptor<Map<String, Object>> transactionDetailsCaptor;
 
@@ -47,7 +51,7 @@ class BookingServiceTest {
 
     @BeforeEach
     void setUp() {
-        bookingService = new BookingService(bookingRepository, ticketSaleJdbcRepository);
+        bookingService = new BookingService(bookingRepository, ticketJdbcRepository, ticketSaleJdbcRepository);
     }
 
     @Test
@@ -179,6 +183,66 @@ class BookingServiceTest {
         bookingService.getAllBookings();
 
         verify(bookingRepository).findAllWithBookingItems();
+    }
+
+    @Test
+    void cancelBookingCancelsConfirmedBookingAndValidTickets() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.CONFIRMED);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.cancelBooking(9L);
+
+        assertEquals(BookingStatus.CANCELLED, result.getStatus());
+        verify(ticketJdbcRepository).cancelValidTicketsForBooking(9L);
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    void cancelBookingRejectsCompletedBooking() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.COMPLETED);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.cancelBooking(9L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketJdbcRepository, never()).cancelValidTicketsForBooking(any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelBookingRejectsCheckedInBooking() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.CHECKED_IN);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.cancelBooking(9L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketJdbcRepository, never()).cancelValidTicketsForBooking(any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelBookingRejectsMissingBooking() {
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.cancelBooking(9L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(ticketJdbcRepository, never()).cancelValidTicketsForBooking(any());
+        verify(bookingRepository, never()).save(any());
     }
 
     private BookingItem bookingItem(int eventOrder, int quantity, double unitPrice, BookingItemStatus status) {
