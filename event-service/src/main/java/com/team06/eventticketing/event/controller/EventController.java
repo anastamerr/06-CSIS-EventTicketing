@@ -4,6 +4,7 @@ import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.service.EventService;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,8 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/events")
@@ -44,6 +45,11 @@ public class EventController {
     @PutMapping("/{id}")
     public Event updateEvent(@PathVariable Long id, @RequestBody Event event) {
         return eventService.updateEvent(id, event);
+    }
+
+    @PutMapping("/{id}/details")
+    public Event updateEventDetails(@PathVariable Long id, @RequestBody Map<String, Object> updates) {
+        return eventService.updateEventDetails(id, updates);
     }
 
     @DeleteMapping("/{id}")
