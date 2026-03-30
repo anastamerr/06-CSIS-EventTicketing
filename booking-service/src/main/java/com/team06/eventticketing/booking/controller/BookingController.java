@@ -1,8 +1,11 @@
 package com.team06.eventticketing.booking.controller;
 
+import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.service.BookingService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,6 +36,11 @@ public class BookingController {
     @GetMapping("/{id}")
     public Booking getBookingById(@PathVariable Long id) {
         return bookingService.getBookingById(id);
+    }
+
+    @PostMapping("/estimate")
+    public BookingCostEstimateDTO estimateBookingCost(@RequestBody @Valid BookingEstimateRequest request) {
+        return bookingService.estimateBookingCost(request);
     }
 
     @PostMapping

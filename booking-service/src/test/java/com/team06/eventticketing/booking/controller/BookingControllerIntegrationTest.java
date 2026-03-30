@@ -1,6 +1,7 @@
 package com.team06.eventticketing.booking.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -58,6 +59,20 @@ class BookingControllerIntegrationTest {
     @BeforeEach
     void setUpSchema() {
         jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS event_sessions (
+                    id BIGSERIAL PRIMARY KEY,
+                    event_id BIGINT NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    speaker VARCHAR(255),
+                    start_time TIMESTAMP NOT NULL,
+                    end_time TIMESTAMP NOT NULL,
+                    capacity INTEGER NOT NULL,
+                    verified BOOLEAN NOT NULL DEFAULT FALSE,
+                    metadata JSONB,
+                    created_at TIMESTAMP NOT NULL
+                )
+                """);
+        jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS ticket_sales (
                     id BIGSERIAL PRIMARY KEY,
                     booking_id BIGINT NOT NULL,
@@ -69,7 +84,32 @@ class BookingControllerIntegrationTest {
                     created_at TIMESTAMP NOT NULL
                 )
                 """);
-        jdbcTemplate.execute("TRUNCATE TABLE ticket_sales, booking_items, bookings RESTART IDENTITY CASCADE");
+        jdbcTemplate.execute("TRUNCATE TABLE event_sessions, ticket_sales, booking_items, bookings RESTART IDENTITY CASCADE");
+    }
+
+    @Test
+    void estimateBookingCostReturnsCorrectCalculation() throws Exception {
+        Long eventId = 123L;
+        jdbcTemplate.update("INSERT INTO event_sessions (event_id, title, start_time, end_time, capacity, created_at) VALUES (?, ?, NOW(), NOW(), ?, NOW())", eventId, "Session 1", 400);
+        jdbcTemplate.update("INSERT INTO event_sessions (event_id, title, start_time, end_time, capacity, created_at) VALUES (?, ?, NOW(), NOW(), ?, NOW())", eventId, "Session 2", 600);
+        // Avg capacity = 500
+
+        String requestBody = """
+                {
+                    "eventId": 123,
+                    "ticketCount": 2,
+                    "ticketTier": "VIP"
+                }
+                """;
+
+        mockMvc.perform(post("/api/bookings/estimate")
+                        .contentType("application/json")
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticketCost").value(250.0)) // (500/10) * 2.5 * 2 = 250
+                .andExpect(jsonPath("$.serviceFee").value(37.5)) // 250 * 0.15 = 37.5
+                .andExpect(jsonPath("$.demandMultiplier").value(1.0)) // 0 active bookings
+                .andExpect(jsonPath("$.estimatedTotal").value(287.5)); // (250 + 37.5) * 1.0 = 287.5
     }
 
     @Test
