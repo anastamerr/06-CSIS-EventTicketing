@@ -1,5 +1,6 @@
 package com.team06.eventticketing.event.service;
 
+import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
@@ -76,6 +77,44 @@ public class EventService {
     public void deleteEvent(Long id) {
         getEventById(id);
         eventRepository.deleteById(id);
+    }
+
+    @Transactional
+    public void rateEvent(Long eventId, RateEventRequest request) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+
+        if (request == null || request.getBookingId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required");
+        }
+
+        Object[] booking = eventRepository.findBookingById(request.getBookingId());
+        if (booking == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+
+        Long bookingEventId = booking[1] == null ? null : ((Number) booking[1]).longValue();
+        String bookingStatus = booking[2] == null ? null : booking[2].toString();
+
+        if (!eventId.equals(bookingEventId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking does not belong to the specified event");
+        }
+
+        if (!"COMPLETED".equals(bookingStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed");
+        }
+
+        if (request.getRating() < 1 || request.getRating() > 5) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
+        }
+
+        double oldRating = event.getRating() == null ? 0.0 : event.getRating();
+        int totalRatings = event.getTotalRatings() == null ? 0 : event.getTotalRatings();
+        double newRating = ((oldRating * totalRatings) + request.getRating()) / (totalRatings + 1);
+
+        event.setRating(newRating);
+        event.setTotalRatings(totalRatings + 1);
+        eventRepository.save(event);
     }
 
     @Transactional
