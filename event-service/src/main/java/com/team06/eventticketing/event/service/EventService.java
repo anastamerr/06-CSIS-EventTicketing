@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 
 @Service
 public class EventService {
@@ -176,4 +177,25 @@ public class EventService {
         return eventRepository.findByIdWithEventSessions(eventId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
     }
+    @Transactional
+    public void updateEventStatus(Long eventId, UpdateEventStatusRequest request) {
+        if (request == null || request.getStatus() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status is required");
+        }
+
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+
+        if (request.getStatus() == EventStatus.CANCELLED
+                && eventRepository.existsActiveBookingsForEvent(eventId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot cancel event with active bookings"
+            );
+        }
+        event.setStatus(request.getStatus());
+        eventRepository.save(event);
+    }
+
+
 }

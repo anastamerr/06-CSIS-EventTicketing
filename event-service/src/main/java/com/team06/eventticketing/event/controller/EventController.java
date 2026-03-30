@@ -6,6 +6,7 @@ import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.service.EventService;
+import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -96,4 +97,11 @@ public class EventController {
     ) {
         return eventService.verifyEventSession(eventId, sessionId, request);
     }
+
+    @PutMapping("/{id}/status")
+    @ResponseStatus(HttpStatus.OK)
+    public void updateEventStatus(@PathVariable Long id, @RequestBody UpdateEventStatusRequest request) {
+        eventService.updateEventStatus(id, request);
+    }
+
 }
