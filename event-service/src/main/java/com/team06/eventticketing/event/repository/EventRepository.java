@@ -3,6 +3,7 @@ package com.team06.eventticketing.event.repository;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventStatus;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -32,4 +33,26 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     @Query(value = "SELECT EXISTS (SELECT 1 FROM users WHERE id = :userId AND role = 'ADMIN')", nativeQuery = true)
     boolean existsAdminUserById(@Param("userId") Long userId);
+
+    @Query(value = """
+            SELECT
+                e.id,
+                e.name,
+                COUNT(b.id),
+                COALESCE(SUM(b.total_amount), 0),
+                COALESCE(AVG(b.total_amount), 0)
+            FROM events e
+            LEFT JOIN bookings b
+                ON b.event_id = e.id
+               AND b.status = 'COMPLETED'
+               AND b.booking_date >= :startDateTime
+               AND b.booking_date < :endDateTime
+            WHERE e.id = :eventId
+            GROUP BY e.id, e.name
+            """, nativeQuery = true)
+    Object[] findEventRevenueSummary(
+            @Param("eventId") Long eventId,
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime
+    );
 }

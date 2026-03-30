@@ -1,11 +1,13 @@
 package com.team06.eventticketing.event.service;
 
+import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,6 +66,29 @@ public class EventService {
         event.setDetails(details);
 
         return eventRepository.save(event);
+    }
+
+    @Transactional(readOnly = true)
+    public EventRevenueDTO getEventRevenueSummary(Long eventId, LocalDate startDate, LocalDate endDate) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
+
+        Object[] result = eventRepository.findEventRevenueSummary(eventId, startDateTime, endDateTime);
+
+        if (result == null) {
+            return new EventRevenueDTO(event.getId(), event.getName(), 0L, 0.0, 0.0);
+        }
+
+        return new EventRevenueDTO(
+                ((Number) result[0]).longValue(),
+                (String) result[1],
+                ((Number) result[2]).longValue(),
+                result[3] == null ? 0.0 : ((Number) result[3]).doubleValue(),
+                result[4] == null ? 0.0 : ((Number) result[4]).doubleValue()
+        );
     }
 
     public List<Event> findByDetailAttribute(String key, String value, EventStatus status) {
