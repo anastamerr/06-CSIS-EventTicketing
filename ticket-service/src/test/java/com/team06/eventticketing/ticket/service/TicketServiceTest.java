@@ -3,13 +3,18 @@ package com.team06.eventticketing.ticket.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
 @ExtendWith(MockitoExtension.class)
 class TicketServiceTest {
 
+    private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-03-29T12:00:00Z"), ZoneOffset.UTC);
+
     @Mock
     private TicketRepository ticketRepository;
 
@@ -36,7 +43,7 @@ class TicketServiceTest {
 
     @BeforeEach
     void setUp() {
-        ticketService = new TicketService(ticketRepository);
+        ticketService = new TicketService(ticketRepository, FIXED_CLOCK);
     }
 
     @Test
@@ -82,6 +89,72 @@ class TicketServiceTest {
         assertEquals(55L, secondTicket.getBookingId());
         assertEquals(TicketStatus.VALID, secondTicket.getStatus());
         assertEquals(2, response.get("count"));
+    }
+
+    @Test
+    void purgeTicketsRejectsNegativeOlderThanDays() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.purgeTickets(-1));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).countPurgeableTickets(any());
+        verify(ticketRepository, never()).deletePurgeableTickets(any());
+    }
+
+    @Test
+    void purgeTicketsReturnsZeroWhenNoTicketsMatch() {
+        when(ticketRepository.countPurgeableTickets(any())).thenReturn(0L);
+
+        PurgeTicketsResponseDTO response = ticketService.purgeTickets(30);
+
+        assertEquals(0L, response.deletedCount());
+        verify(ticketRepository).countPurgeableTickets(any());
+        verify(ticketRepository, never()).deletePurgeableTickets(any());
+    }
+
+    @Test
+    void purgeTicketsDeletesEligibleTicketsAndReturnsDeletedCount() {
+        when(ticketRepository.countPurgeableTickets(any())).thenReturn(4L);
+        when(ticketRepository.deletePurgeableTickets(any())).thenReturn(4);
+
+        PurgeTicketsResponseDTO response = ticketService.purgeTickets(30);
+
+        assertEquals(4L, response.deletedCount());
+        verify(ticketRepository).countPurgeableTickets(any());
+        verify(ticketRepository).deletePurgeableTickets(any());
+    }
+
+    @Test
+    void getLatestTicketThrowsNotFoundForNonexistentBooking() {
+        when(ticketRepository.existsBookingById(99L)).thenReturn(false);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.getLatestTicketForBooking(99L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getLatestTicketThrowsNotFoundWhenNoTicketsExist() {
+        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.getLatestTicketForBooking(55L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getLatestTicketReturnsLatestByIssuedAt() {
+        Ticket latest = ticket("Ahmed", "TIX-3");
+
+        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.of(latest));
+
+        Ticket result = ticketService.getLatestTicketForBooking(55L);
+
+        assertEquals(latest, result);
     }
 
     private Ticket ticket(String attendeeName, String ticketCode) {

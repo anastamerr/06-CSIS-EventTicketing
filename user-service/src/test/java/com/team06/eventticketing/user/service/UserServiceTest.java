@@ -14,10 +14,12 @@ import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
-import java.util.ArrayList;
+import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
+import com.team06.eventticketing.user.repository.UserRepository;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,8 +32,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
-import com.team06.eventticketing.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
