@@ -5,7 +5,9 @@ import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
 import com.team06.eventticketing.sales.model.SalePromotion;
 import com.team06.eventticketing.sales.model.TicketSale;
+import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -80,6 +82,28 @@ public class TicketSaleService {
         ticketSaleRepository.delete(findTicketSale(id));
     }
 
+    @Transactional
+    public TicketSale retryFailedSale(Long id) {
+        TicketSale sale = findTicketSale(id);
+        if (sale.getStatus() != TicketSaleStatus.FAILED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket sale is not in FAILED status");
+        }
+
+        Map<String, Object> details = new LinkedHashMap<>(copyTransactionDetails(sale.getTransactionDetails()));
+        int retryAttempt = 0;
+        Object rawRetry = details.get("retryAttempt");
+        if (rawRetry instanceof Number) {
+            retryAttempt = ((Number) rawRetry).intValue();
+        }
+
+        details.put("retryAttempt", retryAttempt + 1);
+        details.put("gatewayResponse", "approved");
+        sale.setTransactionDetails(details);
+        sale.setStatus(TicketSaleStatus.COMPLETED);
+
+        return ticketSaleRepository.save(sale);
+    }
+
     private TicketSale findTicketSale(Long id) {
         return ticketSaleRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
@@ -117,6 +141,6 @@ public class TicketSaleService {
     }
 
     private Map<String, Object> copyTransactionDetails(Map<String, Object> transactionDetails) {
-        return transactionDetails == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(transactionDetails);
+        return transactionDetails == null ? new LinkedHashMap<>() : new LinkedHashMap<>(transactionDetails);
     }
 }

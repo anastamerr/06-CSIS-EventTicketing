@@ -1,9 +1,11 @@
 package com.team06.eventticketing.sales.controller;
 
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
+import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.service.TicketSaleService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,5 +22,10 @@ public class TicketSaleFeatureController {
     @GetMapping("/{saleId}/details")
     public SaleDetailsDTO getTicketSaleDetails(@PathVariable Long saleId) {
         return ticketSaleService.getTicketSaleDetails(saleId);
+    }
+
+    @PutMapping("/{id}/retry")
+    public TicketSale retrySale(@PathVariable Long id) {
+        return ticketSaleService.retryFailedSale(id);
     }
 }

@@ -180,4 +180,57 @@ class TicketSaleServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
     }
+
+    @Test
+    void retryFailedSaleMarksCompletedAndUpdatesJsonb() {
+        TicketSale sale = new TicketSale();
+        sale.setId(9L);
+        sale.setBookingId(19L);
+        sale.setUserId(29L);
+        sale.setAmount(250.0);
+        sale.setMethod(TicketSaleMethod.CREDIT_CARD);
+        sale.setStatus(TicketSaleStatus.FAILED);
+        sale.setTransactionDetails(new LinkedHashMap<>(Map.of(
+                "gatewayResponse", "declined",
+                "cardLastFour", "4242",
+                "retryAttempt", 0,
+                "failureReason", "card expired"
+        )));
+
+        when(ticketSaleRepository.findById(9L)).thenReturn(Optional.of(sale));
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TicketSale updated = ticketSaleService.retryFailedSale(9L);
+
+        assertEquals(TicketSaleStatus.COMPLETED, updated.getStatus());
+        assertEquals(1, updated.getTransactionDetails().get("retryAttempt"));
+        assertEquals("approved", updated.getTransactionDetails().get("gatewayResponse"));
+        assertEquals("4242", updated.getTransactionDetails().get("cardLastFour"));
+        assertEquals("card expired", updated.getTransactionDetails().get("failureReason"));
+        verify(ticketSaleRepository).save(sale);
+    }
+
+    @Test
+    void retryFailedSaleRejectsNonFailedStatus() {
+        TicketSale sale = new TicketSale();
+        sale.setId(10L);
+        sale.setStatus(TicketSaleStatus.COMPLETED);
+
+        when(ticketSaleRepository.findById(10L)).thenReturn(Optional.of(sale));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.retryFailedSale(10L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void retryFailedSaleThrowsNotFoundForUnknownSale() {
+        when(ticketSaleRepository.findById(404L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.retryFailedSale(404L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
 }

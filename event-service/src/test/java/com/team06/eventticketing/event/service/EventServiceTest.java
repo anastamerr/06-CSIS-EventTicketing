@@ -10,11 +10,13 @@ import static org.mockito.Mockito.when;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
+import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -125,6 +127,64 @@ class EventServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
         verify(eventRepository, never()).existsAdminUserById(3L);
+    }
+
+    @Test
+    void updateEventDetailsMergesIncomingJsonbFields() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setDetails(new LinkedHashMap<>(Map.of(
+                "organizer", "LiveNation",
+                "venueCapacity", 5000,
+                "ageRestriction", 18
+        )));
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.save(event)).thenReturn(event);
+
+        Event updated = eventService.updateEventDetails(10L, new LinkedHashMap<>(Map.of(
+                "venueCapacity", 8000,
+                "sponsors", List.of("Pepsi", "Samsung")
+        )));
+
+        assertEquals("LiveNation", updated.getDetails().get("organizer"));
+        assertEquals(8000, updated.getDetails().get("venueCapacity"));
+        assertEquals(18, updated.getDetails().get("ageRestriction"));
+        assertEquals(List.of("Pepsi", "Samsung"), updated.getDetails().get("sponsors"));
+        verify(eventRepository).save(event);
+    }
+
+    @Test
+    void updateEventDetailsThrowsNotFoundForUnknownEvent() {
+        when(eventRepository.findById(404L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.updateEventDetails(404L, Map.of("organizer", "AEG")));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void findByDetailAttributeUsesOptionalStatusFilter() {
+        Event upcoming = new Event();
+        upcoming.setId(1L);
+        upcoming.setStatus(EventStatus.UPCOMING);
+
+        Event cancelled = new Event();
+        cancelled.setId(2L);
+        cancelled.setStatus(EventStatus.CANCELLED);
+
+        when(eventRepository.findByDetailsAttribute("organizer", "LiveNation"))
+                .thenReturn(List.of(upcoming, cancelled));
+        when(eventRepository.findByDetailsAttributeAndStatus("organizer", "LiveNation", "UPCOMING"))
+                .thenReturn(List.of(upcoming));
+
+        List<Event> allStatuses = eventService.findByDetailAttribute("organizer", "LiveNation", null);
+        List<Event> onlyUpcoming = eventService.findByDetailAttribute("organizer", "LiveNation", EventStatus.UPCOMING);
+
+        assertEquals(2, allStatuses.size());
+        assertEquals(1, onlyUpcoming.size());
+        assertEquals(1L, onlyUpcoming.get(0).getId());
     }
 
     private EventSession session(Long id, Event event, LocalDateTime startTime) {
