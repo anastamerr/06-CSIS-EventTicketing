@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.sales.dto.PromotionUsageDTO;
 import com.team06.eventticketing.sales.dto.PromotionRequest;
 import com.team06.eventticketing.sales.dto.PromotionResponse;
 import com.team06.eventticketing.sales.model.Promotion;
@@ -22,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -102,5 +104,38 @@ class PromotionServiceTest {
                 () -> promotionService.getPromotionById(99L));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getTopUsedPromotionsMapsAggregationAndComputesExpired() {
+        LocalDateTime expiredDate = LocalDateTime.now().minusDays(1);
+        when(promotionRepository.findTopUsedPromotions(org.mockito.ArgumentMatchers.any(Pageable.class)))
+                .thenReturn(List.<Object[]>of(new Object[]{
+                        1L,
+                        "SHOW25",
+                        PromotionDiscountType.FIXED,
+                        25.0,
+                        3,
+                        550.0,
+                        Boolean.TRUE,
+                        expiredDate
+                }));
+
+        List<PromotionUsageDTO> result = promotionService.getTopUsedPromotions(2);
+
+        assertEquals(1, result.size());
+        assertEquals(1L, result.getFirst().promotionId());
+        assertEquals("SHOW25", result.getFirst().code());
+        assertEquals(3, result.getFirst().timesUsed());
+        assertEquals(550.0, result.getFirst().totalDiscountGiven());
+        assertEquals(Boolean.TRUE, result.getFirst().expired());
+    }
+
+    @Test
+    void getTopUsedPromotionsRejectsNonPositiveLimit() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> promotionService.getTopUsedPromotions(0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
     }
 }
