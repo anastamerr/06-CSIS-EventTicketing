@@ -2,18 +2,15 @@ package com.team06.eventticketing.booking.controller;
 
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
+import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.service.BookingService;
+
+import java.time.LocalDate;
 import java.util.List;
+
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -55,5 +52,13 @@ public class BookingController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteBooking(@PathVariable Long id) {
         bookingService.deleteBooking(id);
+    }
+    @GetMapping("/search")
+    public List<Booking> searchBookings(
+            @RequestParam(required = false) BookingStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return bookingService.searchBookings(status, startDate, endDate);
     }
 }
