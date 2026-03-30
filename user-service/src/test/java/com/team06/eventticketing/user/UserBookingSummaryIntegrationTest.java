@@ -28,16 +28,19 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class UserBookingSummaryIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:17-alpine");
+    @SuppressWarnings("resource")
+    static final PostgreSQLContainer<?> POSTGRESQL = new PostgreSQLContainer<>("postgres:17-alpine")
+            .withDatabaseName("eventticketing")
+            .withUsername("postgres")
+            .withPassword("postgres");
 
     @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "update");
+    static void configureDataSource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRESQL::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRESQL::getUsername);
+        registry.add("spring.datasource.password", POSTGRESQL::getPassword);
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
         registry.add("spring.jpa.show-sql", () -> "false");
-        registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
     }
 
     @Autowired
@@ -50,7 +53,7 @@ class UserBookingSummaryIntegrationTest {
     private UserRepository userRepository;
 
     @BeforeEach
-    void setUp() {
+    void setUpSchema() {
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS bookings (
                     id BIGSERIAL PRIMARY KEY,
@@ -59,14 +62,12 @@ class UserBookingSummaryIntegrationTest {
                     total_amount NUMERIC(19, 4)
                 )
                 """);
-        jdbcTemplate.execute("DELETE FROM bookings");
-        jdbcTemplate.execute("DELETE FROM favorite_venues");
-        userRepository.deleteAll();
+        jdbcTemplate.execute("TRUNCATE TABLE bookings, favorite_venues, users RESTART IDENTITY CASCADE");
     }
 
     @Test
     void getBookingSummaryReturnsAggregatesForMixedStatuses() throws Exception {
-        User user = createUser("Mariam", "mariam@example.com", "01000000001");
+        User user = saveUser("Mariam", "mariam@example.com", "01000000001");
         insertBooking(user.getId(), "COMPLETED", "300.00");
         insertBooking(user.getId(), "COMPLETED", "500.00");
         insertBooking(user.getId(), "COMPLETED", "700.00");
@@ -86,7 +87,7 @@ class UserBookingSummaryIntegrationTest {
 
     @Test
     void getBookingSummaryReturnsZerosForUserWithoutBookings() throws Exception {
-        User user = createUser("Layla", "layla@example.com", "01000000002");
+        User user = saveUser("Layla", "layla@example.com", "01000000002");
 
         mockMvc.perform(get("/api/users/{id}/booking-summary", user.getId()))
                 .andExpect(status().isOk())
@@ -107,7 +108,7 @@ class UserBookingSummaryIntegrationTest {
 
     @Test
     void getBookingSummaryHandlesDecimalAmounts() throws Exception {
-        User user = createUser("Youssef", "youssef@example.com", "01000000003");
+        User user = saveUser("Youssef", "youssef@example.com", "01000000003");
         insertBooking(user.getId(), "COMPLETED", "100.10");
         insertBooking(user.getId(), "COMPLETED", "200.20");
 
@@ -122,7 +123,7 @@ class UserBookingSummaryIntegrationTest {
 
     @Test
     void getBookingSummaryTreatsNullCompletedAmountsAsZero() throws Exception {
-        User user = createUser("Omar", "omar@example.com", "01000000004");
+        User user = saveUser("Omar", "omar@example.com", "01000000004");
         insertBooking(user.getId(), "COMPLETED", null);
         insertBooking(user.getId(), "COMPLETED", "250.00");
         insertBooking(user.getId(), "CANCELLED", "999.00");
@@ -136,23 +137,21 @@ class UserBookingSummaryIntegrationTest {
                 .andExpect(jsonPath("$.averageBookingAmount").value(new BigDecimal("125.0000000000000000")));
     }
 
-    private User createUser(String name, String email, String phone) {
+    private User saveUser(String name, String email, String phone) {
         User user = new User();
         user.setName(name);
         user.setEmail(email);
-        user.setPassword("secret");
+        user.setPassword("password");
         user.setPhone(phone);
         user.setRole(UserRole.ATTENDEE);
         user.setPreferences(Map.of());
-        return userRepository.saveAndFlush(user);
+        return userRepository.save(user);
     }
 
     private void insertBooking(Long userId, String status, String totalAmount) {
         BigDecimal amount = totalAmount == null ? null : new BigDecimal(totalAmount);
         jdbcTemplate.update(
                 "INSERT INTO bookings (user_id, status, total_amount) VALUES (?, ?, ?)",
-                userId,
-                status,
-                amount);
+                userId, status, amount);
     }
 }

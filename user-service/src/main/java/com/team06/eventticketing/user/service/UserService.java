@@ -11,10 +11,10 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import org.springframework.data.domain.PageRequest;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,14 +31,18 @@ public class UserService {
         this.favoriteVenueRepository = favoriteVenueRepository;
     }
 
-    public List<User> getAllUsers() { return userRepository.findAll(); }
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
 
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
-    public User createUser(User user) { return userRepository.save(user); }
+    public User createUser(User user) {
+        return userRepository.save(user);
+    }
 
     public User updateUser(Long id, User user) {
         User existing = getUserById(id);
@@ -217,7 +221,7 @@ public class UserService {
             return new BigDecimal(bigInteger);
         }
         if (value instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue());
+            return new BigDecimal(number.toString());
         }
         return new BigDecimal(value.toString());
     }

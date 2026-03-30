@@ -32,12 +32,28 @@ public class FavoriteVenueService {
         return favoriteVenueRepository.findByUserId(userId);
     }
 
-    public void deleteVenue(Long userId, Long venueId) {
+    public FavoriteVenue getVenue(Long userId, Long venueId) {
         FavoriteVenue venue = favoriteVenueRepository.findById(venueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Venue not found"));
         if (!venue.getUser().getId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Venue does not belong to this user");
         }
+        return venue;
+    }
+
+    public FavoriteVenue updateVenue(Long userId, Long venueId, FavoriteVenue updatedVenue) {
+        FavoriteVenue existingVenue = getVenue(userId, venueId);
+        existingVenue.setLabel(updatedVenue.getLabel());
+        existingVenue.setVenueName(updatedVenue.getVenueName());
+        existingVenue.setLocation(updatedVenue.getLocation());
+        existingVenue.setCapacity(updatedVenue.getCapacity());
+        existingVenue.setIsDefault(updatedVenue.getIsDefault());
+        existingVenue.setMetadata(updatedVenue.getMetadata());
+        return favoriteVenueRepository.save(existingVenue);
+    }
+
+    public void deleteVenue(Long userId, Long venueId) {
+        FavoriteVenue venue = getVenue(userId, venueId);
         favoriteVenueRepository.delete(venue);
     }
 }

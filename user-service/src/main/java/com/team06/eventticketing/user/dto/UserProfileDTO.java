@@ -16,12 +16,8 @@ public class UserProfileDTO {
     public UserProfileDTO() {
     }
 
-    public UserProfileDTO(Long userId,
-                          String name,
-                          String email,
-                          String phone,
-                          Map<String, Object> preferences,
-                          List<VenueDTO> favoriteVenues) {
+    public UserProfileDTO(Long userId, String name, String email, String phone,
+                          Map<String, Object> preferences, List<VenueDTO> favoriteVenues) {
         this.userId = userId;
         this.name = name;
         this.email = email;
@@ -89,7 +85,6 @@ public class UserProfileDTO {
     }
 
     public static class VenueDTO {
-
         private String label;
         private String venueName;
         private String location;
@@ -100,12 +95,8 @@ public class UserProfileDTO {
         public VenueDTO() {
         }
 
-        public VenueDTO(String label,
-                        String venueName,
-                        String location,
-                        Integer capacity,
-                        Boolean isDefault,
-                        Map<String, Object> metadata) {
+        public VenueDTO(String label, String venueName, String location,
+                        Integer capacity, Boolean isDefault, Map<String, Object> metadata) {
             this.label = label;
             this.venueName = venueName;
             this.location = location;
