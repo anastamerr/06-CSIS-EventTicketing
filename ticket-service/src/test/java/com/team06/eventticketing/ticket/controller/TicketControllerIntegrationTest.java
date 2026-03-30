@@ -230,6 +230,62 @@ class TicketControllerIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void issueTicketWithMetadataCreatesValidTicket() throws Exception {
+        insertBooking(1L, 100L);
+
+        String payload = "{\"attendeeName\":\"Ahmed\",\"ticketCode\":\"TIX-2026-001\",\"metadata\":{\"seatNumber\":\"A12\"}}";
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/tickets/booking/1")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.bookingId").value(1))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.attendeeName").value("Ahmed"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.ticketCode").value("TIX-2026-001"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("VALID"));
+    }
+
+    @Test
+    void issueTicketWithMetadataNotFoundBooking() throws Exception {
+        String payload = "{\"attendeeName\":\"Ahmed\",\"ticketCode\":\"TIX-2026-002\"}";
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/tickets/booking/999")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getTicketsHistoryByDateRangeAndStatus() throws Exception {
+        insertBooking(1L, 100L);
+        LocalDateTime now = now();
+        saveTicket("TIX-2026-100", TicketStatus.VALID, now.minusDays(10));
+        saveTicket("TIX-2026-101", TicketStatus.USED, now.minusDays(5));
+        saveTicket("TIX-2026-102", TicketStatus.VALID, now.minusDays(1));
+
+        mockMvc.perform(get("/api/tickets/history")
+                        .param("startDate", "2026-03-19")
+                        .param("endDate", "2026-03-30"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(3));
+
+        mockMvc.perform(get("/api/tickets/history")
+                        .param("startDate", "2026-03-19")
+                        .param("endDate", "2026-03-30")
+                        .param("status", "VALID"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void getTicketsHistoryWithInvalidDateRange() throws Exception {
+        mockMvc.perform(get("/api/tickets/history")
+                        .param("startDate", "2026-04-01")
+                        .param("endDate", "2026-03-01"))
+                .andExpect(status().isBadRequest());
+    }
+
     private void saveTickets(TicketStatus status, int count, LocalDateTime issuedAt, String codePrefix) {
         List<Ticket> tickets = new ArrayList<>();
         for (int index = 0; index < count; index++) {
