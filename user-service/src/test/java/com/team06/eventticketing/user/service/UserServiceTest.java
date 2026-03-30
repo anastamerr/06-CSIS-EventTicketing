@@ -15,6 +15,7 @@ import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
+import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
 import java.math.BigDecimal;
@@ -91,6 +92,39 @@ class UserServiceTest {
         assertEquals("en", result.getPreferences().get("language"));
         assertEquals("SPORTS", result.getPreferences().get("favoriteCategory"));
         assertEquals("VIP", result.getPreferences().get("ticketTier"));
+    }
+
+    @Test
+    void deactivateUserRejectsActiveBookings() {
+        User user = new User();
+        user.setId(4L);
+        user.setStatus(UserStatus.ACTIVE);
+
+        when(userRepository.findById(4L)).thenReturn(Optional.of(user));
+        when(userRepository.existsActiveBookingsByUserId(4L)).thenReturn(true);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.deactivateUser(4L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        assertEquals(UserStatus.ACTIVE, user.getStatus());
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void deactivateUserPersistsDeactivatedStatusWhenNoActiveBookingsExist() {
+        User user = new User();
+        user.setId(5L);
+        user.setStatus(UserStatus.ACTIVE);
+
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(userRepository.existsActiveBookingsByUserId(5L)).thenReturn(false);
+        when(userRepository.save(user)).thenReturn(user);
+
+        User result = userService.deactivateUser(5L);
+
+        assertEquals(UserStatus.DEACTIVATED, result.getStatus());
+        verify(userRepository).save(user);
     }
 
     @Test

@@ -1,11 +1,14 @@
 package com.team06.eventticketing.user;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.model.UserRole;
+import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.UserRepository;
 import java.math.BigDecimal;
 import java.util.Map;
@@ -135,6 +138,35 @@ class UserBookingSummaryIntegrationTest {
                 .andExpect(jsonPath("$.cancelledBookings").value(1))
                 .andExpect(jsonPath("$.totalSpent").value(250.0))
                 .andExpect(jsonPath("$.averageBookingAmount").value(new BigDecimal("125.0000000000000000")));
+    }
+
+    @Test
+    void deactivateUserReturnsBadRequestWhenActiveBookingExists() throws Exception {
+        User user = saveUser("Deactive Blocked", "blocked@example.com", "01000000008");
+        insertBooking(user.getId(), "PENDING", "50.00");
+
+        mockMvc.perform(put("/api/users/{id}/deactivate", user.getId()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deactivateUserSucceedsWhenOnlyCompletedBookingsExist() throws Exception {
+        User user = saveUser("Deactive Ok", "ok@example.com", "01000000009");
+        insertBooking(user.getId(), "COMPLETED", "80.00");
+
+        mockMvc.perform(put("/api/users/{id}/deactivate", user.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(user.getId()))
+                .andExpect(jsonPath("$.status").value("DEACTIVATED"));
+
+        User persisted = userRepository.findById(user.getId()).orElseThrow();
+        assertEquals(UserStatus.DEACTIVATED, persisted.getStatus());
+    }
+
+    @Test
+    void deactivateUserReturnsNotFoundForMissingUser() throws Exception {
+        mockMvc.perform(put("/api/users/{id}/deactivate", 99999L))
+                .andExpect(status().isNotFound());
     }
 
     @Test

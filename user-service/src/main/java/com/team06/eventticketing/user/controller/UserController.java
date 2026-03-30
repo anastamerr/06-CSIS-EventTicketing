@@ -91,6 +91,11 @@ public class UserController {
         return userService.updateUser(id, user);
     }
 
+    @PutMapping("/{id}/deactivate")
+    public User deactivateUser(@PathVariable Long id) {
+        return userService.deactivateUser(id);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteUser(@PathVariable Long id) {

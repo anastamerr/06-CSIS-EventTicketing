@@ -26,6 +26,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByPreferenceKeyValue(@Param("key") String key, @Param("value") String value);
 
     @Query(value = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM bookings
+                WHERE user_id = :userId
+                  AND status NOT IN ('COMPLETED', 'CANCELLED')
+            )
+            """, nativeQuery = true)
+    boolean existsActiveBookingsByUserId(@Param("userId") Long userId);
+
+    @Query(value = """
             SELECT *
             FROM users u
             WHERE (
