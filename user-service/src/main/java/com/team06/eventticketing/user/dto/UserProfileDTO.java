@@ -13,7 +13,8 @@ public class UserProfileDTO {
     private List<VenueDTO> favoriteVenues;
     private int totalFavoriteVenues;
 
-    public UserProfileDTO() {}
+    public UserProfileDTO() {
+    }
 
     public UserProfileDTO(Long userId, String name, String email, String phone,
                           Map<String, Object> preferences, List<VenueDTO> favoriteVenues) {
@@ -26,29 +27,62 @@ public class UserProfileDTO {
         this.totalFavoriteVenues = favoriteVenues != null ? favoriteVenues.size() : 0;
     }
 
-    public Long getUserId() { return userId; }
-    public void setUserId(Long userId) { this.userId = userId; }
+    public Long getUserId() {
+        return userId;
+    }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
 
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
+    public String getName() {
+        return name;
+    }
 
-    public String getPhone() { return phone; }
-    public void setPhone(String phone) { this.phone = phone; }
+    public void setName(String name) {
+        this.name = name;
+    }
 
-    public Map<String, Object> getPreferences() { return preferences; }
-    public void setPreferences(Map<String, Object> preferences) { this.preferences = preferences; }
+    public String getEmail() {
+        return email;
+    }
 
-    public List<VenueDTO> getFavoriteVenues() { return favoriteVenues; }
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public Map<String, Object> getPreferences() {
+        return preferences;
+    }
+
+    public void setPreferences(Map<String, Object> preferences) {
+        this.preferences = preferences;
+    }
+
+    public List<VenueDTO> getFavoriteVenues() {
+        return favoriteVenues;
+    }
+
     public void setFavoriteVenues(List<VenueDTO> favoriteVenues) {
         this.favoriteVenues = favoriteVenues;
         this.totalFavoriteVenues = favoriteVenues != null ? favoriteVenues.size() : 0;
     }
 
-    public int getTotalFavoriteVenues() { return totalFavoriteVenues; }
-    public void setTotalFavoriteVenues(int totalFavoriteVenues) { this.totalFavoriteVenues = totalFavoriteVenues; }
+    public int getTotalFavoriteVenues() {
+        return totalFavoriteVenues;
+    }
+
+    public void setTotalFavoriteVenues(int totalFavoriteVenues) {
+        this.totalFavoriteVenues = totalFavoriteVenues;
+    }
 
     public static class VenueDTO {
         private String label;
@@ -58,7 +92,8 @@ public class UserProfileDTO {
         private Boolean isDefault;
         private Map<String, Object> metadata;
 
-        public VenueDTO() {}
+        public VenueDTO() {
+        }
 
         public VenueDTO(String label, String venueName, String location,
                         Integer capacity, Boolean isDefault, Map<String, Object> metadata) {
@@ -70,22 +105,52 @@ public class UserProfileDTO {
             this.metadata = metadata;
         }
 
-        public String getLabel() { return label; }
-        public void setLabel(String label) { this.label = label; }
+        public String getLabel() {
+            return label;
+        }
 
-        public String getVenueName() { return venueName; }
-        public void setVenueName(String venueName) { this.venueName = venueName; }
+        public void setLabel(String label) {
+            this.label = label;
+        }
 
-        public String getLocation() { return location; }
-        public void setLocation(String location) { this.location = location; }
+        public String getVenueName() {
+            return venueName;
+        }
 
-        public Integer getCapacity() { return capacity; }
-        public void setCapacity(Integer capacity) { this.capacity = capacity; }
+        public void setVenueName(String venueName) {
+            this.venueName = venueName;
+        }
 
-        public Boolean getIsDefault() { return isDefault; }
-        public void setIsDefault(Boolean isDefault) { this.isDefault = isDefault; }
+        public String getLocation() {
+            return location;
+        }
 
-        public Map<String, Object> getMetadata() { return metadata; }
-        public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
+        public void setLocation(String location) {
+            this.location = location;
+        }
+
+        public Integer getCapacity() {
+            return capacity;
+        }
+
+        public void setCapacity(Integer capacity) {
+            this.capacity = capacity;
+        }
+
+        public Boolean getIsDefault() {
+            return isDefault;
+        }
+
+        public void setIsDefault(Boolean isDefault) {
+            this.isDefault = isDefault;
+        }
+
+        public Map<String, Object> getMetadata() {
+            return metadata;
+        }
+
+        public void setMetadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+        }
     }
 }
