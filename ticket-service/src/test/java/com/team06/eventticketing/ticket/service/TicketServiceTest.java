@@ -1,9 +1,11 @@
 package com.team06.eventticketing.ticket.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,6 +43,9 @@ class TicketServiceTest {
 
     @Captor
     private ArgumentCaptor<List<Ticket>> ticketsCaptor;
+
+    @Captor
+    private ArgumentCaptor<Ticket> ticketCaptor;
 
     private TicketService ticketService;
 
@@ -92,6 +97,65 @@ class TicketServiceTest {
         assertEquals(55L, secondTicket.getBookingId());
         assertEquals(TicketStatus.VALID, secondTicket.getStatus());
         assertEquals(2, response.get("count"));
+    }
+
+    @Test
+    void issueTicketWithMetadataRejectsMissingBooking() {
+        when(ticketRepository.existsBookingById(404L)).thenReturn(false);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.issueTicketWithMetadata(404L, "Ahmed", "TIX-404", Map.of("seatNumber", "A12")));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(ticketRepository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void issueTicketWithMetadataCreatesValidTicketWithNowAndMetadata() {
+        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(ticketRepository.findByTicketCode("TIX-2026-001")).thenReturn(Optional.empty());
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Ticket result = ticketService.issueTicketWithMetadata(
+                55L,
+                "Ahmed",
+                "TIX-2026-001",
+                Map.of("seatNumber", "A12", "section", "VIP"));
+
+        verify(ticketRepository).save(ticketCaptor.capture());
+        Ticket savedTicket = ticketCaptor.getValue();
+        assertEquals(55L, savedTicket.getBookingId());
+        assertEquals("Ahmed", savedTicket.getAttendeeName());
+        assertEquals("TIX-2026-001", savedTicket.getTicketCode());
+        assertEquals(TicketStatus.VALID, savedTicket.getStatus());
+        assertEquals(LocalDateTime.of(2026, 3, 29, 12, 0), savedTicket.getIssuedAt());
+        assertEquals("A12", savedTicket.getMetadata().get("seatNumber"));
+        assertEquals(savedTicket, result);
+    }
+
+    @Test
+    void getTicketsHistoryRejectsInvalidDateRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.getTicketsHistory(
+                        LocalDateTime.of(2026, 4, 1, 0, 0),
+                        LocalDateTime.of(2026, 4, 1, 0, 0),
+                        TicketStatus.VALID));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findByIssuedAtBetweenAndStatus(any(), any(), any());
+    }
+
+    @Test
+    void getTicketsHistoryDelegatesToRepositoryWithOptionalStatus() {
+        LocalDateTime start = LocalDateTime.of(2026, 3, 1, 0, 0);
+        LocalDateTime endExclusive = LocalDateTime.of(2026, 4, 1, 0, 0);
+        List<Ticket> expectedTickets = List.of(ticket("Ahmed", "TIX-1"), ticket("Sara", "TIX-2"));
+
+        when(ticketRepository.findByIssuedAtBetweenAndStatus(start, endExclusive, "VALID")).thenReturn(expectedTickets);
+
+        List<Ticket> actualTickets = ticketService.getTicketsHistory(start, endExclusive, TicketStatus.VALID);
+
+        assertIterableEquals(expectedTickets, actualTickets);
     }
 
     @Test
@@ -166,8 +230,7 @@ class TicketServiceTest {
                 () -> ticketService.findTicketsNearVenue(91.0, 31.0, 10.0));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+        verify(ticketRepository, never()).findTicketsNearVenue(anyDouble(), anyDouble(), anyDouble());
     }
 
     @Test
@@ -176,8 +239,7 @@ class TicketServiceTest {
                 () -> ticketService.findTicketsNearVenue(30.0, 181.0, 10.0));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+        verify(ticketRepository, never()).findTicketsNearVenue(anyDouble(), anyDouble(), anyDouble());
     }
 
     @Test
@@ -186,15 +248,47 @@ class TicketServiceTest {
                 () -> ticketService.findTicketsNearVenue(30.0, 31.0, 0.0));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
-                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+        verify(ticketRepository, never()).findTicketsNearVenue(anyDouble(), anyDouble(), anyDouble());
     }
 
     @Test
     void findTicketsNearVenueMapsRepositoryResults() {
-        NearbyTicketProjection projection = new TestNearbyTicketProjection(
-                7L, "Mariam", 55L, "Jazz Night", 30.0444, 31.2357, 1.25
-        );
+        NearbyTicketProjection projection = new NearbyTicketProjection() {
+            @Override
+            public Long getTicketId() {
+                return 7L;
+            }
+
+            @Override
+            public String getAttendeeName() {
+                return "Mariam";
+            }
+
+            @Override
+            public Long getBookingId() {
+                return 55L;
+            }
+
+            @Override
+            public String getEventName() {
+                return "Jazz Night";
+            }
+
+            @Override
+            public Double getEventLat() {
+                return 30.0444;
+            }
+
+            @Override
+            public Double getEventLon() {
+                return 31.2357;
+            }
+
+            @Override
+            public Double getDistanceKm() {
+                return 1.25;
+            }
+        };
 
         when(ticketRepository.findTicketsNearVenue(30.0444, 31.2357, 5.0)).thenReturn(List.of(projection));
 
@@ -218,67 +312,4 @@ class TicketServiceTest {
         return ticket;
     }
 
-    private static class TestNearbyTicketProjection implements NearbyTicketProjection {
-
-        private final Long ticketId;
-        private final String attendeeName;
-        private final Long bookingId;
-        private final String eventName;
-        private final Double eventLat;
-        private final Double eventLon;
-        private final Double distanceKm;
-
-        private TestNearbyTicketProjection(
-                Long ticketId,
-                String attendeeName,
-                Long bookingId,
-                String eventName,
-                Double eventLat,
-                Double eventLon,
-                Double distanceKm
-        ) {
-            this.ticketId = ticketId;
-            this.attendeeName = attendeeName;
-            this.bookingId = bookingId;
-            this.eventName = eventName;
-            this.eventLat = eventLat;
-            this.eventLon = eventLon;
-            this.distanceKm = distanceKm;
-        }
-
-        @Override
-        public Long getTicketId() {
-            return ticketId;
-        }
-
-        @Override
-        public String getAttendeeName() {
-            return attendeeName;
-        }
-
-        @Override
-        public Long getBookingId() {
-            return bookingId;
-        }
-
-        @Override
-        public String getEventName() {
-            return eventName;
-        }
-
-        @Override
-        public Double getEventLat() {
-            return eventLat;
-        }
-
-        @Override
-        public Double getEventLon() {
-            return eventLon;
-        }
-
-        @Override
-        public Double getDistanceKm() {
-            return distanceKm;
-        }
-    }
 }

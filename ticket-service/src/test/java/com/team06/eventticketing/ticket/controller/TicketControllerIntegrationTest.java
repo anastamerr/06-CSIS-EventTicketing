@@ -243,7 +243,13 @@ class TicketControllerIntegrationTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.bookingId").value(1))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.attendeeName").value("Ahmed"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.ticketCode").value("TIX-2026-001"))
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("VALID"));
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value("VALID"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.metadata.seatNumber").value("A12"));
+
+        Ticket savedTicket = ticketRepository.findByTicketCode("TIX-2026-001").orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(1L, savedTicket.getBookingId());
+        org.junit.jupiter.api.Assertions.assertEquals(now(), savedTicket.getIssuedAt());
+        org.junit.jupiter.api.Assertions.assertEquals("A12", savedTicket.getMetadata().get("seatNumber"));
     }
 
     @Test
@@ -259,23 +265,28 @@ class TicketControllerIntegrationTest {
     @Test
     void getTicketsHistoryByDateRangeAndStatus() throws Exception {
         insertBooking(1L, 100L);
-        LocalDateTime now = now();
-        saveTicket("TIX-2026-100", TicketStatus.VALID, now.minusDays(10));
-        saveTicket("TIX-2026-101", TicketStatus.USED, now.minusDays(5));
-        saveTicket("TIX-2026-102", TicketStatus.VALID, now.minusDays(1));
+        saveTicket("TIX-2026-100", TicketStatus.VALID, LocalDateTime.of(2026, 3, 19, 9, 0));
+        saveTicket("TIX-2026-101", TicketStatus.USED, LocalDateTime.of(2026, 3, 25, 14, 30));
+        saveTicket("TIX-2026-102", TicketStatus.VALID, LocalDateTime.of(2026, 3, 30, 23, 59, 59, 500_000_000));
+        saveTicket("TIX-2026-103", TicketStatus.VALID, LocalDateTime.of(2026, 2, 28, 23, 59));
 
         mockMvc.perform(get("/api/tickets/history")
                         .param("startDate", "2026-03-19")
                         .param("endDate", "2026-03-30"))
                 .andExpect(status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(3));
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(3))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].ticketCode").value("TIX-2026-100"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[1].ticketCode").value("TIX-2026-101"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[2].ticketCode").value("TIX-2026-102"));
 
         mockMvc.perform(get("/api/tickets/history")
                         .param("startDate", "2026-03-19")
                         .param("endDate", "2026-03-30")
                         .param("status", "VALID"))
                 .andExpect(status().isOk())
-                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(2));
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.length()").value(2))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].ticketCode").value("TIX-2026-100"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[1].ticketCode").value("TIX-2026-102"));
     }
 
     @Test
@@ -284,6 +295,18 @@ class TicketControllerIntegrationTest {
                         .param("startDate", "2026-04-01")
                         .param("endDate", "2026-03-01"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getTicketsHistoryReturnsEmptyListWhenNoTicketsMatch() throws Exception {
+        insertBooking(1L, 100L);
+        saveTicket("TIX-2026-200", TicketStatus.VALID, LocalDateTime.of(2026, 2, 15, 12, 0));
+
+        mockMvc.perform(get("/api/tickets/history")
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     private void saveTickets(TicketStatus status, int count, LocalDateTime issuedAt, String codePrefix) {
