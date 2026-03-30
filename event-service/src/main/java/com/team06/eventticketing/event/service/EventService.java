@@ -6,8 +6,8 @@ import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -49,6 +49,20 @@ public class EventService {
         existingEvent.setTotalRatings(event.getTotalRatings());
         existingEvent.setDetails(event.getDetails());
         return eventRepository.save(existingEvent);
+    }
+
+    public Event updateEventDetails(Long id, Map<String, Object> updates) {
+        Event event = getEventById(id);
+
+        Map<String, Object> details = event.getDetails() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(event.getDetails());
+        if (updates != null && !updates.isEmpty()) {
+            details.putAll(updates);
+        }
+        event.setDetails(details);
+
+        return eventRepository.save(event);
     }
 
     public void deleteEvent(Long id) {
