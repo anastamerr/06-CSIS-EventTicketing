@@ -5,9 +5,12 @@ import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
+import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.service.BookingService;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -60,6 +64,15 @@ public class BookingController {
         return bookingService.completeBooking(id);
     }
 
+    @GetMapping("/search")
+    public List<Booking> searchBookings(
+            @RequestParam(required = false) BookingStatus status,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return bookingService.searchBookings(status, startDate, endDate);
+    }
+
     @PostMapping("/{bookingId}/items")
     public Booking addItemsToBooking(@PathVariable Long bookingId, @RequestBody List<BookingItemRequest> items) {
         return bookingService.addItemsToBooking(bookingId, items);
@@ -70,4 +83,9 @@ public class BookingController {
     public void deleteBooking(@PathVariable Long id) {
         bookingService.deleteBooking(id);
     }
+    @PutMapping("/{id}/cancel")
+    public Booking cancelBooking(@PathVariable Long id) {
+        return bookingService.cancelBooking(id);
+    }
+
 }

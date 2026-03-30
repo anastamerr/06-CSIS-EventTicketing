@@ -9,7 +9,11 @@ import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
+import com.team06.eventticketing.booking.repository.TicketJdbcRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,10 +31,16 @@ public class BookingService {
     private static final Set<String> SUPPORTED_PAYMENT_METHODS = Set.of("CREDIT_CARD", "DEBIT_CARD", "WALLET");
 
     private final BookingRepository bookingRepository;
+    private final TicketJdbcRepository ticketJdbcRepository;
     private final TicketSaleJdbcRepository ticketSaleJdbcRepository;
 
-    public BookingService(BookingRepository bookingRepository, TicketSaleJdbcRepository ticketSaleJdbcRepository) {
+    public BookingService(
+            BookingRepository bookingRepository,
+            TicketJdbcRepository ticketJdbcRepository,
+            TicketSaleJdbcRepository ticketSaleJdbcRepository
+    ) {
         this.bookingRepository = bookingRepository;
+        this.ticketJdbcRepository = ticketJdbcRepository;
         this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
     }
 
@@ -96,6 +106,39 @@ public class BookingService {
                 buildTransactionDetails(booking, totalAmount)
         );
 
+        return bookingRepository.save(booking);
+    }
+
+    public List<Booking> searchBookings(BookingStatus status, LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be on or before endDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+        if (status != null) {
+            return bookingRepository.findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                    status, startDateTime, endDateTime
+            );
+        }
+        return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime);
+    }
+
+    @Transactional
+    public Booking cancelBooking(Long bookingId) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only PENDING or CONFIRMED bookings can be cancelled"
+            );
+        }
+
+        ticketJdbcRepository.cancelValidTicketsForBooking(bookingId);
+        booking.setStatus(BookingStatus.CANCELLED);
         return bookingRepository.save(booking);
     }
 
