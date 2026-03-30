@@ -6,9 +6,13 @@ import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
+import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,10 +21,14 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class BookingService {
 
-    private final BookingRepository bookingRepository;
+    private static final Set<String> SUPPORTED_PAYMENT_METHODS = Set.of("CREDIT_CARD", "DEBIT_CARD", "WALLET");
 
-    public BookingService(BookingRepository bookingRepository) {
+    private final BookingRepository bookingRepository;
+    private final TicketSaleJdbcRepository ticketSaleJdbcRepository;
+
+    public BookingService(BookingRepository bookingRepository, TicketSaleJdbcRepository ticketSaleJdbcRepository) {
         this.bookingRepository = bookingRepository;
+        this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
     }
 
     public List<Booking> getAllBookings() {
@@ -46,9 +54,38 @@ public class BookingService {
         return bookingRepository.save(existing);
     }
 
+    @Transactional
+    public Booking completeBooking(Long id) {
+        Booking booking = getBookingByIdForUpdate(id);
+        validateCompletableBooking(booking);
+
+        if (ticketSaleJdbcRepository.existsByBookingId(id)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket sale already exists for booking");
+        }
+
+        double totalAmount = booking.getTotalAmount() == null ? calculateTotalAmount(booking) : booking.getTotalAmount();
+        booking.setTotalAmount(totalAmount);
+        booking.setStatus(BookingStatus.COMPLETED);
+
+        ticketSaleJdbcRepository.createPendingSale(
+                booking.getId(),
+                booking.getUserId(),
+                totalAmount,
+                resolvePaymentMethod(booking),
+                buildTransactionDetails(booking, totalAmount)
+        );
+
+        return bookingRepository.save(booking);
+    }
+
     public void deleteBooking(Long id) {
         getBookingById(id);
         bookingRepository.deleteById(id);
+    }
+
+    private Booking getBookingByIdForUpdate(Long id) {
+        return bookingRepository.findByIdWithBookingItemsForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
     }
 
     private void applyRequest(Booking booking, BookingRequest request, boolean merge) {
@@ -100,5 +137,52 @@ public class BookingService {
             bookingItem.setMetadata(new LinkedHashMap<>());
         }
         return bookingItem;
+    }
+
+    private void validateCompletableBooking(Booking booking) {
+        if (booking.getStatus() != BookingStatus.CHECKED_IN) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Booking must be checked in before completion"
+            );
+        }
+    }
+
+    private double calculateTotalAmount(Booking booking) {
+        double totalAmount = 0.0;
+
+        for (BookingItem item : booking.getBookingItems()) {
+            totalAmount += safeQuantity(item) * safeUnitPrice(item);
+        }
+
+        return totalAmount;
+    }
+
+    private Map<String, Object> buildTransactionDetails(Booking booking, double totalAmount) {
+        Map<String, Object> transactionDetails = new LinkedHashMap<>();
+        transactionDetails.put("bookingTotalAmount", totalAmount);
+        return transactionDetails;
+    }
+
+    private String resolvePaymentMethod(Booking booking) {
+        if (booking.getMetadata() == null) {
+            return "WALLET";
+        }
+
+        Object paymentMethod = booking.getMetadata().get("paymentMethod");
+        if (!(paymentMethod instanceof String paymentMethodValue)) {
+            return "WALLET";
+        }
+
+        String normalized = paymentMethodValue.trim().toUpperCase(Locale.ROOT);
+        return SUPPORTED_PAYMENT_METHODS.contains(normalized) ? normalized : "WALLET";
+    }
+
+    private int safeQuantity(BookingItem item) {
+        return item.getQuantity() == null ? 0 : item.getQuantity();
+    }
+
+    private double safeUnitPrice(BookingItem item) {
+        return item.getUnitPrice() == null ? 0.0 : item.getUnitPrice();
     }
 }
