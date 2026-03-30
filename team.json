@@ -3,12 +3,42 @@
     "studentId": "55-11997",
     "name": "Anas Tamer Osman",
     "githubUsername": "anastamerr",
-    "service": "event-service"
+    "service": ["event-service", "sales-service"]
   },
   {
-    "studentId": "55-11997",
-    "name": "Anas Tamer Osman",
-    "githubUsername": "anastamerr",
-    "service": "sales-service"
+    "studentId": "55-16542",
+    "name": "Ibrahim",
+    "githubUsername": "secretibra",
+    "service": ["booking-service", "ticket-service", "sales-service"]
+  },
+  {
+    "studentId": "55-7986",
+    "name": "Omar Ayman",
+    "githubUsername": "22omarayman",
+    "service": ["event-service", "sales-service"]
+  },
+  {
+    "studentId": "55-18423",
+    "name": "Mohannad Ahmed",
+    "githubUsername": "mohannadd1",
+    "service": ["user-service", "ticket-service"]
+  },
+  {
+    "studentId": "55-12331",
+    "name": "Ahmed Swilam",
+    "githubUsername": "ahmedswilam0000",
+    "service": ["user-service", "ticket-service"]
+  },
+  {
+    "studentId": "55-6592",
+    "name": "Hussien Haitham",
+    "githubUsername": "hussienhaithamm",
+    "service": ["user-service", "ticket-service"]
+  },
+  {
+    "studentId": "55-19918",
+    "name": "Youssef Tarek",
+    "githubUsername": "yousseftarek288",
+    "service": ["user-service", "ticket-service"]
   }
 ]
