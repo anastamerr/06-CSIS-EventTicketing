@@ -2,10 +2,12 @@ package com.team06.eventticketing.ticket.service;
 
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
+import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -94,6 +96,14 @@ public class TicketService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
     }
 
+    @Transactional(readOnly = true)
+    public List<UnusedTicketDTO> getUnusedUpcomingTickets() {
+        return ticketRepository.findUnusedTicketsForUpcomingEvents()
+                .stream()
+                .map(this::mapToUnusedTicketDTO)
+                .toList();
+    }
+
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
         validateGeoParameters(latitude, longitude, radiusKm);
         return ticketRepository.findTicketsNearVenue(latitude, longitude, radiusKm).stream()
@@ -154,6 +164,17 @@ public class TicketService {
         if (radiusKm <= 0.0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "radiusKm must be greater than zero");
         }
+    }
+
+    private UnusedTicketDTO mapToUnusedTicketDTO(UnusedTicketProjection p) {
+        UnusedTicketDTO dto = new UnusedTicketDTO();
+        dto.setTicketId(p.getTicketId());
+        dto.setAttendeeName(p.getAttendeeName());
+        dto.setTicketCode(p.getTicketCode());
+        dto.setBookingId(p.getBookingId());
+        dto.setEventName(p.getEventName());
+        dto.setEventDate(p.getEventDate());
+        return dto;
     }
 
     private NearbyTicketResponseDTO toNearbyTicketResponse(NearbyTicketProjection projection) {

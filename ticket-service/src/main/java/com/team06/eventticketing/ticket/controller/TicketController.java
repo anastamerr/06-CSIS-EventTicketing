@@ -2,6 +2,7 @@ package com.team06.eventticketing.ticket.controller;
 
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.service.TicketService;
@@ -86,6 +87,11 @@ public class TicketController {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endExclusive = endDate.plusDays(1).atStartOfDay();
         return ticketService.getTicketsHistory(startDateTime, endExclusive, status);
+    }
+
+    @GetMapping("/unused-upcoming")
+    public List<UnusedTicketDTO> getUnusedUpcomingTickets() {
+        return ticketService.getUnusedUpcomingTickets();
     }
 
     @GetMapping("/nearby")
