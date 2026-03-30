@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,7 +19,11 @@ import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
+import com.team06.eventticketing.booking.repository.TicketJdbcRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +47,9 @@ class BookingServiceTest {
     @Mock
     private TicketSaleJdbcRepository ticketSaleJdbcRepository;
 
+    @Mock
+    private TicketJdbcRepository ticketJdbcRepository;
+
     @Captor
     private ArgumentCaptor<Map<String, Object>> transactionDetailsCaptor;
 
@@ -50,7 +57,7 @@ class BookingServiceTest {
 
     @BeforeEach
     void setUp() {
-        bookingService = new BookingService(bookingRepository, ticketSaleJdbcRepository);
+        bookingService = new BookingService(bookingRepository, ticketJdbcRepository, ticketSaleJdbcRepository);
     }
 
     @Test
@@ -224,6 +231,135 @@ class BookingServiceTest {
         bookingService.getAllBookings();
 
         verify(bookingRepository).findAllWithBookingItems();
+    }
+
+    @Test
+    void searchBookingsFiltersByStatusAndDateRange() {
+        Booking marchCompletedBooking = new Booking();
+        marchCompletedBooking.setId(8L);
+        Booking earlierMarchCompletedBooking = new Booking();
+        earlierMarchCompletedBooking.setId(6L);
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        when(bookingRepository.findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                BookingStatus.COMPLETED,
+                startDateTime,
+                endDateTime
+        )).thenReturn(List.of(marchCompletedBooking, earlierMarchCompletedBooking));
+
+        List<Booking> result = bookingService.searchBookings(BookingStatus.COMPLETED, startDate, endDate);
+
+        assertEquals(List.of(marchCompletedBooking, earlierMarchCompletedBooking), result);
+        verify(bookingRepository).findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                BookingStatus.COMPLETED,
+                startDateTime,
+                endDateTime
+        );
+    }
+
+    @Test
+    void searchBookingsUsesDateRangeOnlyWhenStatusMissing() {
+        Booking mostRecentMarchBooking = new Booking();
+        mostRecentMarchBooking.setId(9L);
+        Booking secondMarchBooking = new Booking();
+        secondMarchBooking.setId(8L);
+        Booking thirdMarchBooking = new Booking();
+        thirdMarchBooking.setId(7L);
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        when(bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime))
+                .thenReturn(List.of(mostRecentMarchBooking, secondMarchBooking, thirdMarchBooking));
+
+        List<Booking> result = bookingService.searchBookings(null, startDate, endDate);
+
+        assertEquals(List.of(mostRecentMarchBooking, secondMarchBooking, thirdMarchBooking), result);
+        verify(bookingRepository).findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime);
+    }
+
+    @Test
+    void searchBookingsRejectsMissingDates() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchBookings(BookingStatus.COMPLETED, null, LocalDate.of(2026, 3, 31)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void searchBookingsRejectsStartDateAfterEndDate() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.searchBookings(
+                        BookingStatus.COMPLETED,
+                        LocalDate.of(2026, 4, 1),
+                        LocalDate.of(2026, 3, 31)
+                ));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void cancelBookingCancelsConfirmedBookingAndValidTickets() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.CONFIRMED);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.cancelBooking(9L);
+
+        assertEquals(BookingStatus.CANCELLED, result.getStatus());
+        verify(ticketJdbcRepository).cancelValidTicketsForBooking(9L);
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    void cancelBookingRejectsCompletedBooking() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.COMPLETED);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.cancelBooking(9L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketJdbcRepository, never()).cancelValidTicketsForBooking(any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelBookingRejectsCheckedInBooking() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.CHECKED_IN);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.cancelBooking(9L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketJdbcRepository, never()).cancelValidTicketsForBooking(any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelBookingRejectsMissingBooking() {
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.cancelBooking(9L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(ticketJdbcRepository, never()).cancelValidTicketsForBooking(any());
+        verify(bookingRepository, never()).save(any());
     }
 
     @Test

@@ -40,5 +40,11 @@
     "name": "Youssef Tarek",
     "githubUsername": "yousseftarek288",
     "service": ["user-service", "ticket-service"]
+  },
+  {
+    "studentId": "55-12742",
+    "name": "Nour Ahmed",
+    "githubUsername": "nourahmed109",
+    "service": ["booking-service", "sales-service"]
   }
 ]
