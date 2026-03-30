@@ -65,8 +65,7 @@ public class SalePromotionService {
 
     @Transactional
     public TicketSale applyPromotionToTicketSale(Long saleId, Long promotionId) {
-        TicketSale ticketSale = ticketSaleRepository.findByIdWithSalePromotionsForUpdate(saleId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
+        TicketSale ticketSale = findTicketSaleWithPromotionsForUpdate(saleId);
         validatePendingTicketSale(ticketSale);
 
         Promotion promotion = promotionRepository.findByIdForUpdate(promotionId)
@@ -90,7 +89,7 @@ public class SalePromotionService {
         promotion.setCurrentUses(currentUses(promotion) + 1);
         promotionRepository.save(promotion);
 
-        return ticketSale;
+        return findTicketSaleWithPromotions(saleId);
     }
 
     private SalePromotion findSalePromotion(Long id) {
@@ -156,5 +155,15 @@ public class SalePromotionService {
 
     private int currentUses(Promotion promotion) {
         return promotion.getCurrentUses() == null ? 0 : promotion.getCurrentUses();
+    }
+
+    private TicketSale findTicketSaleWithPromotionsForUpdate(Long saleId) {
+        return ticketSaleRepository.findByIdWithSalePromotionsForUpdate(saleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
+    }
+
+    private TicketSale findTicketSaleWithPromotions(Long saleId) {
+        return ticketSaleRepository.findByIdWithSalePromotions(saleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
     }
 }

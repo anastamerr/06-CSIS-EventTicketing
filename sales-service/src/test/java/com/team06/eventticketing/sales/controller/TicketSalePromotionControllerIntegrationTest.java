@@ -106,6 +106,44 @@ class TicketSalePromotionControllerIntegrationTest {
         );
     }
 
+    @Test
+    void applyPromotionCapsFixedDiscountAtSaleAmount() throws Exception {
+        TicketSale ticketSale = ticketSaleRepository.saveAndFlush(newTicketSale(800.0));
+        Promotion promotion = promotionRepository.saveAndFlush(newPromotion("BIGSAVE", PromotionDiscountType.FIXED, 9999.0));
+
+        mockMvc.perform(post("/api/sales/{saleId}/promotions/{promotionId}", ticketSale.getId(), promotion.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ticketSale.getId()))
+                .andExpect(jsonPath("$.salePromotions[0].discountApplied").value(800.0))
+                .andExpect(jsonPath("$.salePromotions[0].promotion.code").value("BIGSAVE"));
+    }
+
+    @Test
+    void applyPromotionRejectsInactivePromotion() throws Exception {
+        TicketSale ticketSale = ticketSaleRepository.saveAndFlush(newTicketSale(800.0));
+        Promotion promotion = newPromotion("SHOW25", PromotionDiscountType.PERCENTAGE, 25.0);
+        promotion.setActive(Boolean.FALSE);
+        promotion = promotionRepository.saveAndFlush(promotion);
+
+        mockMvc.perform(post("/api/sales/{saleId}/promotions/{promotionId}", ticketSale.getId(), promotion.getId()))
+                .andExpect(status().isBadRequest());
+
+        org.junit.jupiter.api.Assertions.assertEquals(0, salePromotionRepository.count());
+    }
+
+    @Test
+    void applyPromotionRejectsCompletedSale() throws Exception {
+        TicketSale ticketSale = newTicketSale(800.0);
+        ticketSale.setStatus(TicketSaleStatus.COMPLETED);
+        ticketSale = ticketSaleRepository.saveAndFlush(ticketSale);
+        Promotion promotion = promotionRepository.saveAndFlush(newPromotion("SHOW25", PromotionDiscountType.PERCENTAGE, 25.0));
+
+        mockMvc.perform(post("/api/sales/{saleId}/promotions/{promotionId}", ticketSale.getId(), promotion.getId()))
+                .andExpect(status().isBadRequest());
+
+        org.junit.jupiter.api.Assertions.assertEquals(0, salePromotionRepository.count());
+    }
+
     private TicketSale newTicketSale(double amount) {
         TicketSale ticketSale = new TicketSale();
         ticketSale.setBookingId(10L);
