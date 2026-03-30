@@ -92,7 +92,18 @@ class BookingControllerIntegrationTest {
                     created_at TIMESTAMP NOT NULL
                 )
                 """);
-        jdbcTemplate.execute("TRUNCATE TABLE event_sessions, ticket_sales, booking_items, bookings RESTART IDENTITY CASCADE");
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS tickets (
+                    id BIGSERIAL PRIMARY KEY,
+                    booking_id BIGINT NOT NULL,
+                    attendee_name VARCHAR(255) NOT NULL,
+                    ticket_code VARCHAR(255) NOT NULL UNIQUE,
+                    status VARCHAR(50) NOT NULL,
+                    issued_at TIMESTAMP NOT NULL,
+                    metadata JSONB
+                )
+                """);
+        jdbcTemplate.execute("TRUNCATE TABLE tickets, event_sessions, ticket_sales, booking_items, bookings RESTART IDENTITY CASCADE");
     }
 
     @Test
@@ -215,6 +226,53 @@ class BookingControllerIntegrationTest {
     }
 
     @Test
+    void cancelBookingCancelsBookingAndAllValidTickets() throws Exception {
+        Booking booking = confirmedBooking();
+        booking = bookingRepository.saveAndFlush(booking);
+        insertTicket(booking.getId(), "VALID", "TKT-1");
+        insertTicket(booking.getId(), "VALID", "TKT-2");
+        insertTicket(booking.getId(), "VALID", "TKT-3");
+        insertTicket(booking.getId(), "USED", "TKT-4");
+
+        mockMvc.perform(put("/api/bookings/{id}/cancel", booking.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(booking.getId()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        Booking updatedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+        assertEquals(BookingStatus.CANCELLED, updatedBooking.getStatus());
+
+        List<String> ticketStatuses = jdbcTemplate.queryForList(
+                "SELECT status FROM tickets WHERE booking_id = ? ORDER BY ticket_code",
+                String.class,
+                booking.getId()
+        );
+        assertEquals(List.of("CANCELLED", "CANCELLED", "CANCELLED", "USED"), ticketStatuses);
+    }
+
+    @Test
+    void cancelBookingRejectsCompletedBooking() throws Exception {
+        Booking booking = bookingRepository.saveAndFlush(completedBooking());
+
+        mockMvc.perform(put("/api/bookings/{id}/cancel", booking.getId()))
+                .andExpect(status().isBadRequest());
+
+        Booking unchangedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+        assertEquals(BookingStatus.COMPLETED, unchangedBooking.getStatus());
+    }
+
+    @Test
+    void cancelBookingRejectsCheckedInBooking() throws Exception {
+        Booking booking = bookingRepository.saveAndFlush(checkedInBooking());
+
+        mockMvc.perform(put("/api/bookings/{id}/cancel", booking.getId()))
+                .andExpect(status().isBadRequest());
+
+        Booking unchangedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+        assertEquals(BookingStatus.CHECKED_IN, unchangedBooking.getStatus());
+    }
+
+    @Test
     void addItemsToBookingCreatesReservedItemsWithSequentialEventOrder() throws Exception {
         Booking booking = pendingBooking();
         booking.getBookingItems().clear();
@@ -322,11 +380,39 @@ class BookingControllerIntegrationTest {
         return booking;
     }
 
+    private Booking confirmedBooking() {
+        Booking booking = pendingBooking();
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setEventId(99L);
+        return booking;
+    }
+
+    private Booking completedBooking() {
+        Booking booking = confirmedBooking();
+        booking.setStatus(BookingStatus.COMPLETED);
+        return booking;
+    }
+
     private Booking bookingWithDate(BookingStatus status, LocalDateTime bookingDate) {
         Booking booking = pendingBooking();
         booking.setStatus(status);
         booking.setBookingDate(bookingDate);
         return booking;
+    }
+
+    private void insertTicket(Long bookingId, String status, String ticketCode) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO tickets (booking_id, attendee_name, ticket_code, status, issued_at, metadata)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb))
+                """,
+                bookingId,
+                "Attendee " + ticketCode,
+                ticketCode,
+                status,
+                LocalDateTime.of(2026, 3, 30, 10, 0),
+                "{}"
+        );
     }
 
     private BookingItem bookingItem(int eventOrder, int quantity, double unitPrice, BookingItemStatus status) {
