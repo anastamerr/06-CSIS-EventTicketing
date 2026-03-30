@@ -57,7 +57,7 @@ public class BookingService {
 
     @Transactional
     public Booking completeBooking(Long id) {
-        Booking booking = getBookingById(id);
+        Booking booking = getBookingByIdForUpdate(id);
         validateCompletableBooking(booking);
 
         if (ticketSaleJdbcRepository.existsByBookingId(id)) {
@@ -84,6 +84,11 @@ public class BookingService {
     public void deleteBooking(Long id) {
         getBookingById(id);
         bookingRepository.deleteById(id);
+    }
+
+    private Booking getBookingByIdForUpdate(Long id) {
+        return bookingRepository.findByIdWithBookingItemsForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
     }
 
     private void applyRequest(Booking booking, BookingRequest request, boolean merge) {
