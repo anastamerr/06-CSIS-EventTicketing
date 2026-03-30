@@ -1,6 +1,7 @@
 package com.team06.eventticketing.booking.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,6 +14,7 @@ import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,6 +164,57 @@ class BookingControllerIntegrationTest {
     }
 
     @Test
+    void searchBookingsReturnsCompletedMarchBookingsMostRecentFirst() throws Exception {
+        Booking firstMarchCompleted = bookingRepository.saveAndFlush(
+                bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 3, 5, 10, 0))
+        );
+        bookingRepository.saveAndFlush(bookingWithDate(BookingStatus.PENDING, LocalDateTime.of(2026, 3, 10, 10, 0)));
+        Booking secondMarchCompleted = bookingRepository.saveAndFlush(
+                bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 3, 25, 10, 0))
+        );
+        bookingRepository.saveAndFlush(bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 2, 20, 10, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 2, 10, 10, 0)));
+
+        mockMvc.perform(get("/api/bookings/search")
+                        .queryParam("status", "COMPLETED")
+                        .queryParam("startDate", "2026-03-01")
+                        .queryParam("endDate", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(secondMarchCompleted.getId()))
+                .andExpect(jsonPath("$[1].id").value(firstMarchCompleted.getId()));
+    }
+
+    @Test
+    void searchBookingsReturnsAllMarchBookingsWhenStatusMissing() throws Exception {
+        bookingRepository.saveAndFlush(bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 3, 5, 10, 0)));
+        Booking pendingMarchBooking = bookingRepository.saveAndFlush(
+                bookingWithDate(BookingStatus.PENDING, LocalDateTime.of(2026, 3, 10, 10, 0))
+        );
+        Booking latestMarchBooking = bookingRepository.saveAndFlush(
+                bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 3, 25, 10, 0))
+        );
+        bookingRepository.saveAndFlush(bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 2, 20, 10, 0)));
+        bookingRepository.saveAndFlush(bookingWithDate(BookingStatus.COMPLETED, LocalDateTime.of(2026, 2, 10, 10, 0)));
+
+        mockMvc.perform(get("/api/bookings/search")
+                        .queryParam("startDate", "2026-03-01")
+                        .queryParam("endDate", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].id").value(latestMarchBooking.getId()))
+                .andExpect(jsonPath("$[1].id").value(pendingMarchBooking.getId()));
+    }
+
+    @Test
+    void searchBookingsRequiresBothDates() throws Exception {
+        mockMvc.perform(get("/api/bookings/search")
+                        .queryParam("status", "COMPLETED")
+                        .queryParam("startDate", "2026-03-01"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void addItemsToBookingCreatesReservedItemsWithSequentialEventOrder() throws Exception {
         Booking booking = pendingBooking();
         booking.getBookingItems().clear();
@@ -266,6 +319,13 @@ class BookingControllerIntegrationTest {
         booking.setContactEmail("buyer@example.com");
         booking.setStatus(BookingStatus.PENDING);
         booking.addBookingItem(bookingItem(1, 1, 100.0, BookingItemStatus.RESERVED));
+        return booking;
+    }
+
+    private Booking bookingWithDate(BookingStatus status, LocalDateTime bookingDate) {
+        Booking booking = pendingBooking();
+        booking.setStatus(status);
+        booking.setBookingDate(bookingDate);
         return booking;
     }
 
