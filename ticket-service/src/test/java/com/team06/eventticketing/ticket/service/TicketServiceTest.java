@@ -12,10 +12,12 @@ import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
+import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -222,6 +224,62 @@ class TicketServiceTest {
         Ticket result = ticketService.getLatestTicketForBooking(55L);
 
         assertEquals(latest, result);
+    }
+
+    @Test
+    void getUnusedUpcomingTicketsMapsRepositoryResults() {
+        UnusedTicketProjection projection = new UnusedTicketProjection() {
+            @Override
+            public Long getTicketId() {
+                return 7L;
+            }
+
+            @Override
+            public String getAttendeeName() {
+                return "Mariam";
+            }
+
+            @Override
+            public String getTicketCode() {
+                return "TIX-UPCOMING-1";
+            }
+
+            @Override
+            public Long getBookingId() {
+                return 55L;
+            }
+
+            @Override
+            public String getEventName() {
+                return "Jazz Night";
+            }
+
+            @Override
+            public LocalDateTime getEventDate() {
+                return LocalDateTime.of(2026, 4, 10, 20, 0);
+            }
+        };
+
+        when(ticketRepository.findUnusedTicketsForUpcomingEvents()).thenReturn(List.of(projection));
+
+        List<UnusedTicketDTO> result = ticketService.getUnusedUpcomingTickets();
+
+        assertEquals(1, result.size());
+        assertEquals(7L, result.get(0).getTicketId());
+        assertEquals("Mariam", result.get(0).getAttendeeName());
+        assertEquals("TIX-UPCOMING-1", result.get(0).getTicketCode());
+        assertEquals(55L, result.get(0).getBookingId());
+        assertEquals("Jazz Night", result.get(0).getEventName());
+        assertEquals(LocalDateTime.of(2026, 4, 10, 20, 0), result.get(0).getEventDate());
+    }
+
+    @Test
+    void getUnusedUpcomingTicketsReturnsEmptyListWhenRepositoryHasNoMatches() {
+        when(ticketRepository.findUnusedTicketsForUpcomingEvents()).thenReturn(List.of());
+
+        List<UnusedTicketDTO> result = ticketService.getUnusedUpcomingTickets();
+
+        assertEquals(List.of(), result);
     }
 
     @Test
