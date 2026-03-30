@@ -32,4 +32,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
 
     @Query(value = "SELECT EXISTS (SELECT 1 FROM users WHERE id = :userId AND role = 'ADMIN')", nativeQuery = true)
     boolean existsAdminUserById(@Param("userId") Long userId);
+
+    @Query(value = "SELECT id, event_id, status FROM bookings WHERE id = :bookingId", nativeQuery = true)
+    Object[] findBookingById(@Param("bookingId") Long bookingId);
 }

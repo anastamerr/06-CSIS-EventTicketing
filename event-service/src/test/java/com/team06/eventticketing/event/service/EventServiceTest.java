@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
@@ -185,6 +186,100 @@ class EventServiceTest {
         assertEquals(2, allStatuses.size());
         assertEquals(1, onlyUpcoming.size());
         assertEquals(1L, onlyUpcoming.get(0).getId());
+    }
+
+    @Test
+    void rateEventUpdatesRunningAverageAndCount() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setRating(4.0);
+        event.setTotalRatings(2);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L)).thenReturn(new Object[]{20L, 10L, "COMPLETED"});
+        when(eventRepository.save(event)).thenReturn(event);
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(5);
+
+        eventService.rateEvent(10L, request);
+
+        assertEquals(3, event.getTotalRatings());
+        assertEquals((13.0 / 3.0), event.getRating());
+        verify(eventRepository).save(event);
+    }
+
+    @Test
+    void rateEventRejectsRatingOutsideRange() {
+        Event event = new Event();
+        event.setId(10L);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L)).thenReturn(new Object[]{20L, 10L, "COMPLETED"});
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(6);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void rateEventRejectsBookingForDifferentEvent() {
+        Event event = new Event();
+        event.setId(10L);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L)).thenReturn(new Object[]{20L, 99L, "COMPLETED"});
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(4);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void rateEventRejectsNonCompletedBooking() {
+        Event event = new Event();
+        event.setId(10L);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(20L)).thenReturn(new Object[]{20L, 10L, "PENDING"});
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(20L);
+        request.setRating(4);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void rateEventThrowsNotFoundForMissingBooking() {
+        Event event = new Event();
+        event.setId(10L);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findBookingById(404L)).thenReturn(null);
+
+        RateEventRequest request = new RateEventRequest();
+        request.setBookingId(404L);
+        request.setRating(4);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.rateEvent(10L, request));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
     }
 
     private EventSession session(Long id, Event event, LocalDateTime startTime) {

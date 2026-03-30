@@ -1,5 +1,6 @@
 package com.team06.eventticketing.event.controller;
 
+import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventStatus;
@@ -42,6 +43,12 @@ public class EventController {
     @GetMapping("/{id}")
     public Event getEventById(@PathVariable Long id) {
         return eventService.getEventById(id);
+    }
+
+    @PostMapping("/{id}/rate")
+    @ResponseStatus(HttpStatus.OK)
+    public void rateEvent(@PathVariable Long id, @RequestBody RateEventRequest request) {
+        eventService.rateEvent(id, request);
     }
 
     @PutMapping("/{id}")
