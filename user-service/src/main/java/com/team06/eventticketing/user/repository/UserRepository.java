@@ -26,6 +26,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByPreferenceKeyValue(@Param("key") String key, @Param("value") String value);
 
     @Query(value = """
+            SELECT *
+            FROM users u
+            WHERE (:name IS NULL OR LOWER(u.name) LIKE '%' || LOWER(:name) || '%')
+              AND (:email IS NULL OR LOWER(u.email) LIKE '%' || LOWER(:email) || '%')
+              AND (:role IS NULL OR u.role = :role)
+            ORDER BY u.id ASC
+            """, nativeQuery = true)
+    List<User> searchByOptionalNameEmailRole(@Param("name") String name,
+                                             @Param("email") String email,
+                                             @Param("role") String role);
+
+    @Query(value = """
             SELECT
                 u.id AS user_id,
                 u.name AS name,

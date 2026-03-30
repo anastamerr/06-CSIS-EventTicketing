@@ -137,6 +137,31 @@ class UserBookingSummaryIntegrationTest {
                 .andExpect(jsonPath("$.averageBookingAmount").value(new BigDecimal("125.0000000000000000")));
     }
 
+    @Test
+    void searchUsersByFiltersWorks() throws Exception {
+        User userA = saveUser("Ahmed", "ahmed@example.com", "01000000005");
+        User userB = saveUser("Sara", "sara@example.com", "01000000006");
+        userB.setRole(UserRole.ADMIN);
+        userRepository.save(userB);
+        User userC = saveUser("Ahmed Ali", "ahmed.ali@example.com", "01000000007");
+
+        mockMvc.perform(get("/api/users/search").param("name", "Ahmed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+
+        mockMvc.perform(get("/api/users/search").param("role", "ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        mockMvc.perform(get("/api/users/search").param("name", "xyz"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
+        mockMvc.perform(get("/api/users/search").param("name", "ahmed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+    }
+
     private User saveUser(String name, String email, String phone) {
         User user = new User();
         user.setName(name);
