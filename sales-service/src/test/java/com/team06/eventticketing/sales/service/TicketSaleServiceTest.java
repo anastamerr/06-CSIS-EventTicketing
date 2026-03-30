@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
+import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
 import com.team06.eventticketing.sales.model.Promotion;
@@ -15,6 +16,7 @@ import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.model.TicketSaleMethod;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import java.time.LocalDateTime;
+import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +38,9 @@ class TicketSaleServiceTest {
     @Mock
     private TicketSaleRepository ticketSaleRepository;
 
+    @Mock
+    private BookingJdbcRepository bookingJdbcRepository;
+
     @Captor
     private ArgumentCaptor<TicketSale> ticketSaleCaptor;
 
@@ -43,7 +48,7 @@ class TicketSaleServiceTest {
 
     @BeforeEach
     void setUp() {
-        ticketSaleService = new TicketSaleService(ticketSaleRepository);
+        ticketSaleService = new TicketSaleService(ticketSaleRepository, bookingJdbcRepository);
     }
 
     @Test
@@ -177,6 +182,100 @@ class TicketSaleServiceTest {
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketSaleService.getTicketSaleDetails(404L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void processBookingSaleCompletesPendingSaleAndPopulatesJsonb() {
+        TicketSale ticketSale = new TicketSale();
+        ticketSale.setId(12L);
+        ticketSale.setBookingId(44L);
+        ticketSale.setUserId(91L);
+        ticketSale.setAmount(300.0);
+        ticketSale.setMethod(TicketSaleMethod.WALLET);
+        ticketSale.setStatus(TicketSaleStatus.PENDING);
+        ticketSale.setTransactionDetails(new LinkedHashMap<>(Map.of("bookingTotalAmount", 650.0)));
+
+        ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
+        request.setMethod(TicketSaleMethod.CREDIT_CARD);
+        request.setCardLastFour("4242");
+
+        when(bookingJdbcRepository.findByIdForUpdate(44L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "COMPLETED", 650.0)));
+        when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(false);
+        when(ticketSaleRepository.findByBookingIdForUpdate(44L)).thenReturn(List.of(ticketSale));
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TicketSaleResponse response = ticketSaleService.processBookingSale(44L, request);
+
+        TicketSale saved = ticketSaleCaptor.getValue();
+        assertEquals(TicketSaleStatus.COMPLETED, saved.getStatus());
+        assertEquals(TicketSaleMethod.CREDIT_CARD, saved.getMethod());
+        assertEquals(650.0, saved.getAmount());
+        assertEquals("CREDIT_CARD", saved.getTransactionDetails().get("paymentMethod"));
+        assertEquals("4242", saved.getTransactionDetails().get("cardLastFour"));
+        assertEquals(650.0, saved.getTransactionDetails().get("bookingTotalAmount"));
+        assertEquals(TicketSaleStatus.COMPLETED, response.getStatus());
+        assertEquals(TicketSaleMethod.CREDIT_CARD, response.getMethod());
+        assertEquals(650.0, response.getAmount());
+    }
+
+    @Test
+    void processBookingSaleRejectsMissingBooking() {
+        ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
+        request.setMethod(TicketSaleMethod.CREDIT_CARD);
+
+        when(bookingJdbcRepository.findByIdForUpdate(44L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.processBookingSale(44L, request));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void processBookingSaleRejectsNonCompletedBooking() {
+        ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
+        request.setMethod(TicketSaleMethod.CREDIT_CARD);
+
+        when(bookingJdbcRepository.findByIdForUpdate(44L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "PENDING", 650.0)));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.processBookingSale(44L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void processBookingSaleRejectsAlreadyPaidBooking() {
+        ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
+        request.setMethod(TicketSaleMethod.WALLET);
+
+        when(bookingJdbcRepository.findByIdForUpdate(44L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "COMPLETED", 650.0)));
+        when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(true);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.processBookingSale(44L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        assertEquals("already paid", exception.getReason());
+    }
+
+    @Test
+    void processBookingSaleRejectsBookingWithoutPendingSale() {
+        ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
+        request.setMethod(TicketSaleMethod.WALLET);
+
+        when(bookingJdbcRepository.findByIdForUpdate(44L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "COMPLETED", 650.0)));
+        when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(false);
+        when(ticketSaleRepository.findByBookingIdForUpdate(44L)).thenReturn(List.of());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.processBookingSale(44L, request));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
     }
