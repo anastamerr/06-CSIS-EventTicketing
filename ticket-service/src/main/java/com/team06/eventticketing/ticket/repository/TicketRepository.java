@@ -38,4 +38,34 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     @Query(value = "SELECT EXISTS (SELECT 1 FROM bookings WHERE id = :bookingId)", nativeQuery = true)
     boolean existsBookingById(@Param("bookingId") Long bookingId);
+
+    @Query(value = """
+            SELECT
+                t.id AS ticketId,
+                t.attendee_name AS attendeeName,
+                t.booking_id AS bookingId,
+                e.name AS eventName,
+                CAST(e.details ->> 'venueLat' AS double precision) AS eventLat,
+                CAST(e.details ->> 'venueLon' AS double precision) AS eventLon,
+                SQRT(
+                    POWER(CAST(e.details ->> 'venueLat' AS double precision) - :latitude, 2) +
+                    POWER(CAST(e.details ->> 'venueLon' AS double precision) - :longitude, 2)
+                ) * 111.0 AS distanceKm
+            FROM tickets t
+            JOIN bookings b ON b.id = t.booking_id
+            JOIN events e ON e.id = b.event_id
+            WHERE t.status = 'VALID'
+              AND jsonb_exists(e.details, 'venueLat')
+              AND jsonb_exists(e.details, 'venueLon')
+              AND SQRT(
+                    POWER(CAST(e.details ->> 'venueLat' AS double precision) - :latitude, 2) +
+                    POWER(CAST(e.details ->> 'venueLon' AS double precision) - :longitude, 2)
+                ) * 111.0 <= :radiusKm
+            ORDER BY distanceKm ASC, ticketId ASC
+            """, nativeQuery = true)
+    List<NearbyTicketProjection> findTicketsNearVenue(
+            @Param("latitude") double latitude,
+            @Param("longitude") double longitude,
+            @Param("radiusKm") double radiusKm
+    );
 }

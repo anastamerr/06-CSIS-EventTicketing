@@ -1,6 +1,7 @@
 package com.team06.eventticketing.ticket.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,6 +13,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -33,7 +36,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TicketControllerIntegrationTest.FixedClockConfiguration.class)
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class TicketControllerIntegrationTest {
 
     private static final Instant FIXED_INSTANT = Instant.parse("2026-03-29T12:00:00Z");
@@ -57,8 +60,26 @@ class TicketControllerIntegrationTest {
     @Autowired
     private TicketRepository ticketRepository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void setUp() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    id BIGINT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    venue VARCHAR(255) NOT NULL,
+                    details JSONB
+                )
+                """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS bookings (
+                    id BIGINT PRIMARY KEY,
+                    event_id BIGINT
+                )
+                """);
+        jdbcTemplate.execute("TRUNCATE TABLE tickets, bookings, events RESTART IDENTITY CASCADE");
         ticketRepository.deleteAll();
     }
 
@@ -171,6 +192,44 @@ class TicketControllerIntegrationTest {
         assertRepositoryCount(0);
     }
 
+    @Test
+    void nearbyReturnsTicketsWithinRadiusSortedByDistance() throws Exception {
+        insertEvent(100L, "Downtown Show", "Opera House", 30.0445, 31.2357);
+        insertEvent(200L, "Far Show", "Desert Arena", 29.9765, 31.1313);
+        insertBooking(10L, 100L);
+        insertBooking(20L, 200L);
+
+        ticketRepository.saveAllAndFlush(List.of(
+                nearbyTicket(10L, "TIX-NEAR-1", "Near One"),
+                nearbyTicket(10L, "TIX-NEAR-2", "Near Two"),
+                nearbyTicket(20L, "TIX-FAR-1", "Far One")
+        ));
+
+        mockMvc.perform(get("/api/tickets/nearby")
+                        .param("lat", "30.0444")
+                        .param("lon", "31.2357")
+                        .param("radiusKm", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].ticketId").isNumber())
+                .andExpect(jsonPath("$[0].attendeeName").value("Near One"))
+                .andExpect(jsonPath("$[0].bookingId").value(10))
+                .andExpect(jsonPath("$[0].eventName").value("Downtown Show"))
+                .andExpect(jsonPath("$[0].eventLat").value(30.0445))
+                .andExpect(jsonPath("$[0].eventLon").value(31.2357))
+                .andExpect(jsonPath("$[0].distanceKm").isNumber())
+                .andExpect(jsonPath("$[1].attendeeName").value("Near Two"));
+    }
+
+    @Test
+    void nearbyRejectsInvalidLatitude() throws Exception {
+        mockMvc.perform(get("/api/tickets/nearby")
+                        .param("lat", "95")
+                        .param("lon", "31.2357")
+                        .param("radiusKm", "5"))
+                .andExpect(status().isBadRequest());
+    }
+
     private void saveTickets(TicketStatus status, int count, LocalDateTime issuedAt, String codePrefix) {
         List<Ticket> tickets = new ArrayList<>();
         for (int index = 0; index < count; index++) {
@@ -192,6 +251,31 @@ class TicketControllerIntegrationTest {
         ticket.setIssuedAt(issuedAt);
         ticket.setMetadata(Map.of("ticketCode", ticketCode));
         return ticket;
+    }
+
+    private Ticket nearbyTicket(Long bookingId, String ticketCode, String attendeeName) {
+        Ticket ticket = new Ticket();
+        ticket.setBookingId(bookingId);
+        ticket.setAttendeeName(attendeeName);
+        ticket.setTicketCode(ticketCode);
+        ticket.setStatus(TicketStatus.VALID);
+        ticket.setIssuedAt(now());
+        ticket.setMetadata(new LinkedHashMap<>(Map.of("ticketCode", ticketCode)));
+        return ticket;
+    }
+
+    private void insertBooking(Long bookingId, Long eventId) {
+        jdbcTemplate.update("INSERT INTO bookings (id, event_id) VALUES (?, ?)", bookingId, eventId);
+    }
+
+    private void insertEvent(Long eventId, String name, String venue, double venueLat, double venueLon) {
+        jdbcTemplate.update(
+                "INSERT INTO events (id, name, venue, details) VALUES (?, ?, ?, CAST(? AS jsonb))",
+                eventId,
+                name,
+                venue,
+                String.format("{\"venueLat\": %.6f, \"venueLon\": %.6f}", venueLat, venueLon)
+        );
     }
 
     private void assertStatusCount(TicketStatus status, long expectedCount) {
