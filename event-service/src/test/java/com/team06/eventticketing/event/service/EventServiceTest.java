@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
+import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
@@ -290,6 +291,66 @@ class EventServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
         verify(eventRepository, never()).existsAdminUserById(3L);
+    }
+
+    @Test
+    void updateEventStatusCancelsEventWhenNoActiveBookingsExist() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setStatus(EventStatus.UPCOMING);
+
+        UpdateEventStatusRequest request = new UpdateEventStatusRequest();
+        request.setStatus(EventStatus.CANCELLED);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.existsActiveBookingsForEvent(10L)).thenReturn(false);
+
+        eventService.updateEventStatus(10L, request);
+
+        assertEquals(EventStatus.CANCELLED, event.getStatus());
+        verify(eventRepository).save(event);
+    }
+
+    @Test
+    void updateEventStatusRejectsCancellationWhenActiveBookingsExist() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setStatus(EventStatus.UPCOMING);
+
+        UpdateEventStatusRequest request = new UpdateEventStatusRequest();
+        request.setStatus(EventStatus.CANCELLED);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.existsActiveBookingsForEvent(10L)).thenReturn(true);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.updateEventStatus(10L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventRepository, never()).save(event);
+    }
+
+    @Test
+    void updateEventStatusRejectsMissingStatus() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.updateEventStatus(10L, new UpdateEventStatusRequest()));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventRepository, never()).findById(10L);
+    }
+
+    @Test
+    void updateEventStatusRejectsUnknownEvent() {
+        UpdateEventStatusRequest request = new UpdateEventStatusRequest();
+        request.setStatus(EventStatus.ONGOING);
+
+        when(eventRepository.findById(404L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.updateEventStatus(404L, request));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(eventRepository, never()).save(org.mockito.ArgumentMatchers.any(Event.class));
     }
 
     @Test
