@@ -2,9 +2,11 @@ package com.team06.eventticketing.sales.repository;
 
 import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -24,4 +26,14 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
             WHERE ts.id = :id
             """)
     Optional<TicketSale> findByIdWithSalePromotions(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT DISTINCT ts
+            FROM TicketSale ts
+            LEFT JOIN FETCH ts.salePromotions sp
+            LEFT JOIN FETCH sp.promotion
+            WHERE ts.id = :id
+            """)
+    Optional<TicketSale> findByIdWithSalePromotionsForUpdate(@Param("id") Long id);
 }
