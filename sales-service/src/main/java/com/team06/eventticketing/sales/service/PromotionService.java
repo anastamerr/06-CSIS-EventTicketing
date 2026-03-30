@@ -2,8 +2,11 @@ package com.team06.eventticketing.sales.service;
 
 import com.team06.eventticketing.sales.dto.PromotionRequest;
 import com.team06.eventticketing.sales.dto.PromotionResponse;
+import com.team06.eventticketing.sales.dto.PromotionUsageDTO;
 import com.team06.eventticketing.sales.model.Promotion;
+import com.team06.eventticketing.sales.model.PromotionDiscountType;
 import com.team06.eventticketing.sales.repository.PromotionRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -27,6 +30,14 @@ public class PromotionService {
     @Transactional(readOnly = true)
     public PromotionResponse getPromotionById(Long id) {
         return toResponse(findPromotion(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PromotionUsageDTO> getTopUsedPromotions(int limit) {
+        List<Object[]> results = promotionRepository.findTopUsedPromotions(limit);
+        return results.stream()
+                .map(this::mapToPromotionUsageDTO)
+                .toList();
     }
 
     @Transactional
@@ -76,5 +87,18 @@ public class PromotionService {
         response.setActive(promotion.getActive());
         response.setMetadata(promotion.getMetadata());
         return response;
+    }
+
+    private PromotionUsageDTO mapToPromotionUsageDTO(Object[] row) {
+        return PromotionUsageDTO.from(
+            (Long) row[0],                      // promotionId
+            (String) row[1],                    // code
+            (PromotionDiscountType) row[2],     // discountType
+            (Double) row[3],                    // discountValue
+            (Integer) row[4],                   // timesUsed (currentUses)
+            (Double) row[5],                    // totalDiscountGiven
+            (Boolean) row[6],                   // active
+            (LocalDateTime) row[7]              // expiryDate (for computing expired)
+        );
     }
 }
