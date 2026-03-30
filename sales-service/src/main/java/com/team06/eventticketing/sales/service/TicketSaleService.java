@@ -1,13 +1,19 @@
 package com.team06.eventticketing.sales.service;
 
+import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
 import com.team06.eventticketing.sales.model.SalePromotion;
 import com.team06.eventticketing.sales.model.TicketSale;
+import com.team06.eventticketing.sales.model.TicketSaleStatus;
+import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,9 +23,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class TicketSaleService {
 
     private final TicketSaleRepository ticketSaleRepository;
+    private final BookingJdbcRepository bookingJdbcRepository;
 
-    public TicketSaleService(TicketSaleRepository ticketSaleRepository) {
+    public TicketSaleService(TicketSaleRepository ticketSaleRepository, BookingJdbcRepository bookingJdbcRepository) {
         this.ticketSaleRepository = ticketSaleRepository;
+        this.bookingJdbcRepository = bookingJdbcRepository;
     }
 
     @Transactional(readOnly = true)
@@ -80,6 +88,34 @@ public class TicketSaleService {
         ticketSaleRepository.delete(findTicketSale(id));
     }
 
+    @Transactional
+    public TicketSaleResponse processBookingSale(Long bookingId, ProcessBookingSaleRequest request) {
+        if (request == null || request.getMethod() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Payment method is required");
+        }
+
+        BookingJdbcRepository.BookingPaymentRow booking = bookingJdbcRepository.findByIdForUpdate(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+
+        if (!"COMPLETED".equals(booking.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed before payment");
+        }
+
+        if (ticketSaleRepository.existsByBookingIdAndStatus(bookingId, TicketSaleStatus.COMPLETED)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "already paid");
+        }
+
+        TicketSale ticketSale = findPendingTicketSaleForBooking(bookingId);
+        ticketSale.setStatus(TicketSaleStatus.COMPLETED);
+        ticketSale.setMethod(request.getMethod());
+        if (booking.totalAmount() != null) {
+            ticketSale.setAmount(booking.totalAmount());
+        }
+        ticketSale.setTransactionDetails(buildProcessedTransactionDetails(ticketSale, request));
+
+        return toResponse(ticketSaleRepository.save(ticketSale));
+    }
+
     private TicketSale findTicketSale(Long id) {
         return ticketSaleRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
@@ -92,6 +128,22 @@ public class TicketSaleService {
         ticketSale.setMethod(request.getMethod());
         ticketSale.setStatus(request.getStatus());
         ticketSale.setTransactionDetails(request.getTransactionDetails());
+    }
+
+    private TicketSale findPendingTicketSaleForBooking(Long bookingId) {
+        List<TicketSale> ticketSales = ticketSaleRepository.findByBookingIdForUpdate(bookingId);
+        if (ticketSales.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found for booking");
+        }
+        if (ticketSales.size() > 1) {
+            throw new IncorrectResultSizeDataAccessException(1, ticketSales.size());
+        }
+
+        TicketSale ticketSale = ticketSales.get(0);
+        if (ticketSale.getStatus() != TicketSaleStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket sale must be pending for payment");
+        }
+        return ticketSale;
     }
 
     private TicketSaleResponse toResponse(TicketSale ticketSale) {
@@ -118,5 +170,20 @@ public class TicketSaleService {
 
     private Map<String, Object> copyTransactionDetails(Map<String, Object> transactionDetails) {
         return transactionDetails == null ? new java.util.LinkedHashMap<>() : new java.util.LinkedHashMap<>(transactionDetails);
+    }
+
+    private Map<String, Object> buildProcessedTransactionDetails(
+            TicketSale ticketSale,
+            ProcessBookingSaleRequest request
+    ) {
+        Map<String, Object> transactionDetails = new LinkedHashMap<>(copyTransactionDetails(ticketSale.getTransactionDetails()));
+        transactionDetails.put("paymentMethod", request.getMethod().name());
+        transactionDetails.put("paidAt", LocalDateTime.now().toString());
+
+        if (request.getCardLastFour() != null && !request.getCardLastFour().isBlank()) {
+            transactionDetails.put("cardLastFour", request.getCardLastFour().trim());
+        }
+
+        return transactionDetails;
     }
 }
