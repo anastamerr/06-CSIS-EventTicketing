@@ -3,11 +3,13 @@ package com.team06.eventticketing.user.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
@@ -16,6 +18,7 @@ import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -98,20 +101,20 @@ class UserServiceTest {
         user.setPhone("+201011111111");
         user.setPreferences(Map.of("language", "en"));
 
-        FavoriteVenue v1 = venue(11L, user, true);
-        v1.setLabel("Go-To");
-        v1.setVenueName("Cairo Opera");
-        v1.setLocation("Zamalek");
-        FavoriteVenue v2 = venue(12L, user, false);
-        v2.setLabel("Weekend");
-        v2.setVenueName("Cairo Stadium");
-        v2.setLocation("Nasr City");
-        FavoriteVenue v3 = venue(13L, user, false);
-        v3.setLabel("Home");
-        v3.setVenueName("CFC Arena");
-        v3.setLocation("New Cairo");
+        FavoriteVenue firstVenue = venue(11L, user, true);
+        firstVenue.setLabel("Go-To");
+        firstVenue.setVenueName("Cairo Opera");
+        firstVenue.setLocation("Zamalek");
+        FavoriteVenue secondVenue = venue(12L, user, false);
+        secondVenue.setLabel("Weekend");
+        secondVenue.setVenueName("Cairo Stadium");
+        secondVenue.setLocation("Nasr City");
+        FavoriteVenue thirdVenue = venue(13L, user, false);
+        thirdVenue.setLabel("Home");
+        thirdVenue.setVenueName("CFC Arena");
+        thirdVenue.setLocation("New Cairo");
 
-        user.setFavoriteVenues(new ArrayList<>(List.of(v1, v2, v3)));
+        user.setFavoriteVenues(new ArrayList<>(List.of(firstVenue, secondVenue, thirdVenue)));
 
         when(userRepository.findByIdWithFavoriteVenues(1L)).thenReturn(Optional.of(user));
 
@@ -122,8 +125,8 @@ class UserServiceTest {
         assertEquals("ahmed@mail.com", dto.getEmail());
         assertEquals(3, dto.getTotalFavoriteVenues());
         assertEquals(3, dto.getFavoriteVenues().size());
-        assertEquals("Cairo Opera", dto.getFavoriteVenues().get(0).getVenueName());
-        assertEquals(Boolean.TRUE, dto.getFavoriteVenues().get(0).getIsDefault());
+        assertEquals("Cairo Opera", dto.getFavoriteVenues().getFirst().getVenueName());
+        assertEquals(Boolean.TRUE, dto.getFavoriteVenues().getFirst().getIsDefault());
     }
 
     @Test
@@ -167,6 +170,46 @@ class UserServiceTest {
         List<User> actualUsers = userService.filterByPreference("favoriteCategory", "CONCERT");
 
         assertIterableEquals(expectedUsers, actualUsers);
+    }
+
+    @Test
+    void getTopAttendeesBySpendingRejectsInvalidDateRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getTopAttendeesBySpending(LocalDate.of(2026, 3, 31),
+                        LocalDate.of(2026, 3, 1), 5));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(userRepository, never()).findTopAttendeesBySpending(any(), any(), any());
+    }
+
+    @Test
+    void getTopAttendeesBySpendingRejectsNonPositiveLimit() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getTopAttendeesBySpending(LocalDate.of(2026, 3, 1),
+                        LocalDate.of(2026, 3, 31), 0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(userRepository, never()).findTopAttendeesBySpending(any(), any(), any());
+    }
+
+    @Test
+    void getTopAttendeesBySpendingMapsNativeRowsIntoDtoValues() {
+        when(userRepository.findTopAttendeesBySpending(any(), any(), any())).thenReturn(List.of(
+                new Object[]{BigInteger.valueOf(7L), "Top User", BigDecimal.valueOf(5000), BigInteger.valueOf(3L)},
+                new Object[]{BigInteger.valueOf(8L), "Fallback User", null, null}
+        ));
+
+        List<TopAttendeeDTO> result = userService.getTopAttendeesBySpending(LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31), 2);
+
+        assertEquals(2, result.size());
+        assertEquals(7L, result.getFirst().getUserId());
+        assertEquals("Top User", result.getFirst().getName());
+        assertEquals(BigDecimal.valueOf(5000), result.getFirst().getTotalSpent());
+        assertEquals(3L, result.getFirst().getBookingCount());
+        assertEquals(8L, result.get(1).getUserId());
+        assertEquals(BigDecimal.ZERO, result.get(1).getTotalSpent());
+        assertEquals(0L, result.get(1).getBookingCount());
     }
 
     @Test
@@ -237,6 +280,36 @@ class UserServiceTest {
     }
 
     @Test
+    void getUserBookingSummaryUnwrapsNestedNativeRows() {
+        User user = new User();
+        user.setId(11L);
+        user.setName("Rana");
+
+        when(userRepository.findById(11L)).thenReturn(Optional.of(user));
+        when(userRepository.findBookingSummaryByUserId(11L)).thenReturn(List.<Object[]>of(new Object[]{
+                new Object[]{
+                        BigInteger.valueOf(11L),
+                        "Rana",
+                        BigInteger.valueOf(4L),
+                        BigInteger.valueOf(2L),
+                        BigInteger.valueOf(1L),
+                        new BigDecimal("900.00"),
+                        new BigDecimal("450.00")
+                }
+        }));
+
+        UserBookingSummaryDTO summary = userService.getUserBookingSummary(11L);
+
+        assertEquals(11L, summary.getUserId());
+        assertEquals("Rana", summary.getName());
+        assertEquals(4L, summary.getTotalBookings());
+        assertEquals(2L, summary.getCompletedBookings());
+        assertEquals(1L, summary.getCancelledBookings());
+        assertEquals(new BigDecimal("900.00"), summary.getTotalSpent());
+        assertEquals(new BigDecimal("450.00"), summary.getAverageBookingAmount());
+    }
+
+    @Test
     void setDefaultVenueUpdatesOnlyTargetAndReturnsLoadedUser() {
         User user = new User();
         user.setId(7L);
@@ -293,6 +366,9 @@ class UserServiceTest {
         venue.setId(id);
         venue.setUser(user);
         venue.setIsDefault(isDefault);
+        venue.setLabel("Label " + id);
+        venue.setVenueName("Venue " + id);
+        venue.setLocation("Location " + id);
         venue.setMetadata(Map.of());
         return venue;
     }

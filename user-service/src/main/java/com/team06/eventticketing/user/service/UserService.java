@@ -1,5 +1,6 @@
 package com.team06.eventticketing.user.service;
 
+import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
@@ -8,9 +9,12 @@ import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,14 +31,18 @@ public class UserService {
         this.favoriteVenueRepository = favoriteVenueRepository;
     }
 
-    public List<User> getAllUsers() { return userRepository.findAll(); }
+    public List<User> getAllUsers() {
+        return userRepository.findAll();
+    }
 
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
-    public User createUser(User user) { return userRepository.save(user); }
+    public User createUser(User user) {
+        return userRepository.save(user);
+    }
 
     public User updateUser(Long id, User user) {
         User existing = getUserById(id);
@@ -68,12 +76,21 @@ public class UserService {
 
         List<UserProfileDTO.VenueDTO> venueDTOs = user.getFavoriteVenues().stream()
                 .map(v -> new UserProfileDTO.VenueDTO(
-                        v.getLabel(), v.getVenueName(), v.getLocation(),
-                        v.getCapacity(), v.getIsDefault(), v.getMetadata()))
+                        v.getLabel(),
+                        v.getVenueName(),
+                        v.getLocation(),
+                        v.getCapacity(),
+                        v.getIsDefault(),
+                        v.getMetadata()))
                 .collect(Collectors.toList());
 
-        return new UserProfileDTO(user.getId(), user.getName(), user.getEmail(),
-                user.getPhone(), user.getPreferences(), venueDTOs);
+        return new UserProfileDTO(
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getPreferences(),
+                venueDTOs);
     }
 
     @Transactional(readOnly = true)
@@ -95,6 +112,24 @@ public class UserService {
         return userRepository.findByPreferenceKeyValue(key, value);
     }
 
+    @Transactional(readOnly = true)
+    public List<TopAttendeeDTO> getTopAttendeesBySpending(LocalDate startDate, LocalDate endDate, int limit) {
+        if (limit <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be greater than zero");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must not be after endDate");
+        }
+
+        LocalDateTime startInclusive = startDate.atStartOfDay();
+        LocalDateTime endExclusive = endDate.plusDays(1).atStartOfDay();
+
+        return userRepository.findTopAttendeesBySpending(startInclusive, endExclusive, PageRequest.of(0, limit))
+                .stream()
+                .map(this::mapTopAttendeeRow)
+                .toList();
+    }
+
     @Transactional
     public User setDefaultVenue(Long userId, Long venueId) {
         getUserById(userId);
@@ -112,6 +147,15 @@ public class UserService {
 
         return userRepository.findByIdWithFavoriteVenues(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+    }
+
+    private TopAttendeeDTO mapTopAttendeeRow(Object[] row) {
+        row = unwrapRow(row);
+        return new TopAttendeeDTO(
+                toLong(row[0]),
+                row[1] == null ? null : row[1].toString(),
+                toBigDecimal(row[2]),
+                toLong(row[3]));
     }
 
     private UserBookingSummaryDTO mapUserBookingSummaryRow(User user, Object[] row) {
@@ -177,7 +221,7 @@ public class UserService {
             return new BigDecimal(bigInteger);
         }
         if (value instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue());
+            return new BigDecimal(number.toString());
         }
         return new BigDecimal(value.toString());
     }

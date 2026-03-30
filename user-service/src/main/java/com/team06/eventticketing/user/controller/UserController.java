@@ -1,16 +1,31 @@
 package com.team06.eventticketing.user.controller;
 
+import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.service.UserService;
+import jakarta.validation.constraints.Min;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/users")
+@Validated
 public class UserController {
 
     private final UserService userService;
@@ -21,13 +36,27 @@ public class UserController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public User createUser(@RequestBody User user) { return userService.createUser(user); }
+    public User createUser(@RequestBody User user) {
+        return userService.createUser(user);
+    }
 
     @GetMapping
-    public List<User> getAllUsers() { return userService.getAllUsers(); }
+    public List<User> getAllUsers() {
+        return userService.getAllUsers();
+    }
+
+    @GetMapping("/reports/top-attendees")
+    public List<TopAttendeeDTO> getTopAttendeesBySpending(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam @Min(1) int limit) {
+        return userService.getTopAttendeesBySpending(startDate, endDate, limit);
+    }
 
     @GetMapping("/{id}")
-    public User getUserById(@PathVariable Long id) { return userService.getUserById(id); }
+    public User getUserById(@PathVariable Long id) {
+        return userService.getUserById(id);
+    }
 
     @GetMapping("/{id}/profile")
     public UserProfileDTO getUserProfile(@PathVariable Long id) {
@@ -50,11 +79,15 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    public User updateUser(@PathVariable Long id, @RequestBody User user) { return userService.updateUser(id, user); }
+    public User updateUser(@PathVariable Long id, @RequestBody User user) {
+        return userService.updateUser(id, user);
+    }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteUser(@PathVariable Long id) { userService.deleteUser(id); }
+    public void deleteUser(@PathVariable Long id) {
+        userService.deleteUser(id);
+    }
 
     @GetMapping("/preferences/search")
     public List<User> filterByPreference(@RequestParam String key, @RequestParam String value) {
