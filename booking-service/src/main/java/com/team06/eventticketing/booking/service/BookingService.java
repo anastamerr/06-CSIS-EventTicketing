@@ -7,6 +7,10 @@ import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -185,4 +189,40 @@ public class BookingService {
     private double safeUnitPrice(BookingItem item) {
         return item.getUnitPrice() == null ? 0.0 : item.getUnitPrice();
     }
+
+    public List<Booking> searchBookings(BookingStatus status, LocalDate startDate, LocalDate endDate) {
+        LocalDateTime startDateTime = startDate != null ? startDate.atStartOfDay() : null;
+        LocalDateTime endDateTime = endDate != null ? endDate.atTime(LocalTime.MAX) : null;
+        if (status != null && startDateTime != null && endDateTime != null) {
+            return bookingRepository.findByStatusAndBookingDateBetweenOrderByBookingDateDesc(
+                    status, startDateTime, endDateTime
+            );
+        }
+        if (status == null && startDateTime != null && endDateTime != null) {
+            return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(
+                    startDateTime, endDateTime
+            );
+        }
+        if (status != null && startDateTime != null) {
+            return bookingRepository.findByStatusAndBookingDateGreaterThanEqualOrderByBookingDateDesc(
+                    status, startDateTime
+            );
+        }
+        if (status != null && endDateTime != null) {
+            return bookingRepository.findByStatusAndBookingDateLessThanEqualOrderByBookingDateDesc(
+                    status, endDateTime
+            );
+        }
+        if (status == null && startDateTime != null) {
+            return bookingRepository.findByBookingDateGreaterThanEqualOrderByBookingDateDesc(startDateTime);
+        }
+        if (status == null && endDateTime != null) {
+            return bookingRepository.findByBookingDateLessThanEqualOrderByBookingDateDesc(endDateTime);
+        }
+        if (status != null) {
+            return bookingRepository.findByStatusOrderByBookingDateDesc(status);
+        }
+        return bookingRepository.findAllByOrderByBookingDateDesc();
+    }
+
 }
