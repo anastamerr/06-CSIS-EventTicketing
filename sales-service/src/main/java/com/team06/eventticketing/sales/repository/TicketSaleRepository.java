@@ -14,9 +14,20 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
 
     List<TicketSale> findByBookingId(Long bookingId);
 
+    boolean existsByBookingIdAndStatus(Long bookingId, TicketSaleStatus status);
+
     List<TicketSale> findByUserId(Long userId);
 
     List<TicketSale> findByStatus(TicketSaleStatus status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT ts
+            FROM TicketSale ts
+            WHERE ts.bookingId = :bookingId
+            ORDER BY ts.id ASC
+            """)
+    List<TicketSale> findByBookingIdForUpdate(@Param("bookingId") Long bookingId);
 
     @Query("""
             SELECT DISTINCT ts
