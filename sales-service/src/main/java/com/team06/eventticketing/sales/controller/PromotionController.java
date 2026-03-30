@@ -2,6 +2,7 @@ package com.team06.eventticketing.sales.controller;
 
 import com.team06.eventticketing.sales.dto.PromotionRequest;
 import com.team06.eventticketing.sales.dto.PromotionResponse;
+import com.team06.eventticketing.sales.dto.PromotionUsageDTO;
 import com.team06.eventticketing.sales.service.PromotionService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,6 +35,11 @@ public class PromotionController {
     @GetMapping("/{id}")
     public PromotionResponse getPromotionById(@PathVariable Long id) {
         return promotionService.getPromotionById(id);
+    }
+
+    @GetMapping("/top-used")
+    public List<PromotionUsageDTO> getTopUsedPromotions(@RequestParam int limit) {
+        return promotionService.getTopUsedPromotions(limit);
     }
 
     @PostMapping

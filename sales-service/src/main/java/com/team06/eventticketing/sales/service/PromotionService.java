@@ -2,9 +2,12 @@ package com.team06.eventticketing.sales.service;
 
 import com.team06.eventticketing.sales.dto.PromotionRequest;
 import com.team06.eventticketing.sales.dto.PromotionResponse;
+import com.team06.eventticketing.sales.dto.PromotionUsageDTO;
 import com.team06.eventticketing.sales.model.Promotion;
 import com.team06.eventticketing.sales.repository.PromotionRepository;
+import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +30,17 @@ public class PromotionService {
     @Transactional(readOnly = true)
     public PromotionResponse getPromotionById(Long id) {
         return toResponse(findPromotion(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PromotionUsageDTO> getTopUsedPromotions(int limit) {
+        if (limit <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be greater than zero");
+        }
+
+        return promotionRepository.findTopUsedPromotions(PageRequest.of(0, limit)).stream()
+                .map(this::toUsageDto)
+                .toList();
     }
 
     @Transactional
@@ -76,5 +90,21 @@ public class PromotionService {
         response.setActive(promotion.getActive());
         response.setMetadata(promotion.getMetadata());
         return response;
+    }
+
+    private PromotionUsageDTO toUsageDto(Object[] row) {
+        LocalDateTime expiryDate = (LocalDateTime) row[7];
+        boolean expired = expiryDate != null && expiryDate.isBefore(LocalDateTime.now());
+
+        return new PromotionUsageDTO(
+                (Long) row[0],
+                (String) row[1],
+                (com.team06.eventticketing.sales.model.PromotionDiscountType) row[2],
+                ((Number) row[3]).doubleValue(),
+                ((Number) row[4]).intValue(),
+                ((Number) row[5]).doubleValue(),
+                (Boolean) row[6],
+                expired
+        );
     }
 }

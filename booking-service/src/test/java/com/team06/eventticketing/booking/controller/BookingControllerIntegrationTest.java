@@ -1,16 +1,20 @@
 package com.team06.eventticketing.booking.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,8 +59,25 @@ class BookingControllerIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @BeforeEach
     void setUpSchema() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS event_sessions (
+                    id BIGSERIAL PRIMARY KEY,
+                    event_id BIGINT NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    speaker VARCHAR(255),
+                    start_time TIMESTAMP NOT NULL,
+                    end_time TIMESTAMP NOT NULL,
+                    capacity INTEGER NOT NULL,
+                    verified BOOLEAN NOT NULL DEFAULT FALSE,
+                    metadata JSONB,
+                    created_at TIMESTAMP NOT NULL
+                )
+                """);
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS ticket_sales (
                     id BIGSERIAL PRIMARY KEY,
@@ -69,7 +90,31 @@ class BookingControllerIntegrationTest {
                     created_at TIMESTAMP NOT NULL
                 )
                 """);
-        jdbcTemplate.execute("TRUNCATE TABLE ticket_sales, booking_items, bookings RESTART IDENTITY CASCADE");
+        jdbcTemplate.execute("TRUNCATE TABLE event_sessions, ticket_sales, booking_items, bookings RESTART IDENTITY CASCADE");
+    }
+
+    @Test
+    void estimateBookingCostReturnsExpectedDtoAndDoesNotCreateBooking() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO event_sessions (event_id, title, start_time, end_time, capacity, created_at) VALUES (?, ?, NOW(), NOW(), ?, NOW())",
+                77L, "Session 1", 400);
+        jdbcTemplate.update(
+                "INSERT INTO event_sessions (event_id, title, start_time, end_time, capacity, created_at) VALUES (?, ?, NOW(), NOW(), ?, NOW())",
+                77L, "Session 2", 600);
+
+        mockMvc.perform(post("/api/bookings/estimate")
+                        .contentType("application/json")
+                        .content("""
+                                {"eventId":77,"ticketCount":2,"ticketTier":"VIP"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ticketCost").value(250.0))
+                .andExpect(jsonPath("$.serviceFee").value(37.5))
+                .andExpect(jsonPath("$.demandMultiplier").value(1.0))
+                .andExpect(jsonPath("$.estimatedTotal").value(287.5));
+
+        Long bookingCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM bookings", Long.class);
+        assertEquals(0L, bookingCount);
     }
 
     @Test
@@ -116,6 +161,91 @@ class BookingControllerIntegrationTest {
         assertEquals(0L, saleCount);
     }
 
+    @Test
+    void addItemsToBookingCreatesReservedItemsWithSequentialEventOrder() throws Exception {
+        Booking booking = pendingBooking();
+        booking.getBookingItems().clear();
+        booking = bookingRepository.saveAndFlush(booking);
+
+        List<BookingItemRequest> request = List.of(
+                bookingItemRequest(101L, "Session 101", 2, 50.0),
+                bookingItemRequest(102L, "Session 102", 1, 75.0)
+        );
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingItems.length()").value(2))
+                .andExpect(jsonPath("$.bookingItems[0].eventOrder").value(1))
+                .andExpect(jsonPath("$.bookingItems[0].status").value("RESERVED"))
+                .andExpect(jsonPath("$.bookingItems[1].eventOrder").value(2))
+                .andExpect(jsonPath("$.bookingItems[1].status").value("RESERVED"));
+    }
+
+    @Test
+    void addItemsToBookingContinuesExistingEventOrder() throws Exception {
+        Booking booking = pendingBooking();
+        booking = bookingRepository.saveAndFlush(booking);
+
+        List<BookingItemRequest> request = List.of(
+                bookingItemRequest(104L, "Session 104", 1, 80.0)
+        );
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingItems.length()").value(2))
+                .andExpect(jsonPath("$.bookingItems[1].eventOrder").value(2));
+    }
+
+    @Test
+    void addItemsToCompletedBookingReturnsBadRequest() throws Exception {
+        Booking booking = checkedInBooking();
+        booking.setStatus(BookingStatus.COMPLETED);
+        booking = bookingRepository.saveAndFlush(booking);
+
+        List<BookingItemRequest> request = List.of(
+                bookingItemRequest(101L, "Session 101", 1, 50.0)
+        );
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addItemsToBookingRejectsMissingSessionTitle() throws Exception {
+        Booking booking = pendingBooking();
+        booking.getBookingItems().clear();
+        booking = bookingRepository.saveAndFlush(booking);
+
+        BookingItemRequest invalidItem = new BookingItemRequest();
+        invalidItem.setSessionId(101L);
+        invalidItem.setQuantity(1);
+        invalidItem.setUnitPrice(50.0);
+        List<BookingItemRequest> request = List.of(invalidItem);
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", booking.getId())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void addItemsToMissingBookingReturnsNotFound() throws Exception {
+        List<BookingItemRequest> request = List.of(
+                bookingItemRequest(101L, "Session 101", 1, 50.0)
+        );
+
+        mockMvc.perform(post("/api/bookings/{bookingId}/items", 99999L)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound());
+    }
+
     private Booking checkedInBooking() {
         Booking booking = new Booking();
         booking.setUserId(44L);
@@ -149,5 +279,14 @@ class BookingControllerIntegrationTest {
         item.setStatus(status);
         item.setMetadata(new LinkedHashMap<>());
         return item;
+    }
+
+    private BookingItemRequest bookingItemRequest(Long sessionId, String sessionTitle, Integer quantity, Double unitPrice) {
+        BookingItemRequest request = new BookingItemRequest();
+        request.setSessionId(sessionId);
+        request.setSessionTitle(sessionTitle);
+        request.setQuantity(quantity);
+        request.setUnitPrice(unitPrice);
+        return request;
     }
 }

@@ -35,7 +35,7 @@ public class BookingItemController {
         return bookingItemService.getBookingItem(bookingId, itemId);
     }
 
-    @PostMapping
+    @PostMapping("/single")
     @ResponseStatus(HttpStatus.CREATED)
     public BookingItem createBookingItem(@PathVariable Long bookingId, @RequestBody BookingItemRequest request) {
         return bookingItemService.createBookingItem(bookingId, request);

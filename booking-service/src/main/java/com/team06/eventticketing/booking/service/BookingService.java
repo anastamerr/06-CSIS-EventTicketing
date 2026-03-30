@@ -1,5 +1,8 @@
 package com.team06.eventticketing.booking.service;
 
+import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
+import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
@@ -33,6 +36,24 @@ public class BookingService {
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAllWithBookingItems();
+    }
+
+    @Transactional(readOnly = true)
+    public BookingCostEstimateDTO estimateBookingCost(BookingEstimateRequest request) {
+        validateEstimateRequest(request);
+        Double averageSessionCapacity = bookingRepository.findAverageSessionCapacityByEventId(request.eventId());
+        if (averageSessionCapacity == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event sessions not found");
+        }
+
+        double basePrice = averageSessionCapacity / 10.0;
+        double tierMultiplier = "VIP".equalsIgnoreCase(request.ticketTier()) ? 2.5 : 1.0;
+        double ticketCost = basePrice * tierMultiplier * request.ticketCount();
+        double serviceFee = ticketCost * 0.15;
+        double demandMultiplier = resolveDemandMultiplier(bookingRepository.countActiveBookingsByEventId(request.eventId()));
+        double estimatedTotal = (ticketCost + serviceFee) * demandMultiplier;
+
+        return new BookingCostEstimateDTO(ticketCost, serviceFee, demandMultiplier, estimatedTotal);
     }
 
     public Booking getBookingById(Long id) {
@@ -74,6 +95,36 @@ public class BookingService {
                 resolvePaymentMethod(booking),
                 buildTransactionDetails(booking, totalAmount)
         );
+
+        return bookingRepository.save(booking);
+    }
+
+    @Transactional
+    public Booking addItemsToBooking(Long bookingId, List<BookingItemRequest> items) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+        validateAppendableBooking(booking);
+        validateBookingItemsRequest(items);
+
+        int nextEventOrder = booking.getBookingItems().stream()
+                .map(BookingItem::getEventOrder)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(0);
+
+        for (BookingItemRequest itemRequest : items) {
+            nextEventOrder++;
+            BookingItem bookingItem = new BookingItem();
+            bookingItem.setEventOrder(nextEventOrder);
+            bookingItem.setSessionId(itemRequest.getSessionId());
+            bookingItem.setSessionTitle(itemRequest.getSessionTitle().trim());
+            bookingItem.setQuantity(itemRequest.getQuantity());
+            bookingItem.setUnitPrice(itemRequest.getUnitPrice());
+            bookingItem.setStatus(BookingItemStatus.RESERVED);
+            bookingItem.setMetadata(itemRequest.getMetadata() == null
+                    ? new LinkedHashMap<>()
+                    : new LinkedHashMap<>(itemRequest.getMetadata()));
+            booking.addBookingItem(bookingItem);
+        }
 
         return bookingRepository.save(booking);
     }
@@ -158,6 +209,60 @@ public class BookingService {
         return totalAmount;
     }
 
+    private void validateEstimateRequest(BookingEstimateRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
+        if (request.eventId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "eventId is required");
+        }
+        if (request.ticketCount() == null || request.ticketCount() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ticketCount must be at least 1");
+        }
+        if (request.ticketTier() == null || request.ticketTier().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ticketTier is required");
+        }
+        if (!"VIP".equalsIgnoreCase(request.ticketTier()) && !"standard".equalsIgnoreCase(request.ticketTier())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ticketTier must be either VIP or standard");
+        }
+    }
+
+    private void validateAppendableBooking(Booking booking) {
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot add items to a booking with status " + booking.getStatus()
+            );
+        }
+    }
+
+    private void validateBookingItemsRequest(List<BookingItemRequest> items) {
+        if (items == null || items.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Items list is required");
+        }
+
+        for (BookingItemRequest item : items) {
+            if (item.getSessionId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sessionId is required for all items");
+            }
+            if (item.getSessionTitle() == null || item.getSessionTitle().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sessionTitle is required for all items");
+            }
+            if (item.getQuantity() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "quantity is required for all items");
+            }
+            if (item.getQuantity() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "quantity must be greater than zero");
+            }
+            if (item.getUnitPrice() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unitPrice is required for all items");
+            }
+            if (item.getUnitPrice() <= 0.0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unitPrice must be greater than zero");
+            }
+        }
+    }
+
     private Map<String, Object> buildTransactionDetails(Booking booking, double totalAmount) {
         Map<String, Object> transactionDetails = new LinkedHashMap<>();
         transactionDetails.put("bookingTotalAmount", totalAmount);
@@ -184,5 +289,15 @@ public class BookingService {
 
     private double safeUnitPrice(BookingItem item) {
         return item.getUnitPrice() == null ? 0.0 : item.getUnitPrice();
+    }
+
+    private double resolveDemandMultiplier(long activeBookingsCount) {
+        if (activeBookingsCount <= 50) {
+            return 1.0;
+        }
+        if (activeBookingsCount <= 200) {
+            return 1.25;
+        }
+        return 1.5;
     }
 }

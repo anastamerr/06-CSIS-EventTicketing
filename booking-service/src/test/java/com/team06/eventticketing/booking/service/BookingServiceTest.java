@@ -10,6 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
+import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
@@ -68,6 +71,48 @@ class BookingServiceTest {
 
         assertEquals(BookingStatus.PENDING, result.getStatus());
         verify(bookingRepository).save(org.mockito.ArgumentMatchers.any(Booking.class));
+    }
+
+    @Test
+    void estimateBookingCostCalculatesExpectedValuesForVipTier() {
+        BookingEstimateRequest request = new BookingEstimateRequest(77L, 2, "VIP");
+
+        when(bookingRepository.findAverageSessionCapacityByEventId(77L)).thenReturn(500.0);
+        when(bookingRepository.countActiveBookingsByEventId(77L)).thenReturn(0L);
+
+        BookingCostEstimateDTO result = bookingService.estimateBookingCost(request);
+
+        assertEquals(250.0, result.ticketCost());
+        assertEquals(37.5, result.serviceFee());
+        assertEquals(1.0, result.demandMultiplier());
+        assertEquals(287.5, result.estimatedTotal());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void estimateBookingCostUsesDemandMultiplierTiers() {
+        BookingEstimateRequest request = new BookingEstimateRequest(77L, 1, "standard");
+
+        when(bookingRepository.findAverageSessionCapacityByEventId(77L)).thenReturn(1000.0);
+        when(bookingRepository.countActiveBookingsByEventId(77L)).thenReturn(60L);
+
+        BookingCostEstimateDTO result = bookingService.estimateBookingCost(request);
+
+        assertEquals(100.0, result.ticketCost());
+        assertEquals(15.0, result.serviceFee());
+        assertEquals(1.25, result.demandMultiplier());
+        assertEquals(143.75, result.estimatedTotal());
+    }
+
+    @Test
+    void estimateBookingCostRejectsMissingSessions() {
+        BookingEstimateRequest request = new BookingEstimateRequest(77L, 1, "standard");
+        when(bookingRepository.findAverageSessionCapacityByEventId(77L)).thenReturn(null);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.estimateBookingCost(request));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
     }
 
     @Test
@@ -179,6 +224,78 @@ class BookingServiceTest {
         bookingService.getAllBookings();
 
         verify(bookingRepository).findAllWithBookingItems();
+    }
+
+    @Test
+    void addItemsToBookingAssignsSequentialEventOrderAndReservedStatus() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.addBookingItem(bookingItem(1, 1, 100.0, BookingItemStatus.RESERVED));
+
+        BookingItemRequest first = new BookingItemRequest();
+        first.setSessionId(11L);
+        first.setSessionTitle("Session 11");
+        first.setQuantity(2);
+        first.setUnitPrice(75.0);
+
+        BookingItemRequest second = new BookingItemRequest();
+        second.setSessionId(12L);
+        second.setSessionTitle("Session 12");
+        second.setQuantity(1);
+        second.setUnitPrice(50.0);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.addItemsToBooking(9L, List.of(first, second));
+
+        assertEquals(3, result.getBookingItems().size());
+        assertEquals(2, result.getBookingItems().get(1).getEventOrder());
+        assertEquals(3, result.getBookingItems().get(2).getEventOrder());
+        assertEquals(BookingItemStatus.RESERVED, result.getBookingItems().get(1).getStatus());
+        assertEquals(BookingItemStatus.RESERVED, result.getBookingItems().get(2).getStatus());
+    }
+
+    @Test
+    void addItemsToBookingRejectsCompletedBooking() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.COMPLETED);
+
+        BookingItemRequest request = new BookingItemRequest();
+        request.setSessionId(11L);
+        request.setSessionTitle("Session 11");
+        request.setQuantity(1);
+        request.setUnitPrice(75.0);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addItemsToBooking(9L, List.of(request)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void addItemsToBookingRejectsMissingSessionTitle() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.PENDING);
+
+        BookingItemRequest request = new BookingItemRequest();
+        request.setSessionId(11L);
+        request.setQuantity(1);
+        request.setUnitPrice(75.0);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addItemsToBooking(9L, List.of(request)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(bookingRepository, never()).save(any());
     }
 
     private BookingItem bookingItem(int eventOrder, int quantity, double unitPrice, BookingItemStatus status) {
