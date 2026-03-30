@@ -8,12 +8,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
+import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -157,11 +160,163 @@ class TicketServiceTest {
         assertEquals(latest, result);
     }
 
+    @Test
+    void findTicketsNearVenueRejectsInvalidLatitude() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.findTicketsNearVenue(91.0, 31.0, 10.0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    void findTicketsNearVenueRejectsInvalidLongitude() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.findTicketsNearVenue(30.0, 181.0, 10.0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    void findTicketsNearVenueRejectsNonPositiveRadius() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.findTicketsNearVenue(30.0, 31.0, 0.0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findTicketsNearVenue(org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    void findTicketsNearVenueMapsRepositoryResults() {
+        NearbyTicketProjection projection = new TestNearbyTicketProjection(
+                7L, 55L, 88L, "Jazz Night", "Opera House", "Mariam", "TIX-7",
+                "VALID", LocalDateTime.parse("2026-03-29T12:00:00"), 30.0444, 31.2357, 1.25
+        );
+
+        when(ticketRepository.findTicketsNearVenue(30.0444, 31.2357, 5.0)).thenReturn(List.of(projection));
+
+        List<NearbyTicketResponseDTO> result = ticketService.findTicketsNearVenue(30.0444, 31.2357, 5.0);
+
+        assertEquals(1, result.size());
+        assertEquals(7L, result.get(0).getTicketId());
+        assertEquals(88L, result.get(0).getEventId());
+        assertEquals("Jazz Night", result.get(0).getEventName());
+        assertEquals(1.25, result.get(0).getDistanceKm());
+    }
+
     private Ticket ticket(String attendeeName, String ticketCode) {
         Ticket ticket = new Ticket();
         ticket.setAttendeeName(attendeeName);
         ticket.setTicketCode(ticketCode);
         ticket.setMetadata(Map.of());
         return ticket;
+    }
+
+    private static class TestNearbyTicketProjection implements NearbyTicketProjection {
+
+        private final Long ticketId;
+        private final Long bookingId;
+        private final Long eventId;
+        private final String eventName;
+        private final String venue;
+        private final String attendeeName;
+        private final String ticketCode;
+        private final String ticketStatus;
+        private final LocalDateTime issuedAt;
+        private final Double venueLatitude;
+        private final Double venueLongitude;
+        private final Double distanceKm;
+
+        private TestNearbyTicketProjection(
+                Long ticketId,
+                Long bookingId,
+                Long eventId,
+                String eventName,
+                String venue,
+                String attendeeName,
+                String ticketCode,
+                String ticketStatus,
+                LocalDateTime issuedAt,
+                Double venueLatitude,
+                Double venueLongitude,
+                Double distanceKm
+        ) {
+            this.ticketId = ticketId;
+            this.bookingId = bookingId;
+            this.eventId = eventId;
+            this.eventName = eventName;
+            this.venue = venue;
+            this.attendeeName = attendeeName;
+            this.ticketCode = ticketCode;
+            this.ticketStatus = ticketStatus;
+            this.issuedAt = issuedAt;
+            this.venueLatitude = venueLatitude;
+            this.venueLongitude = venueLongitude;
+            this.distanceKm = distanceKm;
+        }
+
+        @Override
+        public Long getTicketId() {
+            return ticketId;
+        }
+
+        @Override
+        public Long getBookingId() {
+            return bookingId;
+        }
+
+        @Override
+        public Long getEventId() {
+            return eventId;
+        }
+
+        @Override
+        public String getEventName() {
+            return eventName;
+        }
+
+        @Override
+        public String getVenue() {
+            return venue;
+        }
+
+        @Override
+        public String getAttendeeName() {
+            return attendeeName;
+        }
+
+        @Override
+        public String getTicketCode() {
+            return ticketCode;
+        }
+
+        @Override
+        public String getTicketStatus() {
+            return ticketStatus;
+        }
+
+        @Override
+        public LocalDateTime getIssuedAt() {
+            return issuedAt;
+        }
+
+        @Override
+        public Double getVenueLatitude() {
+            return venueLatitude;
+        }
+
+        @Override
+        public Double getVenueLongitude() {
+            return venueLongitude;
+        }
+
+        @Override
+        public Double getDistanceKm() {
+            return distanceKm;
+        }
     }
 }
