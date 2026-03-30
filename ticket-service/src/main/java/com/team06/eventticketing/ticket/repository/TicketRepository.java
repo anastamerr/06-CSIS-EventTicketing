@@ -21,6 +21,19 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     Optional<Ticket> findTopByBookingIdOrderByIssuedAtDesc(Long bookingId);
 
     @Query(value = """
+            SELECT *
+            FROM tickets
+            WHERE issued_at >= :startDate
+              AND issued_at <= :endDate
+              AND (:status IS NULL OR status = :status)
+            ORDER BY issued_at ASC
+            """, nativeQuery = true)
+    List<Ticket> findByIssuedAtBetweenAndStatus(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            @Param("status") String status);
+
+    @Query(value = """
             SELECT COUNT(*)
             FROM tickets
             WHERE status IN ('EXPIRED', 'CANCELLED')
