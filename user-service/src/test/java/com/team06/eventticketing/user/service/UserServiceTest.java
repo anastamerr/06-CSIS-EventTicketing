@@ -208,6 +208,43 @@ class UserServiceTest {
     }
 
     @Test
+    void getUsersByFavoriteCategoryRejectsBlankCategory() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getUsersByFavoriteCategoryAndMinBookings(" ", 1));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(userRepository, never()).findByCategoryAndMinCompletedBookings(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void getUsersByFavoriteCategoryRejectsNegativeMinBookings() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getUsersByFavoriteCategoryAndMinBookings("CONCERT", -1));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(userRepository, never()).findByCategoryAndMinCompletedBookings(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void getUsersByFavoriteCategoryDelegatesToRepository() {
+        User firstUser = new User();
+        firstUser.setId(1L);
+        User secondUser = new User();
+        secondUser.setId(2L);
+        List<User> expectedUsers = List.of(firstUser, secondUser);
+
+        when(userRepository.findByCategoryAndMinCompletedBookings("CONCERT", 3)).thenReturn(expectedUsers);
+
+        List<User> actualUsers = userService.getUsersByFavoriteCategoryAndMinBookings("CONCERT", 3);
+
+        assertIterableEquals(expectedUsers, actualUsers);
+    }
+
+    @Test
     void searchUsersNormalizesBlankFiltersBeforeDelegating() {
         List<User> expectedUsers = List.of(new User());
         when(userRepository.searchByOptionalNameEmailRole(isNull(), isNull(), isNull())).thenReturn(expectedUsers);
