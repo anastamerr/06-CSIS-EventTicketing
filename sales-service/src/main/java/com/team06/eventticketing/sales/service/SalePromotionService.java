@@ -12,6 +12,7 @@ import com.team06.eventticketing.sales.repository.SalePromotionRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,11 +69,11 @@ public class SalePromotionService {
 
     @Transactional
     public SaleDetailsDTO applyPromotionToTicketSale(Long saleId, Long promotionId) {
-        TicketSale ticketSale = ticketSaleRepository.findByIdWithSalePromotions(saleId)
+        TicketSale ticketSale = ticketSaleRepository.findByIdWithSalePromotionsForUpdate(saleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
         validatePendingTicketSale(ticketSale);
 
-        Promotion promotion = promotionRepository.findById(promotionId)
+        Promotion promotion = promotionRepository.findByIdForUpdate(promotionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Promotion not found"));
         validatePromotionUsable(promotion);
 
@@ -84,7 +85,11 @@ public class SalePromotionService {
         ticketSale.addSalePromotion(salePromotion);
         promotion.addSalePromotion(salePromotion);
         salePromotion.setDiscountApplied(calculateDiscount(ticketSale, promotion));
-        salePromotionRepository.save(salePromotion);
+        try {
+            salePromotionRepository.saveAndFlush(salePromotion);
+        } catch (DataIntegrityViolationException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "promotion already applied", exception);
+        }
 
         promotion.setCurrentUses(currentUses(promotion) + 1);
         promotionRepository.save(promotion);

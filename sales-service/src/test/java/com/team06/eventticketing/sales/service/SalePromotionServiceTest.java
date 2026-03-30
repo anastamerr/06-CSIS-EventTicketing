@@ -152,10 +152,10 @@ class SalePromotionServiceTest {
         details.setTotalDiscount(200.0);
         details.setFinalAmount(600.0);
 
-        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
-        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+        when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
         when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(false);
-        when(salePromotionRepository.save(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(salePromotionRepository.saveAndFlush(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
         when(ticketSaleService.getTicketSaleDetails(1L)).thenReturn(details);
 
         SaleDetailsDTO result = salePromotionService.applyPromotionToTicketSale(1L, 2L);
@@ -175,10 +175,10 @@ class SalePromotionServiceTest {
         TicketSale ticketSale = ticketSale(1L, 80.0, TicketSaleStatus.PENDING);
         Promotion promotion = promotion(2L, PromotionDiscountType.FIXED, 100.0, 5, 0, true);
 
-        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
-        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+        when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
         when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(false);
-        when(salePromotionRepository.save(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(salePromotionRepository.saveAndFlush(salePromotionCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
         when(ticketSaleService.getTicketSaleDetails(1L)).thenReturn(new SaleDetailsDTO());
 
         salePromotionService.applyPromotionToTicketSale(1L, 2L);
@@ -190,14 +190,14 @@ class SalePromotionServiceTest {
     void applyPromotionToTicketSaleRejectsNonPendingSale() {
         TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.COMPLETED);
 
-        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
+        when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(promotionRepository, never()).findById(any());
-        verify(salePromotionRepository, never()).save(any());
+        verify(promotionRepository, never()).findByIdForUpdate(any());
+        verify(salePromotionRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -206,14 +206,14 @@ class SalePromotionServiceTest {
         Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 20.0, 3, 0, true);
         promotion.setExpiryDate(LocalDateTime.now().minusMinutes(1));
 
-        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
-        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+        when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(salePromotionRepository, never()).save(any());
+        verify(salePromotionRepository, never()).saveAndFlush(any());
         verify(ticketSaleService, never()).getTicketSaleDetails(any());
     }
 
@@ -222,15 +222,31 @@ class SalePromotionServiceTest {
         TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.PENDING);
         Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 25.0, 3, 0, true);
 
-        when(ticketSaleRepository.findByIdWithSalePromotions(1L)).thenReturn(Optional.of(ticketSale));
-        when(promotionRepository.findById(2L)).thenReturn(Optional.of(promotion));
+        when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
         when(salePromotionRepository.existsByTicketSaleIdAndPromotionId(1L, 2L)).thenReturn(true);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(salePromotionRepository, never()).save(any());
+        verify(salePromotionRepository, never()).saveAndFlush(any());
+        verify(promotionRepository, never()).save(any());
+    }
+
+    @Test
+    void applyPromotionToTicketSaleRejectsUsageLimitReached() {
+        TicketSale ticketSale = ticketSale(1L, 800.0, TicketSaleStatus.PENDING);
+        Promotion promotion = promotion(2L, PromotionDiscountType.PERCENTAGE, 25.0, 1, 1, true);
+
+        when(ticketSaleRepository.findByIdWithSalePromotionsForUpdate(1L)).thenReturn(Optional.of(ticketSale));
+        when(promotionRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(promotion));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> salePromotionService.applyPromotionToTicketSale(1L, 2L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(salePromotionRepository, never()).saveAndFlush(any());
         verify(promotionRepository, never()).save(any());
     }
 
