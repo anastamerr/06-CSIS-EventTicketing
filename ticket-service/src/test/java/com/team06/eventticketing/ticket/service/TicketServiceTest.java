@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
+import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
@@ -22,6 +23,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -224,6 +226,42 @@ class TicketServiceTest {
         Ticket result = ticketService.getLatestTicketForBooking(55L);
 
         assertEquals(latest, result);
+    }
+
+    @Test
+    void getEventAttendanceSummaryReturnsAggregatedMetricsFromRepositoryRow() {
+        LocalDateTime lastCheckIn = LocalDateTime.of(2026, 3, 15, 19, 55);
+        when(ticketRepository.findAttendanceSummaryByEventId(77L)).thenReturn(List.<Object[]>of(new Object[]{
+                10L,
+                6L,
+                3L,
+                Timestamp.valueOf(lastCheckIn)
+        }));
+
+        EventAttendanceSummaryDTO result = ticketService.getEventAttendanceSummary(77L);
+
+        assertEquals(77L, result.eventId());
+        assertEquals(10L, result.totalTickets());
+        assertEquals(6L, result.usedTickets());
+        assertEquals(3L, result.validTickets());
+        assertEquals(60.0, result.attendanceRate());
+        assertEquals(lastCheckIn, result.lastCheckIn());
+    }
+
+    @Test
+    void getEventAttendanceSummaryThrowsNotFoundWhenNoTicketsExist() {
+        when(ticketRepository.findAttendanceSummaryByEventId(77L)).thenReturn(List.<Object[]>of(new Object[]{
+                0L,
+                0L,
+                0L,
+                null
+        }));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.getEventAttendanceSummary(77L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(ticketRepository).findAttendanceSummaryByEventId(77L);
     }
 
     @Test
