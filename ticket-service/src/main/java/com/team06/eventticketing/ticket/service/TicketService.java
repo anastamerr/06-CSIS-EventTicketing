@@ -10,6 +10,7 @@ import com.team06.eventticketing.ticket.repository.TicketRepository;
 import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -97,6 +98,26 @@ public class TicketService {
     }
 
     @Transactional(readOnly = true)
+    public List<Ticket> searchTicketsByMetadata(String key, String operator, String value) {
+        String normalizedKey = requireText(key, "key");
+        String normalizedOperator = requireText(operator, "operator").toLowerCase();
+        String normalizedValue = requireText(value, "value");
+
+        return switch (normalizedOperator) {
+            case "eq" -> ticketRepository.findByMetadataFieldEquals(normalizedKey, normalizedValue);
+            case "gt" -> {
+                requireNumericValue(normalizedValue);
+                yield ticketRepository.findByMetadataFieldGreaterThan(normalizedKey, normalizedValue);
+            }
+            case "lt" -> {
+                requireNumericValue(normalizedValue);
+                yield ticketRepository.findByMetadataFieldLessThan(normalizedKey, normalizedValue);
+            }
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "operator must be one of eq, gt, lt");
+        };
+    }
+
+    @Transactional(readOnly = true)
     public List<UnusedTicketDTO> getUnusedUpcomingTickets() {
         return ticketRepository.findUnusedTicketsForUpcomingEvents()
                 .stream()
@@ -163,6 +184,21 @@ public class TicketService {
         }
         if (radiusKm <= 0.0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "radiusKm must be greater than zero");
+        }
+    }
+
+    private String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is required");
+        }
+        return value.trim();
+    }
+
+    private void requireNumericValue(String value) {
+        try {
+            new BigDecimal(value);
+        } catch (NumberFormatException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "value must be numeric for gt/lt");
         }
     }
 

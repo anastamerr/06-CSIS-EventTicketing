@@ -2,22 +2,22 @@ package com.team06.eventticketing.sales.controller;
 
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
+import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
+import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.service.TicketSaleService;
-import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import java.time.LocalDate;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.RequestParam;
-
 import org.springframework.http.HttpStatus;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -34,6 +34,11 @@ public class TicketSaleFeatureController {
     @GetMapping("/{saleId}/details")
     public SaleDetailsDTO getTicketSaleDetails(@PathVariable Long saleId) {
         return ticketSaleService.getTicketSaleDetails(saleId);
+    }
+
+    @GetMapping("/user/{userId}/summary")
+    public UserSaleSummaryDTO getUserSaleSummary(@PathVariable Long userId) {
+        return ticketSaleService.getUserSaleSummary(userId);
     }
 
     @PostMapping("/booking/{bookingId}")
@@ -54,6 +59,7 @@ public class TicketSaleFeatureController {
     public TicketSale refundSale(@PathVariable Long id, @RequestBody RefundRequest request) {
         return ticketSaleService.refundTicketSale(id, request);
     }
+
     @GetMapping("/reports/revenue")
     public RevenueReportDTO getRevenueReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -61,5 +67,4 @@ public class TicketSaleFeatureController {
     ) {
         return ticketSaleService.getRevenueReport(startDate, endDate);
     }
-
 }
