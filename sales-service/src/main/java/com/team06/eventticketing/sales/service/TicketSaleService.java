@@ -2,15 +2,17 @@ package com.team06.eventticketing.sales.service;
 
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
+import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
+import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.SalePromotion;
 import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
-import com.team06.eventticketing.sales.dto.RevenueReportDTO;
+import com.team06.eventticketing.sales.repository.UserJdbcRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -27,10 +29,16 @@ public class TicketSaleService {
 
     private final TicketSaleRepository ticketSaleRepository;
     private final BookingJdbcRepository bookingJdbcRepository;
+    private final UserJdbcRepository userJdbcRepository;
 
-    public TicketSaleService(TicketSaleRepository ticketSaleRepository, BookingJdbcRepository bookingJdbcRepository) {
+    public TicketSaleService(
+            TicketSaleRepository ticketSaleRepository,
+            BookingJdbcRepository bookingJdbcRepository,
+            UserJdbcRepository userJdbcRepository
+    ) {
         this.ticketSaleRepository = ticketSaleRepository;
         this.bookingJdbcRepository = bookingJdbcRepository;
+        this.userJdbcRepository = userJdbcRepository;
     }
 
     @Transactional(readOnly = true)
@@ -270,4 +278,29 @@ public class TicketSaleService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public UserSaleSummaryDTO getUserSaleSummary(Long userId) {
+        if (!userJdbcRepository.existsById(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
+
+        List<TicketSaleRepository.PaymentMethodSummaryProjection> rows =
+                ticketSaleRepository.getCompletedSalesSummaryByMethod(userId);
+
+        Map<String, Double> methodBreakdown = new LinkedHashMap<>();
+        long totalSales = 0L;
+        double totalAmount = 0.0;
+
+        for (TicketSaleRepository.PaymentMethodSummaryProjection row : rows) {
+            String method = row.getMethod();
+            Long saleCount = row.getSaleCount() == null ? 0L : row.getSaleCount();
+            Double amount = row.getTotalAmount() == null ? 0.0 : row.getTotalAmount();
+
+            methodBreakdown.put(method, amount);
+            totalSales += saleCount;
+            totalAmount += amount;
+        }
+
+        return new UserSaleSummaryDTO(userId, totalSales, totalAmount, methodBreakdown);
+    }
 }
