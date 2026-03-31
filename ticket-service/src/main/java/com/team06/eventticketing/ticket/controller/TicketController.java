@@ -41,6 +41,15 @@ public class TicketController {
     @GetMapping("/{id}")
     public Ticket getTicketById(@PathVariable Long id) { return ticketService.getTicketById(id); }
 
+    @GetMapping("/metadata/search")
+    public List<Ticket> searchTicketsByMetadata(
+            @RequestParam String key,
+            @RequestParam String operator,
+            @RequestParam String value
+    ) {
+        return ticketService.searchTicketsByMetadata(key, operator, value);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Ticket createTicket(@RequestBody Ticket ticket) { return ticketService.createTicket(ticket); }
