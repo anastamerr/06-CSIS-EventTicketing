@@ -61,8 +61,7 @@ class BookingControllerIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUpSchema() {
@@ -223,6 +222,58 @@ class BookingControllerIntegrationTest {
                         .queryParam("status", "COMPLETED")
                         .queryParam("startDate", "2026-03-01"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getBookingDetailsReturnsOrderedItemsAndCounts() throws Exception {
+        Booking booking = pendingBooking();
+        booking.setMetadata(new LinkedHashMap<>(Map.of("ticketTier", "VIP")));
+        booking.setTotalAmount(425.0);
+        booking.getBookingItems().clear();
+        booking.addBookingItem(bookingItemWithMetadata(4, 1, 90.0, BookingItemStatus.RESERVED, "D"));
+        booking.addBookingItem(bookingItemWithMetadata(2, 2, 80.0, BookingItemStatus.CONFIRMED, "B"));
+        booking.addBookingItem(bookingItemWithMetadata(1, 1, 120.0, BookingItemStatus.CONFIRMED, "A"));
+        booking.addBookingItem(bookingItemWithMetadata(3, 3, 25.0, BookingItemStatus.RESERVED, "C"));
+        booking = bookingRepository.saveAndFlush(booking);
+
+        mockMvc.perform(get("/api/bookings/{bookingId}/details", booking.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingId").value(booking.getId()))
+                .andExpect(jsonPath("$.userId").value(44L))
+                .andExpect(jsonPath("$.eventId").value(88L))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.totalAmount").value(425.0))
+                .andExpect(jsonPath("$.metadata.ticketTier").value("VIP"))
+                .andExpect(jsonPath("$.totalItems").value(4))
+                .andExpect(jsonPath("$.confirmedItems").value(2))
+                .andExpect(jsonPath("$.items.length()").value(4))
+                .andExpect(jsonPath("$.items[0].eventOrder").value(1))
+                .andExpect(jsonPath("$.items[0].sessionTitle").value("Session 1"))
+                .andExpect(jsonPath("$.items[0].status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.items[1].eventOrder").value(2))
+                .andExpect(jsonPath("$.items[2].eventOrder").value(3))
+                .andExpect(jsonPath("$.items[3].eventOrder").value(4));
+    }
+
+    @Test
+    void getBookingDetailsReturnsEmptyItemsWhenBookingHasNoItems() throws Exception {
+        Booking booking = pendingBooking();
+        booking.getBookingItems().clear();
+        booking.setMetadata(new LinkedHashMap<>(Map.of("ticketTier", "standard")));
+        booking = bookingRepository.saveAndFlush(booking);
+
+        mockMvc.perform(get("/api/bookings/{bookingId}/details", booking.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingId").value(booking.getId()))
+                .andExpect(jsonPath("$.totalItems").value(0))
+                .andExpect(jsonPath("$.confirmedItems").value(0))
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void getBookingDetailsReturnsNotFoundForMissingBooking() throws Exception {
+        mockMvc.perform(get("/api/bookings/{bookingId}/details", 99999L))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -424,6 +475,18 @@ class BookingControllerIntegrationTest {
         item.setUnitPrice(unitPrice);
         item.setStatus(status);
         item.setMetadata(new LinkedHashMap<>());
+        return item;
+    }
+
+    private BookingItem bookingItemWithMetadata(
+            int eventOrder,
+            int quantity,
+            double unitPrice,
+            BookingItemStatus status,
+            String section
+    ) {
+        BookingItem item = bookingItem(eventOrder, quantity, unitPrice, status);
+        item.setMetadata(new LinkedHashMap<>(Map.of("section", section)));
         return item;
     }
 
