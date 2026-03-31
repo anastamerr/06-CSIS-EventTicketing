@@ -1,6 +1,7 @@
 package com.team06.eventticketing.booking.controller;
 
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingDetailsDTO;
 import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
@@ -43,6 +44,11 @@ public class BookingController {
         return bookingService.getBookingById(id);
     }
 
+    @GetMapping("/{bookingId}/details")
+    public BookingDetailsDTO getBookingDetails(@PathVariable Long bookingId) {
+        return bookingService.getBookingDetails(bookingId);
+    }
+
     @PostMapping("/estimate")
     public BookingCostEstimateDTO estimateBookingCost(@RequestBody @Valid BookingEstimateRequest request) {
         return bookingService.estimateBookingCost(request);
@@ -71,6 +77,14 @@ public class BookingController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
         return bookingService.searchBookings(status, startDate, endDate);
+    }
+
+    @GetMapping("/metadata/search")
+    public List<Booking> searchBookingsByMetadata(
+            @RequestParam String key,
+            @RequestParam String value
+    ) {
+        return bookingService.searchBookingsByMetadata(key, value);
     }
 
     @PostMapping("/{bookingId}/items")

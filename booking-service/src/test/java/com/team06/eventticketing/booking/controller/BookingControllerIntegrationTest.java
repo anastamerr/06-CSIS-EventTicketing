@@ -296,6 +296,97 @@ class BookingControllerIntegrationTest {
     }
 
     @Test
+    void searchBookingsByMetadataReturnsMatches() throws Exception {
+        bookingRepository.saveAndFlush(bookingWithMetadata("VIP", LocalDateTime.of(2026, 3, 20, 10, 0)));
+        bookingRepository.saveAndFlush(bookingWithMetadata("standard", LocalDateTime.of(2026, 3, 21, 10, 0)));
+        Booking latestStandard = bookingRepository.saveAndFlush(
+                bookingWithMetadata("standard", LocalDateTime.of(2026, 3, 22, 10, 0))
+        );
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "ticketTier")
+                        .queryParam("value", "VIP"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].metadata.ticketTier").value("VIP"));
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "ticketTier")
+                        .queryParam("value", "standard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(latestStandard.getId()));
+    }
+
+    @Test
+    void searchBookingsByMetadataRejectsBlankKey() throws Exception {
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "")
+                        .queryParam("value", "x"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void searchBookingsByMetadataRejectsBlankValue() throws Exception {
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "ticketTier")
+                        .queryParam("value", ""))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getBookingDetailsReturnsOrderedItemsAndCounts() throws Exception {
+        Booking booking = pendingBooking();
+        booking.setMetadata(new LinkedHashMap<>(Map.of("ticketTier", "VIP")));
+        booking.setTotalAmount(425.0);
+        booking.getBookingItems().clear();
+        booking.addBookingItem(bookingItemWithMetadata(4, 1, 90.0, BookingItemStatus.RESERVED, "D"));
+        booking.addBookingItem(bookingItemWithMetadata(2, 2, 80.0, BookingItemStatus.CONFIRMED, "B"));
+        booking.addBookingItem(bookingItemWithMetadata(1, 1, 120.0, BookingItemStatus.CONFIRMED, "A"));
+        booking.addBookingItem(bookingItemWithMetadata(3, 3, 25.0, BookingItemStatus.RESERVED, "C"));
+        booking = bookingRepository.saveAndFlush(booking);
+
+        mockMvc.perform(get("/api/bookings/{bookingId}/details", booking.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingId").value(booking.getId()))
+                .andExpect(jsonPath("$.userId").value(44L))
+                .andExpect(jsonPath("$.eventId").value(88L))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.totalAmount").value(425.0))
+                .andExpect(jsonPath("$.metadata.ticketTier").value("VIP"))
+                .andExpect(jsonPath("$.totalItems").value(4))
+                .andExpect(jsonPath("$.confirmedItems").value(2))
+                .andExpect(jsonPath("$.items.length()").value(4))
+                .andExpect(jsonPath("$.items[0].eventOrder").value(1))
+                .andExpect(jsonPath("$.items[0].sessionTitle").value("Session 1"))
+                .andExpect(jsonPath("$.items[0].status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.items[1].eventOrder").value(2))
+                .andExpect(jsonPath("$.items[2].eventOrder").value(3))
+                .andExpect(jsonPath("$.items[3].eventOrder").value(4));
+    }
+
+    @Test
+    void getBookingDetailsReturnsEmptyItemsWhenBookingHasNoItems() throws Exception {
+        Booking booking = pendingBooking();
+        booking.getBookingItems().clear();
+        booking.setMetadata(new LinkedHashMap<>(Map.of("ticketTier", "standard")));
+        booking = bookingRepository.saveAndFlush(booking);
+
+        mockMvc.perform(get("/api/bookings/{bookingId}/details", booking.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bookingId").value(booking.getId()))
+                .andExpect(jsonPath("$.totalItems").value(0))
+                .andExpect(jsonPath("$.confirmedItems").value(0))
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void getBookingDetailsReturnsNotFoundForMissingBooking() throws Exception {
+        mockMvc.perform(get("/api/bookings/{bookingId}/details", 99999L))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void cancelBookingCancelsBookingAndAllValidTickets() throws Exception {
         Booking booking = confirmedBooking();
         booking = bookingRepository.saveAndFlush(booking);
@@ -470,6 +561,13 @@ class BookingControllerIntegrationTest {
         return booking;
     }
 
+    private Booking bookingWithMetadata(String ticketTier, LocalDateTime bookingDate) {
+        Booking booking = pendingBooking();
+        booking.setBookingDate(bookingDate);
+        booking.setMetadata(new LinkedHashMap<>(Map.of("ticketTier", ticketTier)));
+        return booking;
+    }
+
     private void insertTicket(Long bookingId, String status, String ticketCode) {
         jdbcTemplate.update(
                 """
@@ -502,6 +600,18 @@ class BookingControllerIntegrationTest {
         item.setUnitPrice(unitPrice);
         item.setStatus(status);
         item.setMetadata(new LinkedHashMap<>());
+        return item;
+    }
+
+    private BookingItem bookingItemWithMetadata(
+            int eventOrder,
+            int quantity,
+            double unitPrice,
+            BookingItemStatus status,
+            String section
+    ) {
+        BookingItem item = bookingItem(eventOrder, quantity, unitPrice, status);
+        item.setMetadata(new LinkedHashMap<>(Map.of("section", section)));
         return item;
     }
 
