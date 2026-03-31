@@ -309,6 +309,52 @@ class TicketControllerIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(0));
     }
 
+    @Test
+    void searchTicketsByMetadataSupportsEqGtLtAndSkipsNonNumericValues() throws Exception {
+        ticketRepository.saveAllAndFlush(List.of(
+                ticketWithMetadata("TIX-GATE-1", Map.of("gate", 1)),
+                ticketWithMetadata("TIX-GATE-3", Map.of("gate", 3)),
+                ticketWithMetadata("TIX-GATE-5", Map.of("gate", 5)),
+                ticketWithMetadata("TIX-GATE-NAN", Map.of("gate", "VIP")),
+                ticketWithMetadata("TIX-NO-GATE", Map.of("section", "A"))
+        ));
+
+        mockMvc.perform(get("/api/tickets/metadata/search")
+                        .param("key", "gate")
+                        .param("operator", "gt")
+                        .param("value", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].metadata.gate").value(3))
+                .andExpect(jsonPath("$[1].metadata.gate").value(5));
+
+        mockMvc.perform(get("/api/tickets/metadata/search")
+                        .param("key", "gate")
+                        .param("operator", "eq")
+                        .param("value", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].metadata.gate").value(1));
+        
+        mockMvc.perform(get("/api/tickets/metadata/search")
+                        .param("key", "gate")
+                        .param("operator", "lt")
+                        .param("value", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].metadata.gate").value(1))
+                .andExpect(jsonPath("$[1].metadata.gate").value(3));
+    }
+
+    @Test
+    void searchTicketsByMetadataRejectsInvalidOperator() throws Exception {
+        mockMvc.perform(get("/api/tickets/metadata/search")
+                        .param("key", "gate")
+                        .param("operator", "xyz")
+                        .param("value", "1"))
+                .andExpect(status().isBadRequest());
+    }
+
     private void saveTickets(TicketStatus status, int count, LocalDateTime issuedAt, String codePrefix) {
         List<Ticket> tickets = new ArrayList<>();
         for (int index = 0; index < count; index++) {
@@ -329,6 +375,17 @@ class TicketControllerIntegrationTest {
         ticket.setStatus(status);
         ticket.setIssuedAt(issuedAt);
         ticket.setMetadata(Map.of("ticketCode", ticketCode));
+        return ticket;
+    }
+
+    private Ticket ticketWithMetadata(String ticketCode, Map<String, Object> metadata) {
+        Ticket ticket = new Ticket();
+        ticket.setBookingId(1L);
+        ticket.setAttendeeName("Attendee " + ticketCode);
+        ticket.setTicketCode(ticketCode);
+        ticket.setStatus(TicketStatus.VALID);
+        ticket.setIssuedAt(now());
+        ticket.setMetadata(new LinkedHashMap<>(metadata));
         return ticket;
     }
 
