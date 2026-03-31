@@ -2,6 +2,7 @@ package com.team06.eventticketing.sales.controller;
 
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
+import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.service.TicketSaleService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/sales/ticket-sales")
+@RequestMapping("/api/sales")
 public class TicketSaleController {
 
     private final TicketSaleService ticketSaleService;
@@ -50,5 +51,9 @@ public class TicketSaleController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteTicketSale(@PathVariable Long id) {
         ticketSaleService.deleteTicketSale(id);
+    }
+    @GetMapping("/user/{userId}/summary")
+    public UserSaleSummaryDTO getUserSaleSummary(@PathVariable Long userId) {
+        return ticketSaleService.getUserSaleSummary(userId);
     }
 }
