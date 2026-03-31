@@ -143,6 +143,36 @@ public class BookingService {
     }
 
     @Transactional
+    public Booking confirmBooking(Long bookingId, Long eventId) {
+        // Step 1 & 2: Find booking or throw 404
+        Booking booking = getBookingByIdForUpdate(bookingId);
+
+        // Step 3: Reject if not PENDING
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only PENDING bookings can be confirmed");
+        }
+
+        // Step 4 & 5: Check event exists or throw 404
+        Object[] eventRow = bookingRepository.findEventById(eventId);
+        if (eventRow == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
+        }
+
+        // Step 6: Reject if event not UPCOMING
+        String eventStatus = (String) eventRow[1];
+        if (!eventStatus.equals("UPCOMING")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Event must be UPCOMING to confirm a booking");
+        }
+
+        // Steps 7-9: Update and save
+        booking.setEventId(eventId);
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setConfirmedAt(LocalDateTime.now());
+
+        return bookingRepository.save(booking);
+    }
+
+    @Transactional
     public Booking addItemsToBooking(Long bookingId, List<BookingItemRequest> items) {
         Booking booking = getBookingByIdForUpdate(bookingId);
         validateAppendableBooking(booking);
