@@ -225,6 +225,75 @@ class BookingControllerIntegrationTest {
     }
 
     @Test
+    void getBookingAnalyticsReturnsExpectedMarchMetrics() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "COMPLETED", 200.0, LocalDateTime.of(2026, 3, 1, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "COMPLETED", 300.0, LocalDateTime.of(2026, 3, 2, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "COMPLETED", 400.0, LocalDateTime.of(2026, 3, 3, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "COMPLETED", 500.0, LocalDateTime.of(2026, 3, 4, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "COMPLETED", 600.0, LocalDateTime.of(2026, 3, 5, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "COMPLETED", 700.0, LocalDateTime.of(2026, 3, 6, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "COMPLETED", 800.0, LocalDateTime.of(2026, 3, 7, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "CANCELLED", null, LocalDateTime.of(2026, 3, 8, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "CANCELLED", null, LocalDateTime.of(2026, 3, 9, 10, 0), "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO bookings (user_id, event_id, contact_email, status, total_amount, booking_date, metadata) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb))",
+                44L, 88L, "buyer@example.com", "CANCELLED", null, LocalDateTime.of(2026, 3, 10, 10, 0), "{}"
+        );
+
+        mockMvc.perform(get("/api/bookings/analytics")
+                        .queryParam("startDate", "2026-03-01")
+                        .queryParam("endDate", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalBookings").value(10))
+                .andExpect(jsonPath("$.completedBookings").value(7))
+                .andExpect(jsonPath("$.cancelledBookings").value(3))
+                .andExpect(jsonPath("$.totalRevenue").value(3500.0))
+                .andExpect(jsonPath("$.averageBookingAmount").value(500.0))
+                .andExpect(jsonPath("$.completionRate").value(70.0));
+    }
+
+    @Test
+    void getBookingAnalyticsReturnsZerosWhenNoBookingsMatch() throws Exception {
+        mockMvc.perform(get("/api/bookings/analytics")
+                        .queryParam("startDate", "2026-04-01")
+                        .queryParam("endDate", "2026-04-30"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalBookings").value(0))
+                .andExpect(jsonPath("$.completedBookings").value(0))
+                .andExpect(jsonPath("$.cancelledBookings").value(0))
+                .andExpect(jsonPath("$.totalRevenue").value(0.0))
+                .andExpect(jsonPath("$.averageBookingAmount").value(0.0))
+                .andExpect(jsonPath("$.completionRate").value(0.0));
+    }
+
+    @Test
     void searchBookingsByMetadataReturnsMatches() throws Exception {
         bookingRepository.saveAndFlush(bookingWithMetadata("VIP", LocalDateTime.of(2026, 3, 20, 10, 0)));
         bookingRepository.saveAndFlush(bookingWithMetadata("standard", LocalDateTime.of(2026, 3, 21, 10, 0)));
