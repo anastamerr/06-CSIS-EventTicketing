@@ -1,6 +1,7 @@
 package com.team06.eventticketing.booking.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -61,11 +62,16 @@ class BookingControllerIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUpSchema() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    id BIGSERIAL PRIMARY KEY,
+                    status VARCHAR(50) NOT NULL
+                )
+                """);
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS event_sessions (
                     id BIGSERIAL PRIMARY KEY,
@@ -103,7 +109,7 @@ class BookingControllerIntegrationTest {
                     metadata JSONB
                 )
                 """);
-        jdbcTemplate.execute("TRUNCATE TABLE tickets, event_sessions, ticket_sales, booking_items, bookings RESTART IDENTITY CASCADE");
+        jdbcTemplate.execute("TRUNCATE TABLE tickets, event_sessions, ticket_sales, booking_items, bookings, events RESTART IDENTITY CASCADE");
     }
 
     @Test
@@ -172,6 +178,70 @@ class BookingControllerIntegrationTest {
                 booking.getId()
         );
         assertEquals(0L, saleCount);
+    }
+
+    @Test
+    void confirmBookingAssignsUpcomingEventToPendingBooking() throws Exception {
+        Long eventId = insertEvent("UPCOMING");
+        Booking booking = bookingRepository.saveAndFlush(pendingBooking());
+
+        mockMvc.perform(put("/api/bookings/{bookingId}/confirm", booking.getId())
+                        .queryParam("eventId", eventId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(booking.getId()))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.eventId").value(eventId))
+                .andExpect(jsonPath("$.confirmedAt").exists());
+
+        Booking confirmedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+        assertEquals(BookingStatus.CONFIRMED, confirmedBooking.getStatus());
+        assertEquals(eventId, confirmedBooking.getEventId());
+        assertNotNull(confirmedBooking.getConfirmedAt());
+    }
+
+    @Test
+    void confirmBookingRejectsAlreadyConfirmedBooking() throws Exception {
+        Long eventId = insertEvent("UPCOMING");
+        Booking booking = bookingRepository.saveAndFlush(confirmedBooking());
+
+        mockMvc.perform(put("/api/bookings/{bookingId}/confirm", booking.getId())
+                        .queryParam("eventId", eventId.toString()))
+                .andExpect(status().isBadRequest());
+
+        Booking unchangedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+        assertEquals(BookingStatus.CONFIRMED, unchangedBooking.getStatus());
+    }
+
+    @Test
+    void confirmBookingRejectsCancelledEvent() throws Exception {
+        Long eventId = insertEvent("CANCELLED");
+        Booking booking = bookingRepository.saveAndFlush(pendingBooking());
+
+        mockMvc.perform(put("/api/bookings/{bookingId}/confirm", booking.getId())
+                        .queryParam("eventId", eventId.toString()))
+                .andExpect(status().isBadRequest());
+
+        Booking unchangedBooking = bookingRepository.findById(booking.getId()).orElseThrow();
+        assertEquals(BookingStatus.PENDING, unchangedBooking.getStatus());
+        assertEquals(null, unchangedBooking.getConfirmedAt());
+    }
+
+    @Test
+    void confirmBookingRejectsMissingBooking() throws Exception {
+        Long eventId = insertEvent("UPCOMING");
+
+        mockMvc.perform(put("/api/bookings/{bookingId}/confirm", 99999L)
+                        .queryParam("eventId", eventId.toString()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void confirmBookingRejectsMissingEvent() throws Exception {
+        Booking booking = bookingRepository.saveAndFlush(pendingBooking());
+
+        mockMvc.perform(put("/api/bookings/{bookingId}/confirm", booking.getId())
+                        .queryParam("eventId", "99999"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -412,6 +482,14 @@ class BookingControllerIntegrationTest {
                 status,
                 LocalDateTime.of(2026, 3, 30, 10, 0),
                 "{}"
+        );
+    }
+
+    private Long insertEvent(String status) {
+        return jdbcTemplate.queryForObject(
+                "INSERT INTO events (status) VALUES (?) RETURNING id",
+                Long.class,
+                status
         );
     }
 
