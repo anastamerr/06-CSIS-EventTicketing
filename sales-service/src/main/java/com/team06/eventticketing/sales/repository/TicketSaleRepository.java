@@ -52,5 +52,22 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
             LocalDateTime startDateTime,
             LocalDateTime endDateTime
     );
+    public interface PaymentMethodSummaryProjection {
+        String getMethod();
+        Long getSaleCount();
+        Double getTotalAmount();
+    }
+    @Query(value = """
+            SELECT 
+                method AS method,
+                COUNT(*) AS saleCount,
+                COALESCE(SUM(amount), 0) AS totalAmount
+            FROM ticket_sales
+            WHERE user_id = :userId
+              AND status = 'COMPLETED'
+            GROUP BY method
+            ORDER BY method
+            """, nativeQuery = true)
+    List<PaymentMethodSummaryProjection> getCompletedSalesSummaryByMethod(@Param("userId") Long userId);
 
 }

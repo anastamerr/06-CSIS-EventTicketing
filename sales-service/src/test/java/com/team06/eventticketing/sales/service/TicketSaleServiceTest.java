@@ -2,6 +2,7 @@ package com.team06.eventticketing.sales.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -11,6 +12,7 @@ import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
+import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.Promotion;
 import com.team06.eventticketing.sales.model.PromotionDiscountType;
 import com.team06.eventticketing.sales.model.SalePromotion;
@@ -19,6 +21,7 @@ import com.team06.eventticketing.sales.model.TicketSaleMethod;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
+import com.team06.eventticketing.sales.repository.UserJdbcRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -44,6 +47,9 @@ class TicketSaleServiceTest {
     @Mock
     private BookingJdbcRepository bookingJdbcRepository;
 
+    @Mock
+    private UserJdbcRepository userJdbcRepository;
+
     @Captor
     private ArgumentCaptor<TicketSale> ticketSaleCaptor;
 
@@ -51,7 +57,7 @@ class TicketSaleServiceTest {
 
     @BeforeEach
     void setUp() {
-        ticketSaleService = new TicketSaleService(ticketSaleRepository, bookingJdbcRepository);
+        ticketSaleService = new TicketSaleService(ticketSaleRepository, bookingJdbcRepository, userJdbcRepository);
     }
 
     @Test
@@ -453,6 +459,49 @@ class TicketSaleServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
     }
 
+    @Test
+    void getUserSaleSummaryAggregatesCompletedSalesByMethod() {
+        when(userJdbcRepository.existsById(55L)).thenReturn(true);
+        when(ticketSaleRepository.getCompletedSalesSummaryByMethod(55L)).thenReturn(List.of(
+                paymentMethodSummary("CREDIT_CARD", 2L, 800.0),
+                paymentMethodSummary("DEBIT_CARD", 1L, 200.0),
+                paymentMethodSummary("WALLET", 1L, 150.0)
+        ));
+
+        UserSaleSummaryDTO summary = ticketSaleService.getUserSaleSummary(55L);
+
+        assertEquals(55L, summary.getUserId());
+        assertEquals(4L, summary.getTotalSales());
+        assertEquals(1150.0, summary.getTotalAmount());
+        assertEquals(800.0, summary.getMethodBreakdown().get("CREDIT_CARD"));
+        assertEquals(200.0, summary.getMethodBreakdown().get("DEBIT_CARD"));
+        assertEquals(150.0, summary.getMethodBreakdown().get("WALLET"));
+    }
+
+    @Test
+    void getUserSaleSummaryReturnsZerosWhenUserHasNoCompletedSales() {
+        when(userJdbcRepository.existsById(77L)).thenReturn(true);
+        when(ticketSaleRepository.getCompletedSalesSummaryByMethod(77L)).thenReturn(List.of());
+
+        UserSaleSummaryDTO summary = ticketSaleService.getUserSaleSummary(77L);
+
+        assertEquals(77L, summary.getUserId());
+        assertEquals(0L, summary.getTotalSales());
+        assertEquals(0.0, summary.getTotalAmount());
+        assertEquals(Map.of(), summary.getMethodBreakdown());
+    }
+
+    @Test
+    void getUserSaleSummaryRejectsUnknownUser() {
+        when(userJdbcRepository.existsById(999L)).thenReturn(false);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.getUserSaleSummary(999L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(ticketSaleRepository, never()).getCompletedSalesSummaryByMethod(999L);
+    }
+
     private TicketSale sale(Long id, double amount, TicketSaleStatus status) {
         TicketSale sale = new TicketSale();
         sale.setId(id);
@@ -463,5 +512,28 @@ class TicketSaleServiceTest {
         sale.setStatus(status);
         sale.setTransactionDetails(new LinkedHashMap<>());
         return sale;
+    }
+
+    private TicketSaleRepository.PaymentMethodSummaryProjection paymentMethodSummary(
+            String method,
+            Long saleCount,
+            Double totalAmount
+    ) {
+        return new TicketSaleRepository.PaymentMethodSummaryProjection() {
+            @Override
+            public String getMethod() {
+                return method;
+            }
+
+            @Override
+            public Long getSaleCount() {
+                return saleCount;
+            }
+
+            @Override
+            public Double getTotalAmount() {
+                return totalAmount;
+            }
+        };
     }
 }
