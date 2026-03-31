@@ -48,4 +48,10 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             LocalDateTime startDate,
             LocalDateTime endDate
     );
+
+    @Query(
+            value = "SELECT * FROM bookings b WHERE b.metadata ->> :key = :value ORDER BY b.booking_date DESC",
+            nativeQuery = true
+    )
+    List<Booking> findByMetadataField(@Param("key") String key, @Param("value") String value);
 }

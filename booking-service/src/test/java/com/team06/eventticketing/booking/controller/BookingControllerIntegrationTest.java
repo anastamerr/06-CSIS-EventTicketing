@@ -61,8 +61,7 @@ class BookingControllerIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUpSchema() {
@@ -222,6 +221,45 @@ class BookingControllerIntegrationTest {
         mockMvc.perform(get("/api/bookings/search")
                         .queryParam("status", "COMPLETED")
                         .queryParam("startDate", "2026-03-01"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void searchBookingsByMetadataReturnsMatches() throws Exception {
+        bookingRepository.saveAndFlush(bookingWithMetadata("VIP", LocalDateTime.of(2026, 3, 20, 10, 0)));
+        bookingRepository.saveAndFlush(bookingWithMetadata("standard", LocalDateTime.of(2026, 3, 21, 10, 0)));
+        Booking latestStandard = bookingRepository.saveAndFlush(
+                bookingWithMetadata("standard", LocalDateTime.of(2026, 3, 22, 10, 0))
+        );
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "ticketTier")
+                        .queryParam("value", "VIP"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].metadata.ticketTier").value("VIP"));
+
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "ticketTier")
+                        .queryParam("value", "standard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(latestStandard.getId()));
+    }
+
+    @Test
+    void searchBookingsByMetadataRejectsBlankKey() throws Exception {
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "")
+                        .queryParam("value", "x"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void searchBookingsByMetadataRejectsBlankValue() throws Exception {
+        mockMvc.perform(get("/api/bookings/metadata/search")
+                        .queryParam("key", "ticketTier")
+                        .queryParam("value", ""))
                 .andExpect(status().isBadRequest());
     }
 
@@ -397,6 +435,13 @@ class BookingControllerIntegrationTest {
         Booking booking = pendingBooking();
         booking.setStatus(status);
         booking.setBookingDate(bookingDate);
+        return booking;
+    }
+
+    private Booking bookingWithMetadata(String ticketTier, LocalDateTime bookingDate) {
+        Booking booking = pendingBooking();
+        booking.setBookingDate(bookingDate);
+        booking.setMetadata(new LinkedHashMap<>(Map.of("ticketTier", ticketTier)));
         return booking;
     }
 
