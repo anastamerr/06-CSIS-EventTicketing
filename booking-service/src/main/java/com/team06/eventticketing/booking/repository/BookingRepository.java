@@ -48,4 +48,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             LocalDateTime startDate,
             LocalDateTime endDate
     );
+
+    @Query(value = "SELECT id, status FROM events WHERE id = :eventId", nativeQuery = true)
+    Object[] findEventById(@Param("eventId") Long eventId);
+
+
 }

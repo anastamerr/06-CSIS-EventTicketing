@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -87,5 +88,13 @@ public class BookingController {
     public Booking cancelBooking(@PathVariable Long id) {
         return bookingService.cancelBooking(id);
     }
+    @PutMapping("/{bookingId}/confirm")
+    public ResponseEntity<Booking> confirmBooking(
+            @PathVariable Long bookingId,
+            @RequestParam Long eventId) {
+        Booking confirmed = bookingService.confirmBooking(bookingId, eventId);
+        return ResponseEntity.ok(confirmed);
+    }
+
 
 }
