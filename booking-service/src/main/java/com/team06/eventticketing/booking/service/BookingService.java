@@ -156,6 +156,12 @@ public class BookingService {
         return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime);
     }
 
+    @Transactional(readOnly = true)
+    public List<Booking> searchBookingsByMetadata(String key, String value) {
+        validateMetadataSearchParams(key, value);
+        return bookingRepository.findByMetadataField(key.trim(), value.trim());
+    }
+
     @Transactional
     public Booking cancelBooking(Long bookingId) {
         Booking booking = getBookingByIdForUpdate(bookingId);
@@ -344,6 +350,15 @@ public class BookingService {
             if (item.getUnitPrice() <= 0.0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unitPrice must be greater than zero");
             }
+        }
+    }
+
+    private void validateMetadataSearchParams(String key, String value) {
+        if (key == null || key.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "key is required");
+        }
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "value is required");
         }
     }
 
