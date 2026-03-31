@@ -208,6 +208,32 @@ public class BookingService {
     }
 
     @Transactional
+    public Booking confirmBooking(Long bookingId, Long eventId) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only PENDING bookings can be confirmed");
+        }
+
+        List<Object[]> eventRows = bookingRepository.findEventById(eventId);
+        if (eventRows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
+        }
+
+        Object[] eventRow = eventRows.get(0);
+        String eventStatus = eventRow[1] == null ? null : eventRow[1].toString();
+        if (!"UPCOMING".equals(eventStatus)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Event must be UPCOMING to confirm a booking");
+        }
+
+        booking.setEventId(eventId);
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setConfirmedAt(LocalDateTime.now());
+
+        return bookingRepository.save(booking);
+    }
+
+    @Transactional
     public Booking addItemsToBooking(Long bookingId, List<BookingItemRequest> items) {
         Booking booking = getBookingByIdForUpdate(bookingId);
         validateAppendableBooking(booking);

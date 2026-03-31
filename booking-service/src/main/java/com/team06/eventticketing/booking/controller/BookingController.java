@@ -109,5 +109,12 @@ public class BookingController {
     public Booking cancelBooking(@PathVariable Long id) {
         return bookingService.cancelBooking(id);
     }
+    @PutMapping("/{bookingId}/confirm")
+    public Booking confirmBooking(
+            @PathVariable Long bookingId,
+            @RequestParam Long eventId) {
+        return bookingService.confirmBooking(bookingId, eventId);
+    }
+
 
 }
