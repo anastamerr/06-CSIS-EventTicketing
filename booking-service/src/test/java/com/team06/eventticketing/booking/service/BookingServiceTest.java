@@ -1,6 +1,7 @@
 package com.team06.eventticketing.booking.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -399,6 +400,86 @@ class BookingServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
         verify(ticketJdbcRepository, never()).cancelValidTicketsForBooking(any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmBookingAssignsUpcomingEventToPendingBooking() {
+        Booking booking = new Booking();
+        booking.setId(15L);
+        booking.setStatus(BookingStatus.PENDING);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(15L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findEventById(22L)).thenReturn(List.<Object[]>of(new Object[]{22L, "UPCOMING"}));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.confirmBooking(15L, 22L);
+
+        assertEquals(BookingStatus.CONFIRMED, result.getStatus());
+        assertEquals(22L, result.getEventId());
+        assertNotNull(result.getConfirmedAt());
+        verify(bookingRepository).save(booking);
+    }
+
+    @Test
+    void confirmBookingRejectsAlreadyConfirmedBooking() {
+        Booking booking = new Booking();
+        booking.setId(15L);
+        booking.setStatus(BookingStatus.CONFIRMED);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(15L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.confirmBooking(15L, 22L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(bookingRepository, never()).findEventById(any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmBookingRejectsNonUpcomingEvent() {
+        Booking booking = new Booking();
+        booking.setId(15L);
+        booking.setStatus(BookingStatus.PENDING);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(15L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findEventById(22L)).thenReturn(List.<Object[]>of(new Object[]{22L, "CANCELLED"}));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.confirmBooking(15L, 22L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(bookingRepository).findEventById(22L);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmBookingRejectsMissingBooking() {
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(15L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.confirmBooking(15L, 22L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(bookingRepository, never()).findEventById(any());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmBookingRejectsMissingEvent() {
+        Booking booking = new Booking();
+        booking.setId(15L);
+        booking.setStatus(BookingStatus.PENDING);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(15L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.findEventById(22L)).thenReturn(List.of());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.confirmBooking(15L, 22L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(bookingRepository).findEventById(22L);
         verify(bookingRepository, never()).save(any());
     }
 
