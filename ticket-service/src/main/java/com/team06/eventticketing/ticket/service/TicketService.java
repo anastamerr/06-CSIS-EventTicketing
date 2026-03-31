@@ -10,7 +10,9 @@ import com.team06.eventticketing.ticket.repository.TicketRepository;
 import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.util.LinkedHashMap;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -98,18 +100,23 @@ public class TicketService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
     }
 
+    @Transactional(readOnly = true)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(Long eventId) {
-        Object[] row = ticketRepository.findAttendanceSummaryByEventId(eventId);
+        List<Object[]> rows = ticketRepository.findAttendanceSummaryByEventId(eventId);
+        if (rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this event");
+        }
 
-        long totalTickets = ((Number) row[0]).longValue();
+        Object[] row = rows.getFirst();
+        long totalTickets = toLong(row[0]);
         if (totalTickets == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this event");
         }
 
-        long usedTickets = ((Number) row[1]).longValue();
-        long validTickets = ((Number) row[2]).longValue();
+        long usedTickets = toLong(row[1]);
+        long validTickets = toLong(row[2]);
         double attendanceRate = (usedTickets * 100.0) / totalTickets;
-        LocalDateTime lastCheckIn = row[3] != null ? ((java.sql.Timestamp) row[3]).toLocalDateTime() : null;
+        LocalDateTime lastCheckIn = toLocalDateTime(row[3]);
 
         return new EventAttendanceSummaryDTO(eventId, totalTickets, usedTickets, validTickets, attendanceRate, lastCheckIn);
     }
@@ -217,6 +224,32 @@ public class TicketService {
         } catch (NumberFormatException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "value must be numeric for gt/lt");
         }
+    }
+
+    private long toLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(value.toString());
+    }
+
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+        if (value instanceof java.util.Date date) {
+            return date.toInstant().atZone(ZoneOffset.UTC).toLocalDateTime();
+        }
+        return LocalDateTime.parse(value.toString());
     }
 
     private UnusedTicketDTO mapToUnusedTicketDTO(UnusedTicketProjection p) {

@@ -136,13 +136,18 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     @Query(value = """
         SELECT
-            COUNT(*) AS totalTickets,
-            SUM(CASE WHEN t.status = 'USED' THEN 1 ELSE 0 END) AS usedTickets,
-            SUM(CASE WHEN t.status = 'VALID' THEN 1 ELSE 0 END) AS validTickets,
-            MAX(t.issued_at) AS lastCheckIn
+            COUNT(t.id) AS totalTickets,
+            COALESCE(SUM(CASE WHEN t.status = 'USED' THEN 1 ELSE 0 END), 0) AS usedTickets,
+            COALESCE(SUM(CASE WHEN t.status = 'VALID' THEN 1 ELSE 0 END), 0) AS validTickets,
+            MAX(
+                CASE
+                    WHEN t.status = 'USED'
+                    THEN NULLIF(t.metadata ->> 'checkInTime', '')::timestamp
+                END
+            ) AS lastCheckIn
         FROM tickets t
         JOIN bookings b ON b.id = t.booking_id
         WHERE b.event_id = :eventId
         """, nativeQuery = true)
-    Object[] findAttendanceSummaryByEventId(@Param("eventId") Long eventId);
+    List<Object[]> findAttendanceSummaryByEventId(@Param("eventId") Long eventId);
 }
