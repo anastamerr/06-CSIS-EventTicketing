@@ -54,4 +54,17 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             nativeQuery = true
     )
     List<Booking> findByMetadataField(@Param("key") String key, @Param("value") String value);
+
+    @Query(value = """
+        SELECT
+            COUNT(*) AS totalBookings,
+            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completedBookings,
+            SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancelledBookings,
+            COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_amount ELSE 0 END), 0) AS totalRevenue,
+            COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN total_amount END), 0) AS averageBookingAmount
+        FROM bookings
+        WHERE booking_date BETWEEN :startDate AND :endDate
+        """, nativeQuery = true)
+    Object[] findAnalyticsByDateRange(@Param("startDate") LocalDateTime startDate,
+                                      @Param("endDate") LocalDateTime endDate);
 }

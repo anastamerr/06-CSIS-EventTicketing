@@ -27,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
 
 @Service
 public class BookingService {
@@ -154,6 +155,30 @@ public class BookingService {
             );
         }
         return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime);
+    }
+
+    public BookingAnalyticsDTO getBookingAnalytics(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be on or before endDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        Object[] row = bookingRepository.findAnalyticsByDateRange(startDateTime, endDateTime);
+
+        long totalBookings = ((Number) row[0]).longValue();
+        long completedBookings = ((Number) row[1]).longValue();
+        long cancelledBookings = ((Number) row[2]).longValue();
+        double totalRevenue = ((Number) row[3]).doubleValue();
+        double averageBookingAmount = ((Number) row[4]).doubleValue();
+        double completionRate = totalBookings == 0 ? 0.0 : (completedBookings * 100.0) / totalBookings;
+
+        return new BookingAnalyticsDTO(totalBookings, completedBookings, cancelledBookings,
+                totalRevenue, averageBookingAmount, completionRate);
     }
 
     @Transactional(readOnly = true)
