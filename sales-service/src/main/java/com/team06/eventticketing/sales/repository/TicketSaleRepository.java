@@ -66,6 +66,7 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
             WHERE user_id = :userId
               AND status = 'COMPLETED'
             GROUP BY method
+            ORDER BY method
             """, nativeQuery = true)
     List<PaymentMethodSummaryProjection> getCompletedSalesSummaryByMethod(@Param("userId") Long userId);
 
