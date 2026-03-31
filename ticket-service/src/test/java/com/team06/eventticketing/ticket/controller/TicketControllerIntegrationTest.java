@@ -298,6 +298,66 @@ class TicketControllerIntegrationTest {
     }
 
     @Test
+    void getEventAttendanceSummaryReturnsExpectedCountsAndLastCheckIn() throws Exception {
+        insertEvent(300L, "Jazz Festival", "Opera House", 30.0445, 31.2357);
+        insertBooking(301L, 300L);
+        insertBooking(302L, 300L);
+
+        LocalDateTime firstCheckIn = LocalDateTime.of(2026, 3, 15, 19, 30);
+        LocalDateTime lastCheckIn = LocalDateTime.of(2026, 3, 15, 19, 55);
+
+        List<Ticket> tickets = new ArrayList<>();
+        for (int index = 0; index < 6; index++) {
+            LocalDateTime checkInTime = firstCheckIn.plusMinutes(index * 5L);
+            tickets.add(ticketWithMetadata(
+                    301L,
+                    "TIX-USED-" + index,
+                    TicketStatus.USED,
+                    LocalDateTime.of(2026, 3, 10, 9, 10),
+                    Map.of(
+                            "ticketCode", "TIX-USED-" + index,
+                            "checkInTime", checkInTime.toString()
+                    )
+            ));
+        }
+        for (int index = 0; index < 3; index++) {
+            tickets.add(ticketWithMetadata(
+                    302L,
+                    "TIX-VALID-" + index,
+                    TicketStatus.VALID,
+                    LocalDateTime.of(2026, 3, 18, 15, 15),
+                    Map.of("ticketCode", "TIX-VALID-" + index)
+            ));
+        }
+        tickets.add(ticketWithMetadata(
+                302L,
+                "TIX-EXPIRED-0",
+                TicketStatus.EXPIRED,
+                LocalDateTime.of(2026, 3, 18, 15, 15),
+                Map.of("ticketCode", "TIX-EXPIRED-0")
+        ));
+
+        ticketRepository.saveAllAndFlush(tickets);
+
+        mockMvc.perform(get("/api/tickets/event/300/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eventId").value(300))
+                .andExpect(jsonPath("$.totalTickets").value(10))
+                .andExpect(jsonPath("$.usedTickets").value(6))
+                .andExpect(jsonPath("$.validTickets").value(3))
+                .andExpect(jsonPath("$.attendanceRate").value(60.0))
+                .andExpect(jsonPath("$.lastCheckIn").value("2026-03-15T19:55:00"));
+    }
+
+    @Test
+    void getEventAttendanceSummaryReturns404WhenNoTicketsExist() throws Exception {
+        insertEvent(400L, "Empty Event", "Conference Hall", 30.0445, 31.2357);
+
+        mockMvc.perform(get("/api/tickets/event/400/summary"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void getTicketsHistoryReturnsEmptyListWhenNoTicketsMatch() throws Exception {
         insertBooking(1L, 100L);
         saveTicket("TIX-2026-200", TicketStatus.VALID, LocalDateTime.of(2026, 2, 15, 12, 0));
@@ -385,6 +445,23 @@ class TicketControllerIntegrationTest {
         ticket.setTicketCode(ticketCode);
         ticket.setStatus(TicketStatus.VALID);
         ticket.setIssuedAt(now());
+        ticket.setMetadata(new LinkedHashMap<>(metadata));
+        return ticket;
+    }
+
+    private Ticket ticketWithMetadata(
+            Long bookingId,
+            String ticketCode,
+            TicketStatus status,
+            LocalDateTime issuedAt,
+            Map<String, Object> metadata
+    ) {
+        Ticket ticket = new Ticket();
+        ticket.setBookingId(bookingId);
+        ticket.setAttendeeName("Attendee " + ticketCode);
+        ticket.setTicketCode(ticketCode);
+        ticket.setStatus(status);
+        ticket.setIssuedAt(issuedAt);
         ticket.setMetadata(new LinkedHashMap<>(metadata));
         return ticket;
     }
