@@ -73,6 +73,14 @@ public class BookingController {
         return bookingService.searchBookings(status, startDate, endDate);
     }
 
+    @GetMapping("/metadata/search")
+    public List<Booking> searchBookingsByMetadata(
+            @RequestParam String key,
+            @RequestParam String value
+    ) {
+        return bookingService.searchBookingsByMetadata(key, value);
+    }
+
     @PostMapping("/{bookingId}/items")
     public Booking addItemsToBooking(@PathVariable Long bookingId, @RequestBody List<BookingItemRequest> items) {
         return bookingService.addItemsToBooking(bookingId, items);
