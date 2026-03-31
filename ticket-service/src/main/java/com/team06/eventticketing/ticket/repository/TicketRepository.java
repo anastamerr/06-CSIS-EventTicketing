@@ -98,4 +98,39 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             @Param("longitude") double longitude,
             @Param("radiusKm") double radiusKm
     );
+
+    @Query(value = """
+            SELECT *
+            FROM tickets
+            WHERE metadata ->> :key = :value
+            ORDER BY id ASC
+            """, nativeQuery = true)
+    List<Ticket> findByMetadataFieldEquals(
+            @Param("key") String key,
+            @Param("value") String value
+    );
+
+    @Query(value = """
+            SELECT *
+            FROM tickets
+            WHERE (metadata ->> :key) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+              AND CAST(metadata ->> :key AS numeric) > CAST(:value AS numeric)
+            ORDER BY id ASC
+            """, nativeQuery = true)
+    List<Ticket> findByMetadataFieldGreaterThan(
+            @Param("key") String key,
+            @Param("value") String value
+    );
+
+    @Query(value = """
+            SELECT *
+            FROM tickets
+            WHERE (metadata ->> :key) ~ '^-?[0-9]+(\\.[0-9]+)?$'
+              AND CAST(metadata ->> :key AS numeric) < CAST(:value AS numeric)
+            ORDER BY id ASC
+            """, nativeQuery = true)
+    List<Ticket> findByMetadataFieldLessThan(
+            @Param("key") String key,
+            @Param("value") String value
+    );
 }
