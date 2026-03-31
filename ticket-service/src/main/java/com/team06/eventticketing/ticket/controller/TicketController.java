@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 
 @RestController
 @RequestMapping("/api/tickets")
@@ -71,6 +72,11 @@ public class TicketController {
     @GetMapping("/booking/{bookingId}/latest")
     public Ticket getLatestTicketForBooking(@PathVariable Long bookingId) {
         return ticketService.getLatestTicketForBooking(bookingId);
+    }
+
+    @GetMapping("/event/{eventId}/summary")
+    public EventAttendanceSummaryDTO getEventAttendanceSummary(@PathVariable Long eventId) {
+        return ticketService.getEventAttendanceSummary(eventId);
     }
 
     @PostMapping("/booking/{bookingId}")
