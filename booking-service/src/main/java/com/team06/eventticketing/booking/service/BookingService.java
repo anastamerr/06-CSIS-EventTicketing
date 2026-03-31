@@ -27,6 +27,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
 
 @Service
 public class BookingService {
@@ -154,6 +155,35 @@ public class BookingService {
             );
         }
         return bookingRepository.findByBookingDateBetweenOrderByBookingDateDesc(startDateTime, endDateTime);
+    }
+
+    @Transactional(readOnly = true)
+    public BookingAnalyticsDTO getBookingAnalytics(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be on or before endDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        List<Object[]> rows = bookingRepository.findAnalyticsByDateRange(startDateTime, endDateTime);
+        if (rows.isEmpty()) {
+            return new BookingAnalyticsDTO(0, 0, 0, 0.0, 0.0, 0.0);
+        }
+        Object[] row = rows.get(0);
+
+        long totalBookings = toLongValue(row[0]);
+        long completedBookings = toLongValue(row[1]);
+        long cancelledBookings = toLongValue(row[2]);
+        double totalRevenue = toDoubleValue(row[3]);
+        double averageBookingAmount = toDoubleValue(row[4]);
+        double completionRate = totalBookings == 0 ? 0.0 : (completedBookings * 100.0) / totalBookings;
+
+        return new BookingAnalyticsDTO(totalBookings, completedBookings, cancelledBookings,
+                totalRevenue, averageBookingAmount, completionRate);
     }
 
     @Transactional(readOnly = true)
@@ -360,6 +390,14 @@ public class BookingService {
         if (value == null || value.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "value is required");
         }
+    }
+
+    private long toLongValue(Object value) {
+        return value == null ? 0L : ((Number) value).longValue();
+    }
+
+    private double toDoubleValue(Object value) {
+        return value == null ? 0.0 : ((Number) value).doubleValue();
     }
 
     private Map<String, Object> buildTransactionDetails(Booking booking, double totalAmount) {

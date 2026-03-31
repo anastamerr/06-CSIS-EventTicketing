@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
 import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
@@ -300,6 +301,45 @@ class BookingServiceTest {
                 ));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+    }
+
+    @Test
+    void getBookingAnalyticsMapsAggregateRowToDto() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        when(bookingRepository.findAnalyticsByDateRange(startDateTime, endDateTime))
+                .thenReturn(List.<Object[]>of(new Object[]{10L, 7L, 3L, 3500.0, 500.0}));
+
+        BookingAnalyticsDTO result = bookingService.getBookingAnalytics(startDate, endDate);
+
+        assertEquals(10L, result.totalBookings());
+        assertEquals(7L, result.completedBookings());
+        assertEquals(3L, result.cancelledBookings());
+        assertEquals(3500.0, result.totalRevenue());
+        assertEquals(500.0, result.averageBookingAmount());
+        assertEquals(70.0, result.completionRate());
+        verify(bookingRepository).findAnalyticsByDateRange(startDateTime, endDateTime);
+    }
+
+    @Test
+    void getBookingAnalyticsDefaultsNullAggregateValuesToZero() {
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 4, 30);
+
+        when(bookingRepository.findAnalyticsByDateRange(startDate.atStartOfDay(), endDate.atTime(LocalTime.MAX)))
+                .thenReturn(List.<Object[]>of(new Object[]{0L, null, null, null, null}));
+
+        BookingAnalyticsDTO result = bookingService.getBookingAnalytics(startDate, endDate);
+
+        assertEquals(0L, result.totalBookings());
+        assertEquals(0L, result.completedBookings());
+        assertEquals(0L, result.cancelledBookings());
+        assertEquals(0.0, result.totalRevenue());
+        assertEquals(0.0, result.averageBookingAmount());
+        assertEquals(0.0, result.completionRate());
     }
 
     @Test

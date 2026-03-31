@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -77,6 +78,13 @@ public class BookingController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
         return bookingService.searchBookings(status, startDate, endDate);
+    }
+
+    @GetMapping("/analytics")
+    public BookingAnalyticsDTO getBookingAnalytics(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return bookingService.getBookingAnalytics(startDate, endDate);
     }
 
     @GetMapping("/metadata/search")
