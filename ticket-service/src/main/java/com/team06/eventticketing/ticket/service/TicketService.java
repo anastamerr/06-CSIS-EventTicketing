@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 
 import java.util.List;
 import java.util.Map;
@@ -95,6 +96,22 @@ public class TicketService {
         }
         return ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
+    }
+
+    public EventAttendanceSummaryDTO getEventAttendanceSummary(Long eventId) {
+        Object[] row = ticketRepository.findAttendanceSummaryByEventId(eventId);
+
+        long totalTickets = ((Number) row[0]).longValue();
+        if (totalTickets == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this event");
+        }
+
+        long usedTickets = ((Number) row[1]).longValue();
+        long validTickets = ((Number) row[2]).longValue();
+        double attendanceRate = (usedTickets * 100.0) / totalTickets;
+        LocalDateTime lastCheckIn = row[3] != null ? ((java.sql.Timestamp) row[3]).toLocalDateTime() : null;
+
+        return new EventAttendanceSummaryDTO(eventId, totalTickets, usedTickets, validTickets, attendanceRate, lastCheckIn);
     }
 
     @Transactional(readOnly = true)
