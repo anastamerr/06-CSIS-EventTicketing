@@ -1,6 +1,7 @@
 package com.team06.eventticketing.booking.controller;
 
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingDetailsDTO;
 import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
@@ -41,6 +42,11 @@ public class BookingController {
     @GetMapping("/{id}")
     public Booking getBookingById(@PathVariable Long id) {
         return bookingService.getBookingById(id);
+    }
+
+    @GetMapping("/{bookingId}/details")
+    public BookingDetailsDTO getBookingDetails(@PathVariable Long bookingId) {
+        return bookingService.getBookingDetails(bookingId);
     }
 
     @PostMapping("/estimate")

@@ -1,6 +1,8 @@
 package com.team06.eventticketing.booking.service;
 
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
+import com.team06.eventticketing.booking.dto.BookingDetailsDTO;
+import com.team06.eventticketing.booking.dto.BookingDetailsItemDTO;
 import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
@@ -19,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -69,6 +72,32 @@ public class BookingService {
     public Booking getBookingById(Long id) {
         return bookingRepository.findByIdWithBookingItems(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public BookingDetailsDTO getBookingDetails(Long id) {
+        Booking booking = getBookingById(id);
+
+        List<BookingDetailsItemDTO> items = booking.getBookingItems().stream()
+                .sorted(Comparator.comparing(BookingItem::getEventOrder, Comparator.nullsLast(Integer::compareTo)))
+                .map(this::toBookingDetailsItemDTO)
+                .toList();
+
+        int confirmedItems = (int) booking.getBookingItems().stream()
+                .filter(item -> item.getStatus() == BookingItemStatus.CONFIRMED)
+                .count();
+
+        return new BookingDetailsDTO(
+                booking.getId(),
+                booking.getUserId(),
+                booking.getEventId(),
+                booking.getStatus(),
+                booking.getTotalAmount(),
+                booking.getMetadata(),
+                items,
+                items.size(),
+                confirmedItems
+        );
     }
 
     @Transactional
@@ -237,6 +266,18 @@ public class BookingService {
             bookingItem.setMetadata(new LinkedHashMap<>());
         }
         return bookingItem;
+    }
+
+    private BookingDetailsItemDTO toBookingDetailsItemDTO(BookingItem item) {
+        return new BookingDetailsItemDTO(
+                item.getId(),
+                item.getEventOrder(),
+                item.getSessionTitle(),
+                item.getQuantity(),
+                item.getUnitPrice(),
+                item.getStatus(),
+                item.getMetadata()
+        );
     }
 
     private void validateCompletableBooking(Booking booking) {
