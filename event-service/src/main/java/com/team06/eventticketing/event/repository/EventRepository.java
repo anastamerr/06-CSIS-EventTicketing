@@ -77,4 +77,23 @@ public interface EventRepository extends JpaRepository<Event, Long> {
         """)
     List<Event> findEventsWithUnverifiedSessions();
 
+    @Query("""
+        SELECT e
+        FROM Event e
+        WHERE (:category IS NULL OR e.category = :category)
+          AND e.eventDate >= :startDateTime
+          AND e.eventDate < :endDateTime
+        ORDER BY e.eventDate ASC
+        """)
+    List<Event> searchEventsByCategoryAndDateRange(
+            @Param("category") EventCategory category,
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime
+    );
+
+
+
+
+
+
 }
