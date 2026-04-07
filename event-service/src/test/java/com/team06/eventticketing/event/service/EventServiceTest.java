@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
+import com.team06.eventticketing.event.dto.TopEventDTO;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
@@ -452,6 +453,33 @@ class EventServiceTest {
         assertEquals(2, allStatuses.size());
         assertEquals(1, onlyUpcoming.size());
         assertEquals(1L, onlyUpcoming.get(0).getId());
+    }
+
+    @Test
+    void getTopRatedEventsReturnsRankedDtos() {
+        when(eventRepository.findTopRatedEvents(2)).thenReturn(List.of(
+                new Object[]{10L, "Event A", 4.9, 7L},
+                new Object[]{11L, "Event B", 4.5, 3L}
+        ));
+
+        List<TopEventDTO> result = eventService.getTopRatedEvents(2);
+
+        assertEquals(2, result.size());
+        assertEquals(10L, result.get(0).getEventId());
+        assertEquals("Event A", result.get(0).getName());
+        assertEquals(4.9, result.get(0).getRating());
+        assertEquals(7L, result.get(0).getTotalBookings());
+        assertEquals(11L, result.get(1).getEventId());
+        assertEquals("Event B", result.get(1).getName());
+    }
+
+    @Test
+    void getTopRatedEventsRejectsNonPositiveLimit() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.getTopRatedEvents(0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventRepository, never()).findTopRatedEvents(0);
     }
 
     private EventSession session(Long id, Event event, LocalDateTime startTime) {
