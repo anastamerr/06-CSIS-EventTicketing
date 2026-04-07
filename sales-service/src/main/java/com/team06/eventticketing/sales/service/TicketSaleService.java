@@ -303,4 +303,40 @@ public class TicketSaleService {
 
         return new UserSaleSummaryDTO(userId, totalSales, totalAmount, methodBreakdown);
     }
+
+    @Transactional(readOnly = true)
+    public List<TicketSaleResponse> searchTicketSales(
+            TicketSaleStatus status,
+            LocalDate startDate,
+            LocalDate endDate
+    ) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be on or before endDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
+
+        List<TicketSale> sales;
+        if (status != null) {
+            sales = ticketSaleRepository.findByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                    status,
+                    startDateTime,
+                    endDateTime
+            );
+        } else {
+            sales = ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                    startDateTime,
+                    endDateTime
+            );
+        }
+
+        return sales.stream().map(this::toResponse).toList();
+    }
+
+
 }
