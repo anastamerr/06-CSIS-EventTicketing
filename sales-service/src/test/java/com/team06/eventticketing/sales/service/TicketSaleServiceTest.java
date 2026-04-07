@@ -502,6 +502,80 @@ class TicketSaleServiceTest {
         verify(ticketSaleRepository, never()).getCompletedSalesSummaryByMethod(999L);
     }
 
+    @Test
+    void searchTicketSalesReturnsMostRecentMatchesWhenStatusIsProvided() {
+        TicketSale newest = sale(21L, 900.0, TicketSaleStatus.COMPLETED);
+        newest.setCreatedAt(LocalDateTime.of(2026, 3, 20, 12, 0));
+        TicketSale older = sale(22L, 400.0, TicketSaleStatus.COMPLETED);
+        older.setCreatedAt(LocalDateTime.of(2026, 3, 5, 9, 0));
+
+        when(ticketSaleRepository.findByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                TicketSaleStatus.COMPLETED,
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        )).thenReturn(List.of(newest, older));
+
+        List<TicketSaleResponse> result = ticketSaleService.searchTicketSales(
+                TicketSaleStatus.COMPLETED,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31)
+        );
+
+        assertEquals(2, result.size());
+        assertEquals(21L, result.get(0).getId());
+        assertEquals(22L, result.get(1).getId());
+        verify(ticketSaleRepository).findByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                TicketSaleStatus.COMPLETED,
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        );
+    }
+
+    @Test
+    void searchTicketSalesReturnsAllStatusesWhenFilterIsOmitted() {
+        TicketSale refunded = sale(31L, 300.0, TicketSaleStatus.REFUNDED);
+        refunded.setCreatedAt(LocalDateTime.of(2026, 3, 18, 16, 0));
+        TicketSale pending = sale(32L, 150.0, TicketSaleStatus.PENDING);
+        pending.setCreatedAt(LocalDateTime.of(2026, 3, 2, 8, 30));
+
+        when(ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        )).thenReturn(List.of(refunded, pending));
+
+        List<TicketSaleResponse> result = ticketSaleService.searchTicketSales(
+                null,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31)
+        );
+
+        assertEquals(2, result.size());
+        assertEquals(31L, result.get(0).getId());
+        assertEquals(TicketSaleStatus.REFUNDED, result.get(0).getStatus());
+        assertEquals(32L, result.get(1).getId());
+        verify(ticketSaleRepository).findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                LocalDate.of(2026, 3, 1).atStartOfDay(),
+                LocalDate.of(2026, 4, 1).atStartOfDay()
+        );
+    }
+
+    @Test
+    void searchTicketSalesRejectsInvalidDateRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.searchTicketSales(
+                        TicketSaleStatus.COMPLETED,
+                        LocalDate.of(2026, 4, 1),
+                        LocalDate.of(2026, 3, 31)
+                ));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketSaleRepository, never()).findByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
     private TicketSale sale(Long id, double amount, TicketSaleStatus status) {
         TicketSale sale = new TicketSale();
         sale.setId(id);

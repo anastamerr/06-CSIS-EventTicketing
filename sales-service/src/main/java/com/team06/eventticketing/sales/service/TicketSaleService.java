@@ -323,13 +323,13 @@ public class TicketSaleService {
 
         List<TicketSale> sales;
         if (status != null) {
-            sales = ticketSaleRepository.findByStatusAndCreatedAtBetweenOrderByCreatedAtDesc(
+            sales = ticketSaleRepository.findByStatusAndCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
                     status,
                     startDateTime,
                     endDateTime
             );
         } else {
-            sales = ticketSaleRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(
+            sales = ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
                     startDateTime,
                     endDateTime
             );
