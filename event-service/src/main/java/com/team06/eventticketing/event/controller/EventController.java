@@ -1,14 +1,15 @@
 package com.team06.eventticketing.event.controller;
 
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
+import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
+import com.team06.eventticketing.event.dto.TopEventDTO;
+import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
+import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.service.EventService;
-import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
-import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
-import com.team06.eventticketing.event.model.EventCategory;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -108,6 +109,13 @@ public class EventController {
     @GetMapping("/sessions/unverified")
     public List<EventSessionAlertDTO> getEventsWithUnverifiedSessions() {
         return eventService.getEventsWithUnverifiedSessions();
+    }
+
+    @GetMapping("/reports/top-rated")
+    public List<TopEventDTO> getTopRatedEvents(
+            @RequestParam int limit
+    ) {
+        return eventService.getTopRatedEvents(limit);
     }
 
     @GetMapping("/search")
