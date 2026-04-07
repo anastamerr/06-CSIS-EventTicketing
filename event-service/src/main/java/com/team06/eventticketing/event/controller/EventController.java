@@ -1,13 +1,15 @@
 package com.team06.eventticketing.event.controller;
 
-import com.team06.eventticketing.event.dto.*;
+import com.team06.eventticketing.event.dto.EventRevenueDTO;
+import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
+import com.team06.eventticketing.event.dto.RateEventRequest;
+import com.team06.eventticketing.event.dto.TopEventDTO;
+import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
+import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
+import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.service.EventService;
-
-import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
-import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
-import com.team06.eventticketing.event.model.EventCategory;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -114,6 +116,8 @@ public class EventController {
             @RequestParam int limit
     ) {
         return eventService.getTopRatedEvents(limit);
+    }
+
     @GetMapping("/search")
     public List<Event> searchEvents(
             @RequestParam(required = false) EventCategory category,
