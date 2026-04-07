@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
+import com.team06.eventticketing.event.model.EventCategory;
 
 @Service
 public class EventService {
@@ -217,6 +218,23 @@ public class EventService {
                     );
                 })
                 .toList();
+    }
+
+
+    @Transactional(readOnly = true)
+    public List<Event> searchEvents(EventCategory category, LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+
+        if (endDate.isBefore(startDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must be on or after startDate");
+        }
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
+
+        return eventRepository.searchEventsByCategoryAndDateRange(category, startDateTime, endDateTime);
     }
 
 
