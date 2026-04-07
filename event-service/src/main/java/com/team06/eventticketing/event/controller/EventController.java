@@ -5,6 +5,9 @@ import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.service.EventService;
 
+import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
+import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
+import com.team06.eventticketing.event.model.EventCategory;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -111,6 +114,13 @@ public class EventController {
             @RequestParam int limit
     ) {
         return eventService.getTopRatedEvents(limit);
+    @GetMapping("/search")
+    public List<Event> searchEvents(
+            @RequestParam(required = false) EventCategory category,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return eventService.searchEvents(category, startDate, endDate);
     }
 
 }
