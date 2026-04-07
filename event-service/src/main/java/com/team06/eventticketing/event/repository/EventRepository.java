@@ -77,4 +77,20 @@ public interface EventRepository extends JpaRepository<Event, Long> {
         """)
     List<Event> findEventsWithUnverifiedSessions();
 
+    @Query(value = """
+    SELECT
+        e.id,
+        e.name,
+        e.rating,
+        COUNT(b.id) as totalBookings
+    FROM events e
+    LEFT JOIN bookings b
+        ON b.event_id = e.id
+       AND b.status = 'COMPLETED'
+    GROUP BY e.id, e.name, e.rating
+    ORDER BY e.rating DESC
+    LIMIT :limit
+    """, nativeQuery = true)
+    List<Object[]> findTopRatedEvents(@Param("limit") int limit);
+
 }
