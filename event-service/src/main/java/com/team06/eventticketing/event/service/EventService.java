@@ -1,26 +1,27 @@
 package com.team06.eventticketing.event.service;
 
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
+import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
+import com.team06.eventticketing.event.dto.TopEventDTO;
+import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
+import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
-import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
-import java.util.stream.Collectors;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
-import com.team06.eventticketing.event.model.EventCategory;
 
 @Service
 public class EventService {
@@ -222,6 +223,22 @@ public class EventService {
 
 
     @Transactional(readOnly = true)
+    public List<TopEventDTO> getTopRatedEvents(int limit) {
+
+        if (limit <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be positive");
+        }
+
+        List<Object[]> results = eventRepository.findTopRatedEvents(limit);
+
+        return results.stream().map(row -> new TopEventDTO(
+                ((Number) row[0]).longValue(),
+                (String) row[1],
+                row[2] == null ? 0.0 : ((Number) row[2]).doubleValue(),
+                ((Number) row[3]).longValue()
+        )).toList();
+    }
+
     public List<Event> searchEvents(EventCategory category, LocalDate startDate, LocalDate endDate) {
         if (startDate == null || endDate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
@@ -236,6 +253,4 @@ public class EventService {
 
         return eventRepository.searchEventsByCategoryAndDateRange(category, startDateTime, endDateTime);
     }
-
-
 }
