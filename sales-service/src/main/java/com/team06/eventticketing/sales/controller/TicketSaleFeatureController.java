@@ -7,8 +7,11 @@ import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
 import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.TicketSale;
+import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.service.TicketSaleService;
 import java.time.LocalDate;
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -67,4 +70,14 @@ public class TicketSaleFeatureController {
     ) {
         return ticketSaleService.getRevenueReport(startDate, endDate);
     }
+
+    @GetMapping("/search")
+    public List<TicketSaleResponse> searchTicketSales(
+            @RequestParam(required = false) TicketSaleStatus status,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return ticketSaleService.searchTicketSales(status, startDate, endDate);
+    }
+
 }

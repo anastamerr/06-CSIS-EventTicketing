@@ -70,4 +70,17 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
             """, nativeQuery = true)
     List<PaymentMethodSummaryProjection> getCompletedSalesSummaryByMethod(@Param("userId") Long userId);
 
+
+    List<TicketSale> findByCreatedAtBetweenOrderByCreatedAtDesc(
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    );
+
+    List<TicketSale> findByStatusAndCreatedAtBetweenOrderByCreatedAtDesc(
+            TicketSaleStatus status,
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    );
+
+
 }
