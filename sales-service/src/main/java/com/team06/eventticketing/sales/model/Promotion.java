@@ -49,6 +49,9 @@ public class Promotion {
     @Column(nullable = false)
     private Boolean active = Boolean.TRUE;
 
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> metadata = new LinkedHashMap<>();
@@ -63,6 +66,9 @@ public class Promotion {
         }
         if (active == null) {
             active = Boolean.TRUE;
+        }
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
         }
     }
 
@@ -138,6 +144,14 @@ public class Promotion {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 
     public Map<String, Object> getMetadata() {

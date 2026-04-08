@@ -49,6 +49,8 @@ public class Booking {
     @Column(nullable = false)
     private LocalDateTime bookingDate;
 
+    private LocalDateTime createdAt;
+
     private LocalDateTime confirmedAt;
 
     @OrderBy("eventOrder ASC")
@@ -57,8 +59,11 @@ public class Booking {
 
     @PrePersist
     void onCreate() {
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
         if (bookingDate == null) {
-            bookingDate = LocalDateTime.now();
+            bookingDate = createdAt;
         }
     }
 
@@ -134,6 +139,14 @@ public class Booking {
 
     public void setBookingDate(LocalDateTime bookingDate) {
         this.bookingDate = bookingDate;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 
     public LocalDateTime getConfirmedAt() {

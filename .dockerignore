@@ -1,0 +1,7 @@
+.git
+.idea
+**/target
+**/.mvn/wrapper/maven-wrapper.jar
+**/.DS_Store
+event-service-live.log
+pgdata

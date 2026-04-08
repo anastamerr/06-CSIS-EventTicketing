@@ -25,7 +25,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             FROM tickets
             WHERE issued_at >= :startDate
               AND issued_at < :endExclusive
-              AND (:status IS NULL OR status = :status)
+              AND (:status IS NULL OR status = CAST(:status AS ticket_status))
             ORDER BY issued_at ASC, id ASC
             """, nativeQuery = true)
     List<Ticket> findByIssuedAtBetweenAndStatus(
@@ -73,6 +73,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             SELECT
                 t.id AS ticketId,
                 t.attendee_name AS attendeeName,
+                t.ticket_code AS ticketCode,
                 t.booking_id AS bookingId,
                 e.name AS eventName,
                 CAST(e.details ->> 'venueLat' AS double precision) AS eventLat,

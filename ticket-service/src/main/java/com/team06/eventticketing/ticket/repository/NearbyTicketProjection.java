@@ -6,6 +6,8 @@ public interface NearbyTicketProjection {
 
     String getAttendeeName();
 
+    String getTicketCode();
+
     Long getBookingId();
 
     String getEventName();

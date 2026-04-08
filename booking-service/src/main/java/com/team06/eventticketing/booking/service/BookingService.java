@@ -120,21 +120,19 @@ public class BookingService {
         Booking booking = getBookingByIdForUpdate(id);
         validateCompletableBooking(booking);
 
-        if (ticketSaleJdbcRepository.existsByBookingId(id)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket sale already exists for booking");
-        }
-
         double totalAmount = booking.getTotalAmount() == null ? calculateTotalAmount(booking) : booking.getTotalAmount();
         booking.setTotalAmount(totalAmount);
         booking.setStatus(BookingStatus.COMPLETED);
 
-        ticketSaleJdbcRepository.createPendingSale(
-                booking.getId(),
-                booking.getUserId(),
-                totalAmount,
-                resolvePaymentMethod(booking),
-                buildTransactionDetails(booking, totalAmount)
-        );
+        if (!ticketSaleJdbcRepository.existsByBookingId(id)) {
+            ticketSaleJdbcRepository.createPendingSale(
+                    booking.getId(),
+                    booking.getUserId(),
+                    totalAmount,
+                    resolvePaymentMethod(booking),
+                    buildTransactionDetails(booking, totalAmount)
+            );
+        }
 
         return bookingRepository.save(booking);
     }
@@ -337,10 +335,12 @@ public class BookingService {
     }
 
     private void validateCompletableBooking(Booking booking) {
-        if (booking.getStatus() != BookingStatus.CHECKED_IN) {
+        if (booking.getStatus() == BookingStatus.PENDING
+                || booking.getStatus() == BookingStatus.CANCELLED
+                || booking.getStatus() == BookingStatus.COMPLETED) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Booking must be checked in before completion"
+                    "Booking must be checked in or confirmed before completion"
             );
         }
     }
@@ -374,7 +374,9 @@ public class BookingService {
     }
 
     private void validateAppendableBooking(Booking booking) {
-        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+        if (booking.getStatus() != BookingStatus.PENDING
+                && booking.getStatus() != BookingStatus.CONFIRMED
+                && booking.getStatus() != BookingStatus.CHECKED_IN) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Cannot add items to a booking with status " + booking.getStatus()

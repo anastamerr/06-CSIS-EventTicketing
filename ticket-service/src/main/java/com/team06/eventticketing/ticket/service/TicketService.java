@@ -42,12 +42,36 @@ public class TicketService {
     }
 
     public Ticket createTicket(Ticket ticket) {
-        ticket.setStatus(TicketStatus.VALID);
+        if (ticket.getStatus() == null) {
+            ticket.setStatus(TicketStatus.VALID);
+        }
+        if (ticket.getMetadata() == null) {
+            ticket.setMetadata(new LinkedHashMap<>());
+        }
+        return ticketRepository.save(ticket);
+    }
+
+    @Transactional
+    public Ticket issueTicketWithMetadata(
+            Long bookingId,
+            String attendeeName,
+            String ticketCode,
+            String status,
+            Map<String, Object> metadata
+    ) {
+        Ticket ticket = buildTicketForIssue(bookingId, attendeeName, ticketCode, metadata);
+        ticket.setStatus(resolveTicketStatus(status));
         return ticketRepository.save(ticket);
     }
 
     @Transactional
     public Ticket issueTicketWithMetadata(Long bookingId, String attendeeName, String ticketCode, Map<String, Object> metadata) {
+        Ticket ticket = buildTicketForIssue(bookingId, attendeeName, ticketCode, metadata);
+        ticket.setStatus(TicketStatus.VALID);
+        return ticketRepository.save(ticket);
+    }
+
+    private Ticket buildTicketForIssue(Long bookingId, String attendeeName, String ticketCode, Map<String, Object> metadata) {
         if (bookingId == null || !ticketRepository.existsBookingById(bookingId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
         }
@@ -60,11 +84,21 @@ public class TicketService {
         ticket.setBookingId(bookingId);
         ticket.setAttendeeName(attendeeName);
         ticket.setTicketCode(ticketCode);
-        ticket.setStatus(TicketStatus.VALID);
         ticket.setIssuedAt(LocalDateTime.now(clock));
         ticket.setMetadata(metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata));
 
-        return ticketRepository.save(ticket);
+        return ticket;
+    }
+
+    private TicketStatus resolveTicketStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return TicketStatus.VALID;
+        }
+        try {
+            return TicketStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            return TicketStatus.VALID;
+        }
     }
 
     public List<Ticket> getTicketsHistory(LocalDateTime startDateTime, LocalDateTime endExclusive, TicketStatus status) {
@@ -78,13 +112,41 @@ public class TicketService {
 
     public Ticket updateTicket(Long id, Ticket ticket) {
         Ticket existingTicket = getTicketById(id);
-        existingTicket.setBookingId(ticket.getBookingId());
-        existingTicket.setAttendeeName(ticket.getAttendeeName());
-        existingTicket.setTicketCode(ticket.getTicketCode());
-        existingTicket.setStatus(ticket.getStatus());
-        existingTicket.setIssuedAt(ticket.getIssuedAt());
-        existingTicket.setMetadata(ticket.getMetadata());
+        if (ticket.getBookingId() != null) {
+            existingTicket.setBookingId(ticket.getBookingId());
+        }
+        if (ticket.getAttendeeName() != null) {
+            existingTicket.setAttendeeName(ticket.getAttendeeName());
+        }
+        if (ticket.getTicketCode() != null) {
+            existingTicket.setTicketCode(ticket.getTicketCode());
+        }
+        if (ticket.getStatus() != null) {
+            existingTicket.setStatus(ticket.getStatus());
+        }
+        if (ticket.getIssuedAt() != null) {
+            existingTicket.setIssuedAt(ticket.getIssuedAt());
+        }
+        if (ticket.getMetadata() != null && !ticket.getMetadata().isEmpty()) {
+            existingTicket.setMetadata(new LinkedHashMap<>(ticket.getMetadata()));
+        }
         return ticketRepository.save(existingTicket);
+    }
+
+    public LocalDateTime parseFlexibleStart(String value) {
+        try {
+            return LocalDateTime.parse(value);
+        } catch (java.time.format.DateTimeParseException ignored) {
+            return java.time.LocalDate.parse(value).atStartOfDay();
+        }
+    }
+
+    public LocalDateTime parseFlexibleEndExclusive(String value) {
+        try {
+            return LocalDateTime.parse(value).plusSeconds(1);
+        } catch (java.time.format.DateTimeParseException ignored) {
+            return java.time.LocalDate.parse(value).plusDays(1).atStartOfDay();
+        }
     }
 
     public void deleteTicket(Long id) {
@@ -267,6 +329,7 @@ public class TicketService {
         NearbyTicketResponseDTO response = new NearbyTicketResponseDTO();
         response.setTicketId(projection.getTicketId());
         response.setAttendeeName(projection.getAttendeeName());
+        response.setTicketCode(projection.getTicketCode());
         response.setBookingId(projection.getBookingId());
         response.setEventName(projection.getEventName());
         response.setEventLat(projection.getEventLat());

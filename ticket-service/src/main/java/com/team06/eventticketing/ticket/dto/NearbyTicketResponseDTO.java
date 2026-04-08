@@ -4,6 +4,7 @@ public class NearbyTicketResponseDTO {
 
     private Long ticketId;
     private String attendeeName;
+    private String ticketCode;
     private Long bookingId;
     private String eventName;
     private Double eventLat;
@@ -24,6 +25,14 @@ public class NearbyTicketResponseDTO {
 
     public void setAttendeeName(String attendeeName) {
         this.attendeeName = attendeeName;
+    }
+
+    public String getTicketCode() {
+        return ticketCode;
+    }
+
+    public void setTicketCode(String ticketCode) {
+        this.ticketCode = ticketCode;
     }
 
     public Long getBookingId() {

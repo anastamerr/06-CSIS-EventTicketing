@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -49,16 +50,24 @@ public class UserService {
     }
 
     public User createUser(User user) {
+        prepareUserForSave(user, null);
+        validateUniqueContactFields(user, null);
         return userRepository.save(user);
     }
 
     public User updateUser(Long id, User user) {
         User existing = getUserById(id);
-        existing.setName(user.getName());
-        existing.setEmail(user.getEmail());
-        existing.setPhone(user.getPhone());
-        existing.setRole(user.getRole());
-        existing.setPreferences(user.getPreferences());
+        prepareUserForSave(user, existing);
+        validateUniqueContactFields(user, existing);
+        existing.setName(user.getName() == null ? existing.getName() : user.getName());
+        existing.setEmail(user.getEmail() == null ? existing.getEmail() : user.getEmail());
+        existing.setPhone(user.getPhone() == null ? existing.getPhone() : user.getPhone());
+        existing.setRole(user.getRole() == null ? existing.getRole() : user.getRole());
+        existing.setStatus(user.getStatus() == null ? existing.getStatus() : user.getStatus());
+        existing.setPreferences(user.getPreferences() == null ? existing.getPreferences() : user.getPreferences());
+        if (user.getPassword() != null) {
+            existing.setPassword(user.getPassword());
+        }
         return userRepository.save(existing);
     }
 
@@ -259,5 +268,37 @@ public class UserService {
             return null;
         }
         return value.trim();
+    }
+
+    private void prepareUserForSave(User candidate, User existing) {
+        if (candidate.getPassword() != null && candidate.getPassword().isBlank()) {
+            candidate.setPassword(null);
+        }
+        if (candidate.getPreferences() == null) {
+            candidate.setPreferences(existing == null ? new LinkedHashMap<>() : existing.getPreferences());
+        }
+        if (candidate.getStatus() == null && existing == null) {
+            candidate.setStatus(UserStatus.ACTIVE);
+        }
+    }
+
+    private void validateUniqueContactFields(User candidate, User existing) {
+        String email = candidate.getEmail();
+        if (email != null) {
+            userRepository.findByEmail(email)
+                    .filter(found -> existing == null || !found.getId().equals(existing.getId()))
+                    .ifPresent(found -> {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email already exists");
+                    });
+        }
+
+        String phone = candidate.getPhone();
+        if (phone != null) {
+            userRepository.findByPhone(phone)
+                    .filter(found -> existing == null || !found.getId().equals(existing.getId()))
+                    .ifPresent(found -> {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone already exists");
+                    });
+        }
     }
 }

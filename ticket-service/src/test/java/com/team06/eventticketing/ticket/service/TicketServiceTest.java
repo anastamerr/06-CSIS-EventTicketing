@@ -2,6 +2,7 @@ package com.team06.eventticketing.ticket.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
@@ -160,6 +161,32 @@ class TicketServiceTest {
         List<Ticket> actualTickets = ticketService.getTicketsHistory(start, endExclusive, TicketStatus.VALID);
 
         assertIterableEquals(expectedTickets, actualTickets);
+    }
+
+    @Test
+    void updateTicketPreservesExistingNonNullFieldsWhenRequestOmitsThem() {
+        Ticket existingTicket = ticket("Ahmed", "TIX-EXISTING");
+        existingTicket.setId(7L);
+        existingTicket.setBookingId(55L);
+        existingTicket.setStatus(TicketStatus.VALID);
+        existingTicket.setIssuedAt(LocalDateTime.of(2026, 3, 29, 12, 0));
+        existingTicket.setMetadata(Map.of("seat", "A12"));
+
+        Ticket updateRequest = new Ticket();
+        updateRequest.setAttendeeName("Ahmed Updated");
+
+        when(ticketRepository.findById(7L)).thenReturn(Optional.of(existingTicket));
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Ticket updatedTicket = ticketService.updateTicket(7L, updateRequest);
+
+        assertSame(existingTicket, updatedTicket);
+        assertEquals(55L, updatedTicket.getBookingId());
+        assertEquals("Ahmed Updated", updatedTicket.getAttendeeName());
+        assertEquals("TIX-EXISTING", updatedTicket.getTicketCode());
+        assertEquals(TicketStatus.VALID, updatedTicket.getStatus());
+        assertEquals(LocalDateTime.of(2026, 3, 29, 12, 0), updatedTicket.getIssuedAt());
+        assertEquals(Map.of("seat", "A12"), updatedTicket.getMetadata());
     }
 
     @Test
@@ -361,6 +388,11 @@ class TicketServiceTest {
             }
 
             @Override
+            public String getTicketCode() {
+                return "TIX-NEARBY-1";
+            }
+
+            @Override
             public Long getBookingId() {
                 return 55L;
             }
@@ -393,6 +425,7 @@ class TicketServiceTest {
         assertEquals(1, result.size());
         assertEquals(7L, result.get(0).getTicketId());
         assertEquals("Mariam", result.get(0).getAttendeeName());
+        assertEquals("TIX-NEARBY-1", result.get(0).getTicketCode());
         assertEquals(55L, result.get(0).getBookingId());
         assertEquals("Jazz Night", result.get(0).getEventName());
         assertEquals(30.0444, result.get(0).getEventLat());

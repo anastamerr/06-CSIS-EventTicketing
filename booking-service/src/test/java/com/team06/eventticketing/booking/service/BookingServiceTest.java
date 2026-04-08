@@ -190,7 +190,33 @@ class BookingServiceTest {
     }
 
     @Test
-    void completeBookingRejectsDuplicateTicketSale() {
+    void completeBookingAllowsConfirmedBooking() {
+        Booking booking = new Booking();
+        booking.setId(6L);
+        booking.setUserId(12L);
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setMetadata(new LinkedHashMap<>());
+        booking.addBookingItem(bookingItem(1, 2, 75.0, BookingItemStatus.RESERVED));
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(6L)).thenReturn(Optional.of(booking));
+        when(ticketSaleJdbcRepository.existsByBookingId(6L)).thenReturn(false);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Booking result = bookingService.completeBooking(6L);
+
+        assertEquals(BookingStatus.COMPLETED, result.getStatus());
+        assertEquals(150.0, result.getTotalAmount());
+        verify(ticketSaleJdbcRepository).createPendingSale(
+                eq(6L),
+                eq(12L),
+                eq(150.0),
+                eq("WALLET"),
+                any()
+        );
+    }
+
+    @Test
+    void completeBookingDoesNotCreateDuplicateTicketSale() {
         Booking booking = new Booking();
         booking.setId(5L);
         booking.setUserId(11L);
@@ -201,19 +227,23 @@ class BookingServiceTest {
         when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
         when(ticketSaleJdbcRepository.existsByBookingId(5L)).thenReturn(true);
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> bookingService.completeBooking(5L));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        Booking result = bookingService.completeBooking(5L);
+
+        assertEquals(BookingStatus.COMPLETED, result.getStatus());
+        assertEquals(100.0, result.getTotalAmount());
         verify(ticketSaleJdbcRepository, never()).createPendingSale(any(), any(), anyDouble(), anyString(), any());
-        verify(bookingRepository, never()).save(any());
+        verify(bookingRepository).save(booking);
     }
 
     @Test
     void completeBookingRejectsAlreadyCompletedBooking() {
         Booking booking = new Booking();
         booking.setId(5L);
+        booking.setUserId(11L);
         booking.setStatus(BookingStatus.COMPLETED);
+        booking.setTotalAmount(90.0);
 
         when(bookingRepository.findByIdWithBookingItemsForUpdate(5L)).thenReturn(Optional.of(booking));
 
