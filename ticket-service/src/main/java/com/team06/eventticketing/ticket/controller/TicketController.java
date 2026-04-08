@@ -6,7 +6,6 @@ import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.service.TicketService;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +83,7 @@ public class TicketController {
     public Ticket issueTicketWithMetadata(@PathVariable Long bookingId, @RequestBody Map<String, Object> request) {
         String attendeeName = (String) request.get("attendeeName");
         String ticketCode = (String) request.get("ticketCode");
+        String status = request.get("status") == null ? null : request.get("status").toString();
         @SuppressWarnings("unchecked")
         Map<String, Object> metadata = (Map<String, Object>) request.get("metadata");
 
@@ -91,17 +91,22 @@ public class TicketController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "attendeeName and ticketCode are required");
         }
 
-        return ticketService.issueTicketWithMetadata(bookingId, attendeeName, ticketCode, metadata);
+        return ticketService.issueTicketWithMetadata(bookingId, attendeeName, ticketCode, status, metadata);
     }
 
     @GetMapping("/history")
     public List<Ticket> getTicketHistory(
-            @RequestParam(name = "startDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(name = "endDate") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam(name = "status", required = false) TicketStatus status) {
-        LocalDateTime startDateTime = startDate.atStartOfDay();
-        LocalDateTime endExclusive = endDate.plusDays(1).atStartOfDay();
-        return ticketService.getTicketsHistory(startDateTime, endExclusive, status);
+            @RequestParam(name = "startDate") String startDate,
+            @RequestParam(name = "endDate") String endDate,
+            @RequestParam(name = "status", required = false) TicketStatus status
+    ) {
+        try {
+            LocalDateTime startDateTime = ticketService.parseFlexibleStart(startDate);
+            LocalDateTime endExclusive = ticketService.parseFlexibleEndExclusive(endDate);
+            return ticketService.getTicketsHistory(startDateTime, endExclusive, status);
+        } catch (RuntimeException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid date format");
+        }
     }
 
     @GetMapping("/unused-upcoming")

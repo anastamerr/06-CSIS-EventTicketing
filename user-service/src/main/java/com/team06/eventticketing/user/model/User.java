@@ -1,6 +1,6 @@
 package com.team06.eventticketing.user.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,8 +34,7 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @JsonIgnore
-    @Column(nullable = false)
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     @Column(nullable = false, unique = true)
@@ -66,6 +65,9 @@ public class User {
         }
         if (status == null) {
             status = UserStatus.ACTIVE;
+        }
+        if (preferences == null) {
+            preferences = new LinkedHashMap<>();
         }
     }
 

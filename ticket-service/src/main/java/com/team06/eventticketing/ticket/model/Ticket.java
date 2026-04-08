@@ -33,7 +33,8 @@ public class Ticket {
     private String ticketCode;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "ticket_status")
     private TicketStatus status;
 
     @Column(nullable = false)
@@ -47,6 +48,9 @@ public class Ticket {
     void onCreate() {
         if (issuedAt == null) {
             issuedAt = LocalDateTime.now();
+        }
+        if (metadata == null) {
+            metadata = new LinkedHashMap<>();
         }
     }
 

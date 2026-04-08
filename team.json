@@ -3,54 +3,90 @@
     "studentId": "55-11997",
     "name": "Anas Tamer Osman",
     "githubUsername": "anastamerr",
-    "service": ["event-service", "sales-service"]
+    "service": "event-service"
   },
   {
     "studentId": "55-16542",
-    "name": "Ibrahim",
+    "name": "Ibrahim Ismail",
     "githubUsername": "secretibra",
-    "service": ["booking-service", "ticket-service", "sales-service"]
+    "service": "booking-service"
   },
   {
     "studentId": "55-7986",
     "name": "Omar Ayman",
     "githubUsername": "22omarayman",
-    "service": ["event-service", "sales-service"]
+    "service": "event-service"
   },
   {
     "studentId": "55-18423",
     "name": "Mohannad Ahmed",
     "githubUsername": "mohannadd1",
-    "service": ["user-service", "ticket-service"]
+    "service": "user-service"
   },
   {
     "studentId": "55-12331",
     "name": "Ahmed Swilam",
     "githubUsername": "ahmedswilam0000",
-    "service": ["user-service", "ticket-service"]
+    "service": "user-service"
   },
   {
     "studentId": "55-6592",
     "name": "Hussien Haitham",
     "githubUsername": "hussienhaithamm",
-    "service": ["user-service", "ticket-service"]
+    "service": "user-service"
   },
   {
     "studentId": "55-19918",
     "name": "Youssef Tarek",
     "githubUsername": "yousseftarek288",
-    "service": ["user-service", "ticket-service"]
+    "service": "user-service"
   },
   {
     "studentId": "55-12742",
     "name": "Nour Ahmed",
     "githubUsername": "nourahmed109",
-    "service": ["booking-service", "sales-service"]
+    "service": "booking-service"
   },
   {
     "studentId": "55-7406",
     "name": "Abdelrahman Elzeiny",
     "githubUsername": "Elzeiny23",
-    "service": ["booking-service", "ticket-service"]
+    "service": "booking-service"
+  },
+  {
+    "studentId": "55-3040",
+    "name": "Farah Hady",
+    "githubUsername": "farahhady",
+    "service": "event-service"
+  },
+  {
+    "studentId": "55-3321",
+    "name": "Hagar Elgazzar",
+    "githubUsername": "h-gazzar",
+    "service": "event-service"
+  },
+  {
+    "studentId": "55-5410",
+    "name": "Moaaz Ahmed",
+    "githubUsername": "Moaaz101",
+    "service": "user-service"
+  },
+  {
+    "studentId": "55-8524",
+    "name": "Ahmed Hany",
+    "githubUsername": "xahmedhx",
+    "service": "booking-service"
+  },
+  {
+    "studentId": "55-0627",
+    "name": "Darine Abdelkhalek",
+    "githubUsername": "darineabdelkhalek",
+    "service": "event-service"
+  },
+  {
+    "studentId": "55-9234",
+    "name": "Haidy Amr",
+    "githubUsername": "haidyyamrr",
+    "service": "booking-service"
   }
 ]

@@ -1,7 +1,6 @@
 package com.team06.eventticketing.sales.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -37,7 +36,7 @@ public class SalePromotion {
     @JoinColumn(name = "ticket_sale_id", nullable = false)
     private TicketSale ticketSale;
 
-    @JsonIgnoreProperties("salePromotions")
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "promotion_id", nullable = false)
     private Promotion promotion;

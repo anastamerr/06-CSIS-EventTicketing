@@ -16,12 +16,12 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/sales")
-public class TicketSaleController {
+@RequestMapping("/api/sales/ticket-sales")
+public class LegacyTicketSaleController {
 
     private final TicketSaleService ticketSaleService;
 
-    public TicketSaleController(TicketSaleService ticketSaleService) {
+    public LegacyTicketSaleController(TicketSaleService ticketSaleService) {
         this.ticketSaleService = ticketSaleService;
     }
 
