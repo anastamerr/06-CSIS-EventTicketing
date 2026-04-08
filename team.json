@@ -57,7 +57,7 @@
     "studentId": "55-3040",
     "name": "Farah Hady",
     "githubUsername": "farahhady",
-    "service": "event-service"
+    "service": ["event-service", "sales-service"]
   },
   {
     "studentId": "55-3321",
@@ -87,6 +87,6 @@
     "studentId": "55-9234",
     "name": "Haidy Amr",
     "githubUsername": "haidyyamrr",
-    "service": "booking-service"
+    "service": ["booking-service", "ticket-service"]
   }
 ]
