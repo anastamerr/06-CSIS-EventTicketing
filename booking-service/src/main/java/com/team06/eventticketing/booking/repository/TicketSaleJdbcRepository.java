@@ -37,7 +37,7 @@ public class TicketSaleJdbcRepository {
         jdbcTemplate.update(
                 """
                 INSERT INTO ticket_sales (booking_id, user_id, amount, method, status, transaction_details, created_at)
-                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, CAST(? AS ticket_sale_method), CAST(? AS ticket_sale_status), CAST(? AS jsonb), CURRENT_TIMESTAMP)
                 """,
                 bookingId,
                 userId,
