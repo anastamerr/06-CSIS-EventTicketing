@@ -126,17 +126,71 @@ public class TicketController {
     @PostMapping("/batch")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> batchIssue(@RequestBody Map<String, Object> request) {
-        Long bookingId = Long.valueOf(request.get("bookingId").toString());
-        List<Map<String, Object>> ticketMaps = (List<Map<String, Object>>) request.get("tickets");
-        List<Ticket> tickets = ticketMaps.stream().map(m -> {
-            Ticket t = new Ticket();
-            t.setAttendeeName(m.get("attendeeName").toString());
-            t.setTicketCode(m.get("ticketCode").toString());
-            if (m.get("metadata") != null) {
-                t.setMetadata((Map<String, Object>) m.get("metadata"));
-            }
-            return t;
-        }).toList();
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
+
+        Long bookingId = requireLong(request.get("bookingId"), "bookingId");
+        List<?> ticketMaps = requireTicketList(request.get("tickets"));
+        List<Ticket> tickets = ticketMaps.stream().map(this::toBatchTicket).toList();
+
         return ticketService.batchIssue(bookingId, tickets);
+    }
+
+    private List<?> requireTicketList(Object value) {
+        if (!(value instanceof List<?> ticketMaps) || ticketMaps.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tickets is required");
+        }
+        return ticketMaps;
+    }
+
+    private Ticket toBatchTicket(Object value) {
+        if (!(value instanceof Map<?, ?> rawTicket)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Each ticket must be an object");
+        }
+
+        Ticket ticket = new Ticket();
+        ticket.setAttendeeName(requireText(rawTicket.get("attendeeName"), "attendeeName"));
+        ticket.setTicketCode(requireText(rawTicket.get("ticketCode"), "ticketCode"));
+
+        Object metadata = rawTicket.get("metadata");
+        if (metadata != null) {
+            ticket.setMetadata(castMetadata(metadata));
+        }
+
+        return ticket;
+    }
+
+    private Map<String, Object> castMetadata(Object value) {
+        if (!(value instanceof Map<?, ?> rawMetadata)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "metadata must be an object");
+        }
+
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMetadata.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "metadata keys must be strings");
+            }
+            metadata.put(key, entry.getValue());
+        }
+        return metadata;
+    }
+
+    private Long requireLong(Object value, String fieldName) {
+        if (value == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is required");
+        }
+        try {
+            return Long.valueOf(value.toString());
+        } catch (NumberFormatException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " must be a number");
+        }
+    }
+
+    private String requireText(Object value, String fieldName) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is required");
+        }
+        return text;
     }
 }

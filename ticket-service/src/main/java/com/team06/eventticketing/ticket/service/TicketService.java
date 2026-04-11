@@ -240,6 +240,10 @@ public class TicketService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
         }
 
+        if (tickets == null || tickets.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tickets is required");
+        }
+
         List<String> codes = tickets.stream().map(Ticket::getTicketCode).toList();
         long distinctCount = codes.stream().distinct().count();
         if (distinctCount != codes.size()) {
