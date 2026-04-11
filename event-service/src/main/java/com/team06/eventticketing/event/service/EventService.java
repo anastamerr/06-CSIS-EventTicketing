@@ -251,6 +251,17 @@ public class EventService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
 
-        return eventRepository.searchEventsByCategoryAndDateRange(category, startDateTime, endDateTime);
+        if (category == null) {
+            return eventRepository.findByEventDateGreaterThanEqualAndEventDateLessThanOrderByEventDateAsc(
+                    startDateTime,
+                    endDateTime
+            );
+        }
+
+        return eventRepository.findByCategoryAndEventDateGreaterThanEqualAndEventDateLessThanOrderByEventDateAsc(
+                category,
+                startDateTime,
+                endDateTime
+        );
     }
 }

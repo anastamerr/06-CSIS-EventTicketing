@@ -37,7 +37,8 @@ public class Booking {
     private String contactEmail;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "booking_status")
     private BookingStatus status;
 
     private Double totalAmount;
