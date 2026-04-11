@@ -1,6 +1,6 @@
 package com.team06.eventticketing.user.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,18 +34,20 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @Column
     private String password;
 
     @Column(nullable = false, unique = true)
     private String phone;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "user_role")
     private UserRole role;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "user_status")
     private UserStatus status = UserStatus.ACTIVE;
 
     @JdbcTypeCode(SqlTypes.JSON)
@@ -105,6 +107,7 @@ public class User {
         this.email = email;
     }
 
+    @JsonIgnore
     public String getPassword() {
         return password;
     }

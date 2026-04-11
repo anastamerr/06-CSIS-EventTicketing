@@ -31,7 +31,8 @@ public class Promotion {
     private String code;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "promotion_discount_type")
     private PromotionDiscountType discountType;
 
     @Column(nullable = false)

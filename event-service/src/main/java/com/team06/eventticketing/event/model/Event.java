@@ -37,11 +37,13 @@ public class Event {
     private LocalDateTime eventDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "event_category")
     private EventCategory category;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "event_status")
     private EventStatus status;
 
     @Column(nullable = false)
