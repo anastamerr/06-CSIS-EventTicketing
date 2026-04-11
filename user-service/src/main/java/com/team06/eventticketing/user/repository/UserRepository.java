@@ -41,7 +41,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
             WHERE (
                     (:name IS NOT NULL AND LOWER(u.name) LIKE '%' || LOWER(:name) || '%')
                  OR (:email IS NOT NULL AND LOWER(u.email) LIKE '%' || LOWER(:email) || '%')
-                OR (:role IS NOT NULL AND LOWER(u.role) = LOWER(:role))
+                OR (:role IS NOT NULL AND LOWER(u.role::text) = LOWER(:role))
                  OR (:name IS NULL AND :email IS NULL AND :role IS NULL)
             )
             ORDER BY u.id ASC

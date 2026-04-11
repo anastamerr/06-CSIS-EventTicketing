@@ -41,7 +41,8 @@ public class BookingItem {
     private Double unitPrice;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false, columnDefinition = "booking_item_status")
     private BookingItemStatus status;
 
     @JdbcTypeCode(SqlTypes.JSON)

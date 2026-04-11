@@ -21,7 +21,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query(value = "select * from events e where e.details ->> :key = :value", nativeQuery = true)
     List<Event> findByDetailsAttribute(@Param("key") String key, @Param("value") String value);
 
-    @Query(value = "select * from events e where e.details ->> :key = :value and e.status = :status", nativeQuery = true)
+    @Query(value = "select * from events e where e.details ->> :key = :value and e.status::text = :status", nativeQuery = true)
     List<Event> findByDetailsAttributeAndStatus(
             @Param("key") String key,
             @Param("value") String value,
@@ -92,18 +92,15 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     LIMIT :limit
     """, nativeQuery = true)
     List<Object[]> findTopRatedEvents(@Param("limit") int limit);
-    @Query("""
-        SELECT e
-        FROM Event e
-        WHERE (:category IS NULL OR e.category = :category)
-          AND e.eventDate >= :startDateTime
-          AND e.eventDate < :endDateTime
-        ORDER BY e.eventDate ASC
-        """)
-    List<Event> searchEventsByCategoryAndDateRange(
-            @Param("category") EventCategory category,
-            @Param("startDateTime") LocalDateTime startDateTime,
-            @Param("endDateTime") LocalDateTime endDateTime
+    List<Event> findByEventDateGreaterThanEqualAndEventDateLessThanOrderByEventDateAsc(
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    );
+
+    List<Event> findByCategoryAndEventDateGreaterThanEqualAndEventDateLessThanOrderByEventDateAsc(
+            EventCategory category,
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
     );
 
 
