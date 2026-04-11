@@ -190,7 +190,7 @@ class BookingServiceTest {
     }
 
     @Test
-    void completeBookingAllowsConfirmedBooking() {
+    void completeBookingRejectsConfirmedBooking() {
         Booking booking = new Booking();
         booking.setId(6L);
         booking.setUserId(12L);
@@ -199,20 +199,14 @@ class BookingServiceTest {
         booking.addBookingItem(bookingItem(1, 2, 75.0, BookingItemStatus.RESERVED));
 
         when(bookingRepository.findByIdWithBookingItemsForUpdate(6L)).thenReturn(Optional.of(booking));
-        when(ticketSaleJdbcRepository.existsByBookingId(6L)).thenReturn(false);
-        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Booking result = bookingService.completeBooking(6L);
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.completeBooking(6L));
 
-        assertEquals(BookingStatus.COMPLETED, result.getStatus());
-        assertEquals(150.0, result.getTotalAmount());
-        verify(ticketSaleJdbcRepository).createPendingSale(
-                eq(6L),
-                eq(12L),
-                eq(150.0),
-                eq("WALLET"),
-                any()
-        );
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketSaleJdbcRepository, never()).existsByBookingId(any());
+        verify(ticketSaleJdbcRepository, never()).createPendingSale(any(), any(), anyDouble(), anyString(), any());
+        verify(bookingRepository, never()).save(any());
     }
 
     @Test
@@ -549,6 +543,27 @@ class BookingServiceTest {
         Booking booking = new Booking();
         booking.setId(9L);
         booking.setStatus(BookingStatus.COMPLETED);
+
+        BookingItemRequest request = new BookingItemRequest();
+        request.setSessionId(11L);
+        request.setSessionTitle("Session 11");
+        request.setQuantity(1);
+        request.setUnitPrice(75.0);
+
+        when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.addItemsToBooking(9L, List.of(request)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void addItemsToBookingRejectsCheckedInBooking() {
+        Booking booking = new Booking();
+        booking.setId(9L);
+        booking.setStatus(BookingStatus.CHECKED_IN);
 
         BookingItemRequest request = new BookingItemRequest();
         request.setSessionId(11L);
