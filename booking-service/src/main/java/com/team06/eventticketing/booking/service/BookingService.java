@@ -16,12 +16,12 @@ import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Comparator;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -64,7 +64,9 @@ public class BookingService {
         double tierMultiplier = "VIP".equalsIgnoreCase(request.ticketTier()) ? 2.5 : 1.0;
         double ticketCost = basePrice * tierMultiplier * request.ticketCount();
         double serviceFee = ticketCost * 0.15;
-        double demandMultiplier = resolveDemandMultiplier(bookingRepository.countActiveBookingsByEventId(request.eventId()));
+        double demandMultiplier = resolveDemandMultiplier(bookingRepository.countActiveBookingsByEventId(
+                request.eventId()
+        ));
         double estimatedTotal = (ticketCost + serviceFee) * demandMultiplier;
 
         return new BookingCostEstimateDTO(ticketCost, serviceFee, demandMultiplier, estimatedTotal);

@@ -8,7 +8,6 @@ import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.service.BookingService;
-import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -50,8 +49,17 @@ public class BookingController {
         return bookingService.getBookingDetails(bookingId);
     }
 
+    @GetMapping("/estimate")
+    public BookingCostEstimateDTO estimateBookingCost(
+            @RequestParam Long eventId,
+            @RequestParam Integer ticketCount,
+            @RequestParam String ticketTier
+    ) {
+        return bookingService.estimateBookingCost(new BookingEstimateRequest(eventId, ticketCount, ticketTier));
+    }
+
     @PostMapping("/estimate")
-    public BookingCostEstimateDTO estimateBookingCost(@RequestBody @Valid BookingEstimateRequest request) {
+    public BookingCostEstimateDTO estimateBookingCost(@RequestBody BookingEstimateRequest request) {
         return bookingService.estimateBookingCost(request);
     }
 
