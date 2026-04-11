@@ -163,7 +163,8 @@ public class EventService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Session does not belong to the specified event");
         }
 
-        if (session.getStartTime().isBefore(LocalDateTime.now())) {
+        LocalDateTime now = LocalDateTime.now();
+        if (!session.getStartTime().isAfter(now)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot verify a session that already happened");
         }
 
@@ -173,7 +174,7 @@ public class EventService {
 
         session.setVerified(Boolean.TRUE);
         Map<String, Object> metadata = new LinkedHashMap<>(session.getMetadata());
-        metadata.put("verifiedAt", LocalDateTime.now().toString());
+        metadata.put("verifiedAt", now.toString());
         metadata.put("verifiedBy", request.getVerifiedBy());
         session.setMetadata(metadata);
         eventSessionRepository.save(session);
