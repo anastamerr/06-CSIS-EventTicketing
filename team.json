@@ -75,7 +75,7 @@
     "studentId": "55-8524",
     "name": "Ahmed Hany",
     "githubUsername": "xahmedhx",
-    "service": "booking-service"
+    "service": ["booking-service", "sales-service"]
   },
   {
     "studentId": "55-0627",
