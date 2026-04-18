@@ -103,6 +103,7 @@ public class UserService {
 
         List<UserProfileDTO.VenueDTO> venueDTOs = user.getFavoriteVenues().stream()
                 .map(v -> new UserProfileDTO.VenueDTO(
+                        v.getId(),
                         v.getLabel(),
                         v.getVenueName(),
                         v.getLocation(),
@@ -176,11 +177,9 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Venue does not belong to this user");
         }
 
-        List<FavoriteVenue> favoriteVenues = favoriteVenueRepository.findByUserIdOrderByIdAsc(userId);
-        for (FavoriteVenue favoriteVenue : favoriteVenues) {
-            favoriteVenue.setIsDefault(favoriteVenue.getId().equals(venueId));
-        }
-        favoriteVenueRepository.saveAll(favoriteVenues);
+        favoriteVenueRepository.clearDefaultsForUser(userId);
+        venue.setIsDefault(Boolean.TRUE);
+        favoriteVenueRepository.save(venue);
 
         return userRepository.findByIdWithFavoriteVenues(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));

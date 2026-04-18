@@ -13,8 +13,9 @@ public interface FavoriteVenueRepository extends JpaRepository<FavoriteVenue, Lo
     List<FavoriteVenue> findByUserId(Long userId);
 
     List<FavoriteVenue> findByUserIdOrderByIdAsc(Long userId);
+
     @Modifying
     @Transactional
     @Query("UPDATE FavoriteVenue f SET f.isDefault = false WHERE f.user.id = :userId")
-    void resetDefaultForUser(@Param("userId") Long userId);
+    void clearDefaultsForUser(@Param("userId") Long userId);
 }

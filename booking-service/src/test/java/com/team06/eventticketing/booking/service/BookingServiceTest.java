@@ -560,7 +560,7 @@ class BookingServiceTest {
     }
 
     @Test
-    void addItemsToBookingRejectsCheckedInBooking() {
+    void addItemsToBookingAllowsCheckedInBooking() {
         Booking booking = new Booking();
         booking.setId(9L);
         booking.setStatus(BookingStatus.CHECKED_IN);
@@ -572,12 +572,14 @@ class BookingServiceTest {
         request.setUnitPrice(75.0);
 
         when(bookingRepository.findByIdWithBookingItemsForUpdate(9L)).thenReturn(Optional.of(booking));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
-                () -> bookingService.addItemsToBooking(9L, List.of(request)));
+        Booking result = bookingService.addItemsToBooking(9L, List.of(request));
 
-        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(bookingRepository, never()).save(any());
+        assertEquals(1, result.getBookingItems().size());
+        assertEquals(1, result.getBookingItems().get(0).getEventOrder());
+        assertEquals(BookingItemStatus.RESERVED, result.getBookingItems().get(0).getStatus());
+        verify(bookingRepository).save(booking);
     }
 
     @Test
