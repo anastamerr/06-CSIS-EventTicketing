@@ -57,6 +57,7 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<FavoriteVenue> favoriteVenues = new ArrayList<>();
 

@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,8 +28,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -43,9 +41,6 @@ class UserServiceTest {
 
     @Mock
     private FavoriteVenueRepository favoriteVenueRepository;
-
-    @Captor
-    private ArgumentCaptor<List<FavoriteVenue>> venuesCaptor;
 
     private UserService userService;
 
@@ -407,12 +402,12 @@ class UserServiceTest {
     }
 
     @Test
-    void setDefaultVenueUpdatesOnlyTargetAndReturnsLoadedUser() {
+    void setDefaultVenueClearsExistingDefaultsAndReturnsLoadedUser() {
         User user = new User();
         user.setId(7L);
 
-        FavoriteVenue firstVenue = venue(11L, user, false);
-        FavoriteVenue targetVenue = venue(12L, user, true);
+        FavoriteVenue firstVenue = venue(11L, user, true);
+        FavoriteVenue targetVenue = venue(12L, user, false);
         FavoriteVenue thirdVenue = venue(13L, user, false);
         List<FavoriteVenue> favoriteVenues = List.of(firstVenue, targetVenue, thirdVenue);
 
@@ -422,15 +417,15 @@ class UserServiceTest {
 
         when(userRepository.findById(7L)).thenReturn(Optional.of(user));
         when(favoriteVenueRepository.findById(12L)).thenReturn(Optional.of(targetVenue));
-        when(favoriteVenueRepository.findByUserIdOrderByIdAsc(7L)).thenReturn(favoriteVenues);
+        when(favoriteVenueRepository.save(targetVenue)).thenReturn(targetVenue);
         when(userRepository.findByIdWithFavoriteVenues(7L)).thenReturn(Optional.of(loadedUser));
 
         User actualUser = userService.setDefaultVenue(7L, 12L);
 
-        verify(favoriteVenueRepository).saveAll(venuesCaptor.capture());
-        List<FavoriteVenue> savedVenues = venuesCaptor.getValue();
-        assertEquals(3, savedVenues.size());
-        assertEquals(Boolean.FALSE, firstVenue.getIsDefault());
+        verify(favoriteVenueRepository).clearDefaultsForUser(7L);
+        verify(favoriteVenueRepository).save(targetVenue);
+        verify(favoriteVenueRepository, never()).findByUserIdOrderByIdAsc(anyLong());
+        assertEquals(Boolean.TRUE, firstVenue.getIsDefault());
         assertEquals(Boolean.TRUE, targetVenue.getIsDefault());
         assertEquals(Boolean.FALSE, thirdVenue.getIsDefault());
         assertEquals(loadedUser, actualUser);
@@ -453,8 +448,8 @@ class UserServiceTest {
                 () -> userService.setDefaultVenue(7L, 12L));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(favoriteVenueRepository, never()).findByUserIdOrderByIdAsc(7L);
-        verify(favoriteVenueRepository, never()).saveAll(anyList());
+        verify(favoriteVenueRepository, never()).clearDefaultsForUser(7L);
+        verify(favoriteVenueRepository, never()).save(any(FavoriteVenue.class));
         verify(userRepository, never()).findByIdWithFavoriteVenues(7L);
     }
 

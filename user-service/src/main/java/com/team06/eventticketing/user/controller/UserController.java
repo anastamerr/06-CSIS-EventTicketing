@@ -15,6 +15,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -76,6 +77,11 @@ public class UserController {
         return userService.getUserBookingSummary(id);
     }
 
+    @GetMapping("/{id}/bookings/summary")
+    public UserBookingSummaryDTO getUserBookingsSummary(@PathVariable Long id) {
+        return userService.getUserBookingSummary(id);
+    }
+
     @PutMapping("/{userId}/venues/{venueId}/default")
     public User setDefaultVenue(@PathVariable Long userId, @PathVariable Long venueId) {
         return userService.setDefaultVenue(userId, venueId);
@@ -83,6 +89,11 @@ public class UserController {
 
     @PutMapping("/{id}/preferences")
     public User updatePreferences(@PathVariable Long id, @RequestBody Map<String, Object> preferences) {
+        return userService.updatePreferences(id, preferences);
+    }
+
+    @PatchMapping("/{id}/preferences")
+    public User patchPreferences(@PathVariable Long id, @RequestBody Map<String, Object> preferences) {
         return userService.updatePreferences(id, preferences);
     }
 
@@ -111,6 +122,13 @@ public class UserController {
     public List<User> getUsersByFavoriteCategory(
             @RequestParam String category,
             @RequestParam int minBookings) {
+        return userService.getUsersByFavoriteCategoryAndMinBookings(category, minBookings);
+    }
+
+    @GetMapping("/category/{category}")
+    public List<User> getUsersByFavoriteCategoryPath(
+            @PathVariable String category,
+            @RequestParam(defaultValue = "0") int minBookings) {
         return userService.getUsersByFavoriteCategoryAndMinBookings(category, minBookings);
     }
 }

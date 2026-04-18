@@ -39,10 +39,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
             SELECT *
             FROM users u
             WHERE (
-                    (:name IS NOT NULL AND LOWER(u.name) LIKE '%' || LOWER(:name) || '%')
-                 OR (:email IS NOT NULL AND LOWER(u.email) LIKE '%' || LOWER(:email) || '%')
-                OR (:role IS NOT NULL AND LOWER(u.role::text) = LOWER(:role))
-                 OR (:name IS NULL AND :email IS NULL AND :role IS NULL)
+                    (:name IS NULL OR LOWER(u.name) LIKE '%' || LOWER(:name) || '%')
+                AND (:email IS NULL OR LOWER(u.email) LIKE '%' || LOWER(:email) || '%')
+                AND (:role IS NULL OR LOWER(u.role::text) = LOWER(:role))
             )
             ORDER BY u.id ASC
             """, nativeQuery = true)
@@ -55,7 +54,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
             FROM users u
             LEFT JOIN bookings b
                 ON b.user_id = u.id
-               AND b.status = 'COMPLETED'
+               AND b.status IN ('COMPLETED', 'CONFIRMED')
             WHERE u.preferences->>'favoriteCategory' = :category
             GROUP BY u.id
             HAVING COUNT(b.id) >= :minBookings
@@ -73,7 +72,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 COUNT(b.id) AS booking_count
             FROM users u
             JOIN bookings b ON b.user_id = u.id
-            WHERE b.status = 'COMPLETED'
+            WHERE b.status IN ('COMPLETED', 'CONFIRMED')
+              AND u.role::text = 'ATTENDEE'
               AND b.booking_date >= :startInclusive
               AND b.booking_date < :endExclusive
             GROUP BY u.id, u.name

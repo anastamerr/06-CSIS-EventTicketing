@@ -85,6 +85,7 @@ public class UserProfileDTO {
     }
 
     public static class VenueDTO {
+        private Long id;
         private String label;
         private String venueName;
         private String location;
@@ -95,14 +96,23 @@ public class UserProfileDTO {
         public VenueDTO() {
         }
 
-        public VenueDTO(String label, String venueName, String location,
+        public VenueDTO(Long id, String label, String venueName, String location,
                         Integer capacity, Boolean isDefault, Map<String, Object> metadata) {
+            this.id = id;
             this.label = label;
             this.venueName = venueName;
             this.location = location;
             this.capacity = capacity;
             this.isDefault = isDefault;
             this.metadata = metadata;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
         }
 
         public String getLabel() {
