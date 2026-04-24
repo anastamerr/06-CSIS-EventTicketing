@@ -58,4 +58,46 @@ public class UnusedTicketDTO {
     public void setEventDate(LocalDateTime eventDate) {
         this.eventDate = eventDate;
     }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private final UnusedTicketDTO value = new UnusedTicketDTO();
+
+        public Builder ticketId(Long ticketId) {
+            value.setTicketId(ticketId);
+            return this;
+        }
+
+        public Builder attendeeName(String attendeeName) {
+            value.setAttendeeName(attendeeName);
+            return this;
+        }
+
+        public Builder ticketCode(String ticketCode) {
+            value.setTicketCode(ticketCode);
+            return this;
+        }
+
+        public Builder bookingId(Long bookingId) {
+            value.setBookingId(bookingId);
+            return this;
+        }
+
+        public Builder eventName(String eventName) {
+            value.setEventName(eventName);
+            return this;
+        }
+
+        public Builder eventDate(LocalDateTime eventDate) {
+            value.setEventDate(eventDate);
+            return this;
+        }
+
+        public UnusedTicketDTO build() {
+            return value;
+        }
+    }
 }

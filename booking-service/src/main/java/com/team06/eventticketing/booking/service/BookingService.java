@@ -1,5 +1,6 @@
 package com.team06.eventticketing.booking.service;
 
+import com.team06.eventticketing.booking.adapter.BookingAnalyticsAdapter;
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
 import com.team06.eventticketing.booking.dto.BookingDetailsDTO;
 import com.team06.eventticketing.booking.dto.BookingDetailsItemDTO;
@@ -13,6 +14,10 @@ import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import com.team06.eventticketing.booking.repository.TicketJdbcRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import com.team06.eventticketing.common.observer.EntityObserver;
+import com.team06.eventticketing.common.observer.EventFactory;
+import com.team06.eventticketing.common.observer.EventType;
+import com.team06.eventticketing.common.observer.MongoEventLogger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -23,7 +28,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,6 +45,23 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final TicketJdbcRepository ticketJdbcRepository;
     private final TicketSaleJdbcRepository ticketSaleJdbcRepository;
+    private final BookingAnalyticsAdapter bookingAnalyticsAdapter;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+
+    public BookingService(
+            BookingRepository bookingRepository,
+            TicketJdbcRepository ticketJdbcRepository,
+            TicketSaleJdbcRepository ticketSaleJdbcRepository,
+            BookingAnalyticsAdapter bookingAnalyticsAdapter,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory
+    ) {
+        this.bookingRepository = bookingRepository;
+        this.ticketJdbcRepository = ticketJdbcRepository;
+        this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
+        this.bookingAnalyticsAdapter = bookingAnalyticsAdapter;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
 
     public BookingService(
             BookingRepository bookingRepository,
@@ -46,6 +71,7 @@ public class BookingService {
         this.bookingRepository = bookingRepository;
         this.ticketJdbcRepository = ticketJdbcRepository;
         this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
+        this.bookingAnalyticsAdapter = new BookingAnalyticsAdapter();
     }
 
     public List<Booking> getAllBookings() {
@@ -69,7 +95,12 @@ public class BookingService {
         ));
         double estimatedTotal = (ticketCost + serviceFee) * demandMultiplier;
 
-        return new BookingCostEstimateDTO(ticketCost, serviceFee, demandMultiplier, estimatedTotal);
+        return BookingCostEstimateDTO.builder()
+                .ticketCost(ticketCost)
+                .serviceFee(serviceFee)
+                .demandMultiplier(demandMultiplier)
+                .estimatedTotal(estimatedTotal)
+                .build();
     }
 
     public Booking getBookingById(Long id) {
@@ -90,31 +121,39 @@ public class BookingService {
                 .filter(item -> item.getStatus() == BookingItemStatus.CONFIRMED)
                 .count();
 
-        return new BookingDetailsDTO(
-                booking.getId(),
-                booking.getUserId(),
-                booking.getEventId(),
-                booking.getStatus(),
-                booking.getTotalAmount(),
-                booking.getMetadata(),
-                items,
-                items.size(),
-                confirmedItems
-        );
+        return BookingDetailsDTO.builder()
+                .bookingId(booking.getId())
+                .userId(booking.getUserId())
+                .eventId(booking.getEventId())
+                .status(booking.getStatus())
+                .totalAmount(booking.getTotalAmount())
+                .metadata(booking.getMetadata())
+                .items(items)
+                .totalItems(items.size())
+                .confirmedItems(confirmedItems)
+                .build();
     }
 
     @Transactional
     public Booking createBooking(BookingRequest request) {
         Booking booking = new Booking();
         applyRequest(booking, request, false);
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("BOOKING_CREATED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
     }
 
     @Transactional
     public Booking updateBooking(Long id, BookingRequest request) {
         Booking existing = getBookingById(id);
         applyRequest(existing, request, true);
-        return bookingRepository.save(existing);
+        Booking saved = bookingRepository.save(existing);
+        notifyObservers("BOOKING_UPDATED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
     }
 
     @Transactional
@@ -136,7 +175,11 @@ public class BookingService {
             );
         }
 
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("BOOKING_COMPLETED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
     }
 
     public List<Booking> searchBookings(BookingStatus status, LocalDate startDate, LocalDate endDate) {
@@ -171,19 +214,9 @@ public class BookingService {
 
         List<Object[]> rows = bookingRepository.findAnalyticsByDateRange(startDateTime, endDateTime);
         if (rows.isEmpty()) {
-            return new BookingAnalyticsDTO(0, 0, 0, 0.0, 0.0, 0.0);
+            return BookingAnalyticsDTO.builder().build();
         }
-        Object[] row = rows.get(0);
-
-        long totalBookings = toLongValue(row[0]);
-        long completedBookings = toLongValue(row[1]);
-        long cancelledBookings = toLongValue(row[2]);
-        double totalRevenue = toDoubleValue(row[3]);
-        double averageBookingAmount = toDoubleValue(row[4]);
-        double completionRate = totalBookings == 0 ? 0.0 : (completedBookings * 100.0) / totalBookings;
-
-        return new BookingAnalyticsDTO(totalBookings, completedBookings, cancelledBookings,
-                totalRevenue, averageBookingAmount, completionRate);
+        return bookingAnalyticsAdapter.adapt(rows.get(0));
     }
 
     @Transactional(readOnly = true)
@@ -204,7 +237,11 @@ public class BookingService {
 
         ticketJdbcRepository.cancelValidTicketsForBooking(bookingId);
         booking.setStatus(BookingStatus.CANCELLED);
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("BOOKING_CANCELLED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
     }
 
     @Transactional
@@ -230,7 +267,11 @@ public class BookingService {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setConfirmedAt(LocalDateTime.now());
 
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("BOOKING_CONFIRMED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
     }
 
     @Transactional
@@ -260,11 +301,20 @@ public class BookingService {
             booking.addBookingItem(bookingItem);
         }
 
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("ITEMS_ADDED", Map.of(
+                "bookingId", saved.getId(),
+                "details", Map.of(
+                        "itemCount", items.size(),
+                        "status", saved.getStatus().name())));
+        return saved;
     }
 
     public void deleteBooking(Long id) {
-        getBookingById(id);
+        Booking booking = getBookingById(id);
+        notifyObservers("BOOKING_DELETED", Map.of(
+                "bookingId", booking.getId(),
+                "details", buildBookingDetails(booking)));
         bookingRepository.deleteById(id);
     }
 
@@ -325,15 +375,15 @@ public class BookingService {
     }
 
     private BookingDetailsItemDTO toBookingDetailsItemDTO(BookingItem item) {
-        return new BookingDetailsItemDTO(
-                item.getId(),
-                item.getEventOrder(),
-                item.getSessionTitle(),
-                item.getQuantity(),
-                item.getUnitPrice(),
-                item.getStatus(),
-                item.getMetadata()
-        );
+        return BookingDetailsItemDTO.builder()
+                .id(item.getId())
+                .eventOrder(item.getEventOrder())
+                .sessionTitle(item.getSessionTitle())
+                .quantity(item.getQuantity())
+                .unitPrice(item.getUnitPrice())
+                .status(item.getStatus())
+                .metadata(item.getMetadata())
+                .build();
     }
 
     private void validateCompletableBooking(Booking booking) {
@@ -420,14 +470,6 @@ public class BookingService {
         }
     }
 
-    private long toLongValue(Object value) {
-        return value == null ? 0L : ((Number) value).longValue();
-    }
-
-    private double toDoubleValue(Object value) {
-        return value == null ? 0.0 : ((Number) value).doubleValue();
-    }
-
     private Map<String, Object> buildTransactionDetails(Booking booking, double totalAmount) {
         Map<String, Object> transactionDetails = new LinkedHashMap<>();
         transactionDetails.put("bookingTotalAmount", totalAmount);
@@ -464,5 +506,31 @@ public class BookingService {
             return 1.25;
         }
         return 1.5;
+    }
+
+    public void register(EntityObserver observer) {
+        observers.add(observer);
+    }
+
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
+    public void notifyObservers(String action, Object payload) {
+        observers.forEach(observer -> observer.onEvent(action, payload));
+    }
+
+    private Map<String, Object> buildBookingDetails(Booking booking) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("userId", booking.getUserId());
+        details.put("eventId", booking.getEventId());
+        details.put("status", booking.getStatus() == null ? null : booking.getStatus().name());
+        return details;
+    }
+
+    private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
+        if (mongoTemplate != null && eventFactory != null) {
+            register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.BOOKING, "booking_events"));
+        }
     }
 }

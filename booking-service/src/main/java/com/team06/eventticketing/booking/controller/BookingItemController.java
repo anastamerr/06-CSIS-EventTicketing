@@ -1,5 +1,7 @@
 package com.team06.eventticketing.booking.controller;
 
+import com.team06.eventticketing.common.cache.CachedDetail;
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.service.BookingItemService;
@@ -31,6 +33,7 @@ public class BookingItemController {
     }
 
     @GetMapping("/{itemId}")
+    @CachedDetail(service = "booking-service", entity = "booking-item", key = "#itemId", ttlSeconds = 900)
     public BookingItem getBookingItem(@PathVariable Long bookingId, @PathVariable Long itemId) {
         return bookingItemService.getBookingItem(bookingId, itemId);
     }
@@ -42,6 +45,10 @@ public class BookingItemController {
     }
 
     @PutMapping("/{itemId}")
+    @InvalidateServiceCaches(
+            service = "booking-service",
+            featurePrefix = "S3-",
+            detailKeys = {"'booking-service::booking::' + #bookingId", "'booking-service::booking-item::' + #itemId"})
     public BookingItem updateBookingItem(
             @PathVariable Long bookingId,
             @PathVariable Long itemId,
@@ -52,6 +59,10 @@ public class BookingItemController {
 
     @DeleteMapping("/{itemId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @InvalidateServiceCaches(
+            service = "booking-service",
+            featurePrefix = "S3-",
+            detailKeys = {"'booking-service::booking::' + #bookingId", "'booking-service::booking-item::' + #itemId"})
     public void deleteBookingItem(@PathVariable Long bookingId, @PathVariable Long itemId) {
         bookingItemService.deleteBookingItem(bookingId, itemId);
     }

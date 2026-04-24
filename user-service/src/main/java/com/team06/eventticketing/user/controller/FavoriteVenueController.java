@@ -1,5 +1,7 @@
 package com.team06.eventticketing.user.controller;
 
+import com.team06.eventticketing.common.cache.CachedDetail;
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.service.FavoriteVenueService;
 import org.springframework.http.HttpStatus;
@@ -29,11 +31,16 @@ public class FavoriteVenueController {
     }
 
     @GetMapping("/{venueId}")
+    @CachedDetail(service = "user-service", entity = "favorite-venue", key = "#venueId", ttlSeconds = 900)
     public FavoriteVenue getVenue(@PathVariable Long userId, @PathVariable Long venueId) {
         return favoriteVenueService.getVenue(userId, venueId);
     }
 
     @PutMapping("/{venueId}")
+    @InvalidateServiceCaches(
+            service = "user-service",
+            featurePrefix = "S1-",
+            detailKeys = {"'user-service::favorite-venue::' + #venueId", "'user-service::user::' + #userId"})
     public FavoriteVenue updateVenue(
             @PathVariable Long userId,
             @PathVariable Long venueId,
@@ -44,6 +51,10 @@ public class FavoriteVenueController {
 
     @DeleteMapping("/{venueId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @InvalidateServiceCaches(
+            service = "user-service",
+            featurePrefix = "S1-",
+            detailKeys = {"'user-service::favorite-venue::' + #venueId", "'user-service::user::' + #userId"})
     public void deleteVenue(@PathVariable Long userId, @PathVariable Long venueId) {
         favoriteVenueService.deleteVenue(userId, venueId);
     }

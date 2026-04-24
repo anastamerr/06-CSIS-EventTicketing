@@ -1,14 +1,23 @@
 package com.team06.eventticketing.sales.service;
 
+import com.team06.eventticketing.common.observer.EntityObserver;
+import com.team06.eventticketing.common.observer.EventFactory;
+import com.team06.eventticketing.common.observer.EventType;
+import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.sales.adapter.PromotionUsageAdapter;
 import com.team06.eventticketing.sales.dto.PromotionRequest;
 import com.team06.eventticketing.sales.dto.PromotionResponse;
 import com.team06.eventticketing.sales.dto.PromotionUsageDTO;
 import com.team06.eventticketing.sales.model.Promotion;
 import com.team06.eventticketing.sales.repository.PromotionRepository;
-import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,9 +26,23 @@ import org.springframework.web.server.ResponseStatusException;
 public class PromotionService {
 
     private final PromotionRepository promotionRepository;
+    private final PromotionUsageAdapter promotionUsageAdapter;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+
+    public PromotionService(
+            PromotionRepository promotionRepository,
+            PromotionUsageAdapter promotionUsageAdapter,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory
+    ) {
+        this.promotionRepository = promotionRepository;
+        this.promotionUsageAdapter = promotionUsageAdapter;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
 
     public PromotionService(PromotionRepository promotionRepository) {
         this.promotionRepository = promotionRepository;
+        this.promotionUsageAdapter = new PromotionUsageAdapter();
     }
 
     @Transactional(readOnly = true)
@@ -39,7 +62,7 @@ public class PromotionService {
         }
 
         return promotionRepository.findTopUsedPromotions(PageRequest.of(0, limit)).stream()
-                .map(this::toUsageDto)
+                .map(promotionUsageAdapter::adapt)
                 .toList();
     }
 
@@ -47,19 +70,25 @@ public class PromotionService {
     public PromotionResponse createPromotion(PromotionRequest request) {
         Promotion promotion = new Promotion();
         apply(promotion, request);
-        return toResponse(promotionRepository.save(promotion));
+        Promotion saved = promotionRepository.save(promotion);
+        notifyObservers("PROMOTION_CREATED", buildAuditPayload(saved));
+        return toResponse(saved);
     }
 
     @Transactional
     public PromotionResponse updatePromotion(Long id, PromotionRequest request) {
         Promotion existing = findPromotion(id);
         apply(existing, request);
-        return toResponse(promotionRepository.save(existing));
+        Promotion saved = promotionRepository.save(existing);
+        notifyObservers("PROMOTION_UPDATED", buildAuditPayload(saved));
+        return toResponse(saved);
     }
 
     @Transactional
     public void deletePromotion(Long id) {
-        promotionRepository.delete(findPromotion(id));
+        Promotion promotion = findPromotion(id);
+        promotionRepository.delete(promotion);
+        notifyObservers("PROMOTION_DELETED", buildAuditPayload(promotion));
     }
 
     private Promotion findPromotion(Long id) {
@@ -92,19 +121,35 @@ public class PromotionService {
         return response;
     }
 
-    private PromotionUsageDTO toUsageDto(Object[] row) {
-        LocalDateTime expiryDate = (LocalDateTime) row[7];
-        boolean expired = expiryDate != null && expiryDate.isBefore(LocalDateTime.now());
+    public void register(EntityObserver observer) {
+        observers.add(observer);
+    }
 
-        return new PromotionUsageDTO(
-                (Long) row[0],
-                (String) row[1],
-                (com.team06.eventticketing.sales.model.PromotionDiscountType) row[2],
-                ((Number) row[3]).doubleValue(),
-                ((Number) row[4]).intValue(),
-                ((Number) row[5]).doubleValue(),
-                (Boolean) row[6],
-                expired
-        );
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
+    public void notifyObservers(String action, Object payload) {
+        observers.forEach(observer -> observer.onEvent(action, payload));
+    }
+
+    private Map<String, Object> buildAuditPayload(Promotion promotion) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("promotionId", promotion.getId());
+        details.put("code", promotion.getCode());
+        details.put("discountType", promotion.getDiscountType() == null ? null : promotion.getDiscountType().name());
+        details.put("discountValue", promotion.getDiscountValue());
+        details.put("currentUses", promotion.getCurrentUses());
+        details.put("active", promotion.getActive());
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("details", details);
+        return payload;
+    }
+
+    private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
+        if (mongoTemplate != null && eventFactory != null) {
+            register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.PAYMENT_AUDIT, "payment_audit_trail"));
+        }
     }
 }
