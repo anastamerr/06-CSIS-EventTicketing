@@ -1,5 +1,10 @@
 package com.team06.eventticketing.ticket.service;
 
+import com.team06.eventticketing.common.observer.EntityObserver;
+import com.team06.eventticketing.common.observer.EventFactory;
+import com.team06.eventticketing.common.observer.EventType;
+import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.ticket.adapter.EventAttendanceSummaryAdapter;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
@@ -14,7 +19,10 @@ import java.time.ZoneOffset;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.LinkedHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.http.HttpStatus;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,10 +36,26 @@ public class TicketService {
 
     private final TicketRepository ticketRepository;
     private final Clock clock;
+    private final EventAttendanceSummaryAdapter eventAttendanceSummaryAdapter;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+
+    public TicketService(
+            TicketRepository ticketRepository,
+            Clock clock,
+            EventAttendanceSummaryAdapter eventAttendanceSummaryAdapter,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory
+    ) {
+        this.ticketRepository = ticketRepository;
+        this.clock = clock;
+        this.eventAttendanceSummaryAdapter = eventAttendanceSummaryAdapter;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
 
     public TicketService(TicketRepository ticketRepository, Clock clock) {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
+        this.eventAttendanceSummaryAdapter = new EventAttendanceSummaryAdapter();
     }
 
     public List<Ticket> getAllTickets() { return ticketRepository.findAll(); }
@@ -48,7 +72,11 @@ public class TicketService {
         if (ticket.getMetadata() == null) {
             ticket.setMetadata(new LinkedHashMap<>());
         }
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+        notifyObservers("TICKET_CREATED", Map.of(
+                "ticketId", saved.getId(),
+                "details", buildTicketDetails(saved)));
+        return saved;
     }
 
     @Transactional
@@ -61,7 +89,11 @@ public class TicketService {
     ) {
         Ticket ticket = buildTicketForIssue(bookingId, attendeeName, ticketCode, metadata);
         ticket.setStatus(resolveTicketStatus(status));
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+        notifyObservers("TICKET_ISSUED", Map.of(
+                "ticketId", saved.getId(),
+                "details", buildTicketDetails(saved)));
+        return saved;
     }
 
     @Transactional
@@ -130,7 +162,11 @@ public class TicketService {
         if (ticket.getMetadata() != null && !ticket.getMetadata().isEmpty()) {
             existingTicket.setMetadata(new LinkedHashMap<>(ticket.getMetadata()));
         }
-        return ticketRepository.save(existingTicket);
+        Ticket saved = ticketRepository.save(existingTicket);
+        notifyObservers("TICKET_UPDATED", Map.of(
+                "ticketId", saved.getId(),
+                "details", buildTicketDetails(saved)));
+        return saved;
     }
 
     public LocalDateTime parseFlexibleStart(String value) {
@@ -151,6 +187,9 @@ public class TicketService {
 
     public void deleteTicket(Long id) {
         getTicketById(id);
+        notifyObservers("TICKET_DELETED", Map.of(
+                "ticketId", id,
+                "details", buildTicketDetails(getTicketById(id))));
         ticketRepository.deleteById(id);
     }
 
@@ -180,7 +219,7 @@ public class TicketService {
         double attendanceRate = (usedTickets * 100.0) / totalTickets;
         LocalDateTime lastCheckIn = toLocalDateTime(row[3]);
 
-        return new EventAttendanceSummaryDTO(eventId, totalTickets, usedTickets, validTickets, attendanceRate, lastCheckIn);
+        return eventAttendanceSummaryAdapter.adapt(eventId, row);
     }
 
     @Transactional(readOnly = true)
@@ -231,6 +270,9 @@ public class TicketService {
         }
 
         int deletedCount = ticketRepository.deletePurgeableTickets(cutoff);
+        notifyObservers("OLD_DATA_PURGED", Map.of(
+                "ticketId", 0L,
+                "details", Map.of("deletedCount", deletedCount, "olderThanDays", olderThanDays)));
         return new PurgeTicketsResponseDTO(deletedCount);
     }
 
@@ -260,7 +302,10 @@ public class TicketService {
             ticket.setBookingId(bookingId);
             ticket.setStatus(TicketStatus.VALID);
         }
-        ticketRepository.saveAll(tickets);
+        List<Ticket> savedTickets = ticketRepository.saveAll(tickets);
+        notifyObservers("BATCH_ISSUED", Map.of(
+                "ticketId", savedTickets.isEmpty() ? 0L : savedTickets.getFirst().getId(),
+                "details", Map.of("count", savedTickets.size(), "bookingId", bookingId)));
 
         return Map.of("count", tickets.size());
     }
@@ -319,26 +364,52 @@ public class TicketService {
     }
 
     private UnusedTicketDTO mapToUnusedTicketDTO(UnusedTicketProjection p) {
-        UnusedTicketDTO dto = new UnusedTicketDTO();
-        dto.setTicketId(p.getTicketId());
-        dto.setAttendeeName(p.getAttendeeName());
-        dto.setTicketCode(p.getTicketCode());
-        dto.setBookingId(p.getBookingId());
-        dto.setEventName(p.getEventName());
-        dto.setEventDate(p.getEventDate());
-        return dto;
+        return UnusedTicketDTO.builder()
+                .ticketId(p.getTicketId())
+                .attendeeName(p.getAttendeeName())
+                .ticketCode(p.getTicketCode())
+                .bookingId(p.getBookingId())
+                .eventName(p.getEventName())
+                .eventDate(p.getEventDate())
+                .build();
     }
 
     private NearbyTicketResponseDTO toNearbyTicketResponse(NearbyTicketProjection projection) {
-        NearbyTicketResponseDTO response = new NearbyTicketResponseDTO();
-        response.setTicketId(projection.getTicketId());
-        response.setAttendeeName(projection.getAttendeeName());
-        response.setTicketCode(projection.getTicketCode());
-        response.setBookingId(projection.getBookingId());
-        response.setEventName(projection.getEventName());
-        response.setEventLat(projection.getEventLat());
-        response.setEventLon(projection.getEventLon());
-        response.setDistanceKm(projection.getDistanceKm());
-        return response;
+        return NearbyTicketResponseDTO.builder()
+                .ticketId(projection.getTicketId())
+                .attendeeName(projection.getAttendeeName())
+                .ticketCode(projection.getTicketCode())
+                .bookingId(projection.getBookingId())
+                .eventName(projection.getEventName())
+                .eventLat(projection.getEventLat())
+                .eventLon(projection.getEventLon())
+                .distanceKm(projection.getDistanceKm())
+                .build();
+    }
+
+    public void register(EntityObserver observer) {
+        observers.add(observer);
+    }
+
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
+    public void notifyObservers(String action, Object payload) {
+        observers.forEach(observer -> observer.onEvent(action, payload));
+    }
+
+    private Map<String, Object> buildTicketDetails(Ticket ticket) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("bookingId", ticket.getBookingId());
+        details.put("ticketCode", ticket.getTicketCode());
+        details.put("status", ticket.getStatus() == null ? null : ticket.getStatus().name());
+        return details;
+    }
+
+    private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
+        if (mongoTemplate != null && eventFactory != null) {
+            register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.TICKET, "ticket_events"));
+        }
     }
 }

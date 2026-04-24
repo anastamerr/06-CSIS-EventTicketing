@@ -1,5 +1,7 @@
 package com.team06.eventticketing.sales.controller;
 
+import com.team06.eventticketing.common.cache.CachedDetail;
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.sales.dto.SalePromotionRequest;
 import com.team06.eventticketing.sales.dto.SalePromotionResponse;
 import com.team06.eventticketing.sales.service.SalePromotionService;
@@ -31,23 +33,33 @@ public class SalePromotionController {
     }
 
     @GetMapping("/{id}")
+    @CachedDetail(service = "sales-service", entity = "sale-promotion", key = "#id", ttlSeconds = 900)
     public SalePromotionResponse getSalePromotionById(@PathVariable Long id) {
         return salePromotionService.getSalePromotionById(id);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @InvalidateServiceCaches(service = "sales-service", featurePrefix = "S5-")
     public SalePromotionResponse createSalePromotion(@RequestBody SalePromotionRequest request) {
         return salePromotionService.createSalePromotion(request);
     }
 
     @PutMapping("/{id}")
+    @InvalidateServiceCaches(
+            service = "sales-service",
+            featurePrefix = "S5-",
+            detailKeys = {"'sales-service::sale-promotion::' + #id"})
     public SalePromotionResponse updateSalePromotion(@PathVariable Long id, @RequestBody SalePromotionRequest request) {
         return salePromotionService.updateSalePromotion(id, request);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @InvalidateServiceCaches(
+            service = "sales-service",
+            featurePrefix = "S5-",
+            detailKeys = {"'sales-service::sale-promotion::' + #id"})
     public void deleteSalePromotion(@PathVariable Long id) {
         salePromotionService.deleteSalePromotion(id);
     }

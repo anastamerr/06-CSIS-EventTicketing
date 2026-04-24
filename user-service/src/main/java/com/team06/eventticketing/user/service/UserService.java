@@ -1,10 +1,22 @@
 package com.team06.eventticketing.user.service;
 
+import com.team06.eventticketing.common.auth.JwtService;
+import com.team06.eventticketing.common.observer.EntityObserver;
+import com.team06.eventticketing.common.observer.EventFactory;
+import com.team06.eventticketing.common.observer.EventType;
+import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.user.adapter.TopAttendeeAdapter;
+import com.team06.eventticketing.user.adapter.UserBookingSummaryAdapter;
+import com.team06.eventticketing.user.dto.AuthResponse;
+import com.team06.eventticketing.user.dto.LoginRequest;
+import com.team06.eventticketing.user.dto.RegisterRequest;
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
+import com.team06.eventticketing.user.dto.UpdateUserRoleRequest;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
+import com.team06.eventticketing.user.model.UserRole;
 import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
@@ -12,12 +24,17 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -27,10 +44,41 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final FavoriteVenueRepository favoriteVenueRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final UserBookingSummaryAdapter userBookingSummaryAdapter;
+    private final TopAttendeeAdapter topAttendeeAdapter;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
-    public UserService(UserRepository userRepository, FavoriteVenueRepository favoriteVenueRepository) {
+    public UserService(
+            UserRepository userRepository,
+            FavoriteVenueRepository favoriteVenueRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            UserBookingSummaryAdapter userBookingSummaryAdapter,
+            TopAttendeeAdapter topAttendeeAdapter,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory
+    ) {
         this.userRepository = userRepository;
         this.favoriteVenueRepository = favoriteVenueRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+        this.userBookingSummaryAdapter = userBookingSummaryAdapter;
+        this.topAttendeeAdapter = topAttendeeAdapter;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
+
+    public UserService(UserRepository userRepository, FavoriteVenueRepository favoriteVenueRepository) {
+        this(
+                userRepository,
+                favoriteVenueRepository,
+                new BCryptPasswordEncoder(),
+                new JwtService(),
+                new UserBookingSummaryAdapter(),
+                new TopAttendeeAdapter(),
+                null,
+                null);
     }
 
     public List<User> getAllUsers() {
@@ -52,7 +100,11 @@ public class UserService {
     public User createUser(User user) {
         prepareUserForSave(user, null);
         validateUniqueContactFields(user, null);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        notifyObservers("USER_CREATED", Map.of(
+                "userId", saved.getId(),
+                "details", buildUserDetails(saved)));
+        return saved;
     }
 
     public User updateUser(Long id, User user) {
@@ -62,13 +114,16 @@ public class UserService {
         existing.setName(user.getName() == null ? existing.getName() : user.getName());
         existing.setEmail(user.getEmail() == null ? existing.getEmail() : user.getEmail());
         existing.setPhone(user.getPhone() == null ? existing.getPhone() : user.getPhone());
-        existing.setRole(user.getRole() == null ? existing.getRole() : user.getRole());
         existing.setStatus(user.getStatus() == null ? existing.getStatus() : user.getStatus());
         existing.setPreferences(user.getPreferences() == null ? existing.getPreferences() : user.getPreferences());
         if (user.getPassword() != null) {
             existing.setPassword(user.getPassword());
         }
-        return userRepository.save(existing);
+        User saved = userRepository.save(existing);
+        notifyObservers("USER_UPDATED", Map.of(
+                "userId", saved.getId(),
+                "details", buildUserDetails(saved)));
+        return saved;
     }
 
     @Transactional
@@ -78,11 +133,18 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User has active bookings");
         }
         user.setStatus(UserStatus.DEACTIVATED);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        notifyObservers("USER_DEACTIVATED", Map.of(
+                "userId", saved.getId(),
+                "details", buildUserDetails(saved)));
+        return saved;
     }
 
     public void deleteUser(Long id) {
-        getUserById(id);
+        User user = getUserById(id);
+        notifyObservers("USER_DELETED", Map.of(
+                "userId", user.getId(),
+                "details", buildUserDetails(user)));
         userRepository.deleteById(id);
     }
 
@@ -94,7 +156,14 @@ public class UserService {
         }
         existing.putAll(incoming);
         user.setPreferences(existing);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("preferences", saved.getPreferences());
+        details.put("email", saved.getEmail());
+        notifyObservers("USER_UPDATED", Map.of(
+                "userId", saved.getId(),
+                "details", details));
+        return saved;
     }
 
     public UserProfileDTO getUserProfile(Long id) {
@@ -112,13 +181,14 @@ public class UserService {
                         v.getMetadata()))
                 .collect(Collectors.toList());
 
-        return new UserProfileDTO(
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getPreferences(),
-                venueDTOs);
+        return UserProfileDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .preferences(user.getPreferences())
+                .favoriteVenues(venueDTOs)
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -127,10 +197,10 @@ public class UserService {
         List<Object[]> summaryRows = userRepository.findBookingSummaryByUserId(id);
 
         if (summaryRows.isEmpty()) {
-            return emptyBookingSummary(user);
+            return userBookingSummaryAdapter.empty(user);
         }
 
-        return mapUserBookingSummaryRow(user, summaryRows.getFirst());
+        return userBookingSummaryAdapter.adapt(user, summaryRows.getFirst());
     }
 
     public List<User> getUsersByFavoriteCategoryAndMinBookings(String category, int minBookings) {
@@ -164,7 +234,7 @@ public class UserService {
 
         return userRepository.findTopAttendeesBySpending(startInclusive, endExclusive, PageRequest.of(0, limit))
                 .stream()
-                .map(this::mapTopAttendeeRow)
+                .map(topAttendeeAdapter::adapt)
                 .toList();
     }
 
@@ -181,85 +251,96 @@ public class UserService {
         venue.setIsDefault(Boolean.TRUE);
         favoriteVenueRepository.save(venue);
 
-        return userRepository.findByIdWithFavoriteVenues(userId)
+        User saved = userRepository.findByIdWithFavoriteVenues(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        notifyObservers("DEFAULT_VENUE_SET", Map.of(
+                "userId", saved.getId(),
+                "details", Map.of(
+                        "venueId", venueId,
+                        "favoriteVenueCount", saved.getFavoriteVenues().size())));
+        return saved;
     }
 
-    private TopAttendeeDTO mapTopAttendeeRow(Object[] row) {
-        row = unwrapRow(row);
-        return new TopAttendeeDTO(
-                toLong(row[0]),
-                row[1] == null ? null : row[1].toString(),
-                toBigDecimal(row[2]),
-                toLong(row[3]));
+    @Transactional
+    public User updateRole(Long id, UpdateUserRoleRequest request) {
+        if (request == null || request.getRole() == null || request.getRole().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "role is required");
+        }
+
+        User user = getUserById(id);
+        UserRole role;
+        try {
+            role = UserRole.valueOf(request.getRole().trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role");
+        }
+        user.setRole(role);
+        User saved = userRepository.save(user);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("role", saved.getRole().name());
+        details.put("email", saved.getEmail());
+        notifyObservers("ROLE_CHANGED", Map.of(
+                "userId", saved.getId(),
+                "details", details));
+        return saved;
     }
 
-    private UserBookingSummaryDTO mapUserBookingSummaryRow(User user, Object[] row) {
-        row = unwrapRow(row);
-        Object userId = valueAt(row, 0);
-        Object name = valueAt(row, 1);
+    @Transactional
+    public AuthResponse register(RegisterRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
+        User user = new User();
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setPassword(request.getPassword());
+        user.setPhone(request.getPhone());
+        user.setPreferences(request.getPreferences());
+        user.setRole(UserRole.ATTENDEE);
 
-        return new UserBookingSummaryDTO(
-                userId == null ? user.getId() : toLong(userId),
-                name == null ? user.getName() : name.toString(),
-                toLong(valueAt(row, 2)),
-                toLong(valueAt(row, 3)),
-                toLong(valueAt(row, 4)),
-                toBigDecimal(valueAt(row, 5)),
-                toBigDecimal(valueAt(row, 6)));
+        User saved = createUser(user);
+        notifyObservers("REGISTERED", Map.of(
+                "userId", saved.getId(),
+                "details", buildUserDetails(saved)));
+        return new AuthResponse(
+                jwtService.generateToken(saved.getId(), saved.getEmail(), saved.getRole().name()),
+                saved.getId(),
+                saved.getEmail(),
+                saved.getRole().name(),
+                saved);
     }
 
-    private UserBookingSummaryDTO emptyBookingSummary(User user) {
-        return new UserBookingSummaryDTO(
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request) {
+        if (request == null || request.getEmail() == null || request.getPassword() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
+        }
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        }
+        notifyObservers("LOGGED_IN", Map.of(
+                "userId", user.getId(),
+                "details", buildUserDetails(user)));
+        return new AuthResponse(
+                jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name()),
                 user.getId(),
-                user.getName(),
-                0L,
-                0L,
-                0L,
-                BigDecimal.ZERO,
-                BigDecimal.ZERO);
+                user.getEmail(),
+                user.getRole().name(),
+                user);
     }
 
-    private Object valueAt(Object[] row, int index) {
-        row = unwrapRow(row);
-        if (row == null || index >= row.length) {
-            return null;
-        }
-        return row[index];
+    public void register(EntityObserver observer) {
+        observers.add(observer);
     }
 
-    private Object[] unwrapRow(Object[] row) {
-        Object[] current = row;
-        while (current != null && current.length == 1 && current[0] instanceof Object[] nestedRow) {
-            current = nestedRow;
-        }
-        return current;
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
     }
 
-    private Long toLong(Object value) {
-        if (value == null) {
-            return 0L;
-        }
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        return Long.parseLong(value.toString());
-    }
-
-    private BigDecimal toBigDecimal(Object value) {
-        if (value == null) {
-            return BigDecimal.ZERO;
-        }
-        if (value instanceof BigDecimal bigDecimal) {
-            return bigDecimal;
-        }
-        if (value instanceof BigInteger bigInteger) {
-            return new BigDecimal(bigInteger);
-        }
-        if (value instanceof Number number) {
-            return new BigDecimal(number.toString());
-        }
-        return new BigDecimal(value.toString());
+    public void notifyObservers(String action, Object payload) {
+        observers.forEach(observer -> observer.onEvent(action, payload));
     }
 
     private String normalizeFilter(String value) {
@@ -276,8 +357,16 @@ public class UserService {
         if (candidate.getPreferences() == null) {
             candidate.setPreferences(existing == null ? new LinkedHashMap<>() : existing.getPreferences());
         }
+        if (existing == null) {
+            candidate.setRole(UserRole.ATTENDEE);
+        } else if (candidate.getRole() == null) {
+            candidate.setRole(existing.getRole());
+        }
         if (candidate.getStatus() == null && existing == null) {
             candidate.setStatus(UserStatus.ACTIVE);
+        }
+        if (candidate.getPassword() != null) {
+            candidate.setPassword(ensurePasswordHash(candidate.getPassword()));
         }
     }
 
@@ -298,6 +387,30 @@ public class UserService {
                     .ifPresent(found -> {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone already exists");
                     });
+        }
+    }
+
+    private String ensurePasswordHash(String rawPassword) {
+        if (rawPassword == null || rawPassword.isBlank()) {
+            return rawPassword;
+        }
+        if (rawPassword.matches("^\\$2[aby]\\$\\d\\d\\$.{53}$")) {
+            return rawPassword;
+        }
+        return passwordEncoder.encode(rawPassword);
+    }
+
+    private Map<String, Object> buildUserDetails(User user) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("email", user.getEmail());
+        details.put("name", user.getName());
+        details.put("role", user.getRole() == null ? null : user.getRole().name());
+        return details;
+    }
+
+    private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
+        if (mongoTemplate != null && eventFactory != null) {
+            register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.AUTH, "auth_events"));
         }
     }
 }

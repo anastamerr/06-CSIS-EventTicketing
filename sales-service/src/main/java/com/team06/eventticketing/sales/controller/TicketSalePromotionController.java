@@ -1,5 +1,6 @@
 package com.team06.eventticketing.sales.controller;
 
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.service.SalePromotionService;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +19,13 @@ public class TicketSalePromotionController {
     }
 
     @PostMapping("/{saleId}/promotions/{promotionId}")
+    @InvalidateServiceCaches(
+            service = "sales-service",
+            featurePrefix = "S5-",
+            detailKeys = {
+                    "'sales-service::ticket-sale::' + #saleId",
+                    "'sales-service::promotion::' + #promotionId"
+            })
     public TicketSale applyPromotionToTicketSale(
             @PathVariable Long saleId,
             @PathVariable Long promotionId

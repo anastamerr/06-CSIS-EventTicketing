@@ -38,4 +38,39 @@ public class UserSaleSummaryDTO {
     public void setMethodBreakdown(Map<String, Double> methodBreakdown) {
         this.methodBreakdown = methodBreakdown;
     }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private Long userId;
+        private Long totalSales;
+        private Double totalAmount;
+        private Map<String, Double> methodBreakdown;
+
+        public Builder userId(Long userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public Builder totalSales(Long totalSales) {
+            this.totalSales = totalSales;
+            return this;
+        }
+
+        public Builder totalAmount(Double totalAmount) {
+            this.totalAmount = totalAmount;
+            return this;
+        }
+
+        public Builder methodBreakdown(Map<String, Double> methodBreakdown) {
+            this.methodBreakdown = methodBreakdown;
+            return this;
+        }
+
+        public UserSaleSummaryDTO build() {
+            return new UserSaleSummaryDTO(userId, totalSales, totalAmount, methodBreakdown);
+        }
+    }
 }

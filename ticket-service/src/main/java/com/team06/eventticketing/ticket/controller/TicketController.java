@@ -1,5 +1,8 @@
 package com.team06.eventticketing.ticket.controller;
 
+import com.team06.eventticketing.common.cache.CachedDetail;
+import com.team06.eventticketing.common.cache.CachedFeature;
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
@@ -39,9 +42,11 @@ public class TicketController {
     public List<Ticket> getAllTickets() { return ticketService.getAllTickets(); }
 
     @GetMapping("/{id}")
+    @CachedDetail(service = "ticket-service", entity = "ticket", key = "#id", ttlSeconds = 900)
     public Ticket getTicketById(@PathVariable Long id) { return ticketService.getTicketById(id); }
 
     @GetMapping("/metadata/search")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F1", ttlSeconds = 300)
     public List<Ticket> searchTicketsByMetadata(
             @RequestParam String key,
             @RequestParam String operator,
@@ -55,31 +60,43 @@ public class TicketController {
     public Ticket createTicket(@RequestBody Ticket ticket) { return ticketService.createTicket(ticket); }
 
     @PutMapping("/{id}")
+    @InvalidateServiceCaches(
+            service = "ticket-service",
+            featurePrefix = "S4-",
+            detailKeys = {"'ticket-service::ticket::' + #id"})
     public Ticket updateTicket(@PathVariable Long id, @RequestBody Ticket ticket) {
         return ticketService.updateTicket(id, ticket);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @InvalidateServiceCaches(
+            service = "ticket-service",
+            featurePrefix = "S4-",
+            detailKeys = {"'ticket-service::ticket::' + #id"})
     public void deleteTicket(@PathVariable Long id) { ticketService.deleteTicket(id); }
 
     @DeleteMapping("/purge")
+    @InvalidateServiceCaches(service = "ticket-service", featurePrefix = "S4-")
     public PurgeTicketsResponseDTO purgeTickets(@RequestParam long olderThanDays) {
         return ticketService.purgeTickets(olderThanDays);
     }
 
     @GetMapping("/booking/{bookingId}/latest")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F5", ttlSeconds = 300)
     public Ticket getLatestTicketForBooking(@PathVariable Long bookingId) {
         return ticketService.getLatestTicketForBooking(bookingId);
     }
 
     @GetMapping("/event/{eventId}/summary")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F3", ttlSeconds = 600)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(@PathVariable Long eventId) {
         return ticketService.getEventAttendanceSummary(eventId);
     }
 
     @PostMapping("/booking/{bookingId}")
     @ResponseStatus(HttpStatus.CREATED)
+    @InvalidateServiceCaches(service = "ticket-service", featurePrefix = "S4-")
     public Ticket issueTicketWithMetadata(@PathVariable Long bookingId, @RequestBody Map<String, Object> request) {
         String attendeeName = (String) request.get("attendeeName");
         String ticketCode = (String) request.get("ticketCode");
@@ -95,6 +112,7 @@ public class TicketController {
     }
 
     @GetMapping("/history")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F6", ttlSeconds = 600)
     public List<Ticket> getTicketHistory(
             @RequestParam(name = "startDate") String startDate,
             @RequestParam(name = "endDate") String endDate,
@@ -110,11 +128,13 @@ public class TicketController {
     }
 
     @GetMapping("/unused-upcoming")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F8", ttlSeconds = 900)
     public List<UnusedTicketDTO> getUnusedUpcomingTickets() {
         return ticketService.getUnusedUpcomingTickets();
     }
 
     @GetMapping("/nearby")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F9", ttlSeconds = 600)
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(
             @RequestParam(name = "lat") double latitude,
             @RequestParam(name = "lon") double longitude,
@@ -125,6 +145,7 @@ public class TicketController {
 
     @PostMapping("/batch")
     @ResponseStatus(HttpStatus.CREATED)
+    @InvalidateServiceCaches(service = "ticket-service", featurePrefix = "S4-")
     public Map<String, Object> batchIssue(@RequestBody Map<String, Object> request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");

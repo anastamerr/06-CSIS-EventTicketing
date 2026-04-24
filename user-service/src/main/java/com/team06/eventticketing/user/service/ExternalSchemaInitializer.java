@@ -1,17 +1,21 @@
 package com.team06.eventticketing.user.service;
 
+import com.team06.eventticketing.user.model.UserRole;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ExternalSchemaInitializer implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PasswordEncoder passwordEncoder;
 
-    public ExternalSchemaInitializer(JdbcTemplate jdbcTemplate) {
+    public ExternalSchemaInitializer(JdbcTemplate jdbcTemplate, PasswordEncoder passwordEncoder) {
         this.jdbcTemplate = jdbcTemplate;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -103,6 +107,34 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
                 $$;
                 """);
         jdbcTemplate.execute("ALTER TABLE users ALTER COLUMN status SET DEFAULT 'ACTIVE'");
+        jdbcTemplate.query(
+                "SELECT id, password FROM users WHERE password IS NOT NULL",
+                rs -> {
+                    String password = rs.getString("password");
+                    if (!isBcryptHash(password)) {
+                        jdbcTemplate.update(
+                                "UPDATE users SET password = ? WHERE id = ?",
+                                passwordEncoder.encode(password),
+                                rs.getLong("id"));
+                    }
+                });
+        Integer adminCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE role = ?::user_role",
+                Integer.class,
+                UserRole.ADMIN.name());
+        if (adminCount != null && adminCount == 0) {
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO users (name, email, password, phone, role, status, preferences, created_at)
+                    VALUES (?, ?, ?, ?, ?::user_role, ?::user_status, '{}'::jsonb, CURRENT_TIMESTAMP)
+                    """,
+                    "Seed Admin",
+                    "admin@eventticketing.local",
+                    passwordEncoder.encode("admin123"),
+                    "01000000000",
+                    UserRole.ADMIN.name(),
+                    "ACTIVE");
+        }
 
         jdbcTemplate.execute("""
                 ALTER TABLE favorite_venues
@@ -119,5 +151,9 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
                    OR metadata IS NULL
                    OR created_at IS NULL
                 """);
+    }
+
+    private boolean isBcryptHash(String password) {
+        return password != null && password.matches("^\\$2[aby]\\$\\d\\d\\$.{53}$");
     }
 }
