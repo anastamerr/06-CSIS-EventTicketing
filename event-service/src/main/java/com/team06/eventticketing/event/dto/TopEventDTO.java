@@ -47,4 +47,39 @@ public class TopEventDTO {
     public void setTotalBookings(long totalBookings) {
         this.totalBookings = totalBookings;
     }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private Long eventId;
+        private String name;
+        private double rating;
+        private long totalBookings;
+
+        public Builder eventId(Long eventId) {
+            this.eventId = eventId;
+            return this;
+        }
+
+        public Builder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder rating(double rating) {
+            this.rating = rating;
+            return this;
+        }
+
+        public Builder totalBookings(long totalBookings) {
+            this.totalBookings = totalBookings;
+            return this;
+        }
+
+        public TopEventDTO build() {
+            return new TopEventDTO(eventId, name, rating, totalBookings);
+        }
+    }
 }

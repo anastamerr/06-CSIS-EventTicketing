@@ -74,4 +74,56 @@ public class NearbyTicketResponseDTO {
     public void setDistanceKm(Double distanceKm) {
         this.distanceKm = distanceKm;
     }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private final NearbyTicketResponseDTO value = new NearbyTicketResponseDTO();
+
+        public Builder ticketId(Long ticketId) {
+            value.setTicketId(ticketId);
+            return this;
+        }
+
+        public Builder attendeeName(String attendeeName) {
+            value.setAttendeeName(attendeeName);
+            return this;
+        }
+
+        public Builder ticketCode(String ticketCode) {
+            value.setTicketCode(ticketCode);
+            return this;
+        }
+
+        public Builder bookingId(Long bookingId) {
+            value.setBookingId(bookingId);
+            return this;
+        }
+
+        public Builder eventName(String eventName) {
+            value.setEventName(eventName);
+            return this;
+        }
+
+        public Builder eventLat(Double eventLat) {
+            value.setEventLat(eventLat);
+            return this;
+        }
+
+        public Builder eventLon(Double eventLon) {
+            value.setEventLon(eventLon);
+            return this;
+        }
+
+        public Builder distanceKm(Double distanceKm) {
+            value.setDistanceKm(distanceKm);
+            return this;
+        }
+
+        public NearbyTicketResponseDTO build() {
+            return value;
+        }
+    }
 }

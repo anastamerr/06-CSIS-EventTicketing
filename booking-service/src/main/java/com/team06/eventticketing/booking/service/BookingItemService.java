@@ -1,5 +1,9 @@
 package com.team06.eventticketing.booking.service;
 
+import com.team06.eventticketing.common.observer.EntityObserver;
+import com.team06.eventticketing.common.observer.EventFactory;
+import com.team06.eventticketing.common.observer.EventType;
+import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
@@ -8,7 +12,11 @@ import com.team06.eventticketing.booking.repository.BookingItemRepository;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,6 +26,18 @@ public class BookingItemService {
 
     private final BookingRepository bookingRepository;
     private final BookingItemRepository bookingItemRepository;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+
+    public BookingItemService(
+            BookingRepository bookingRepository,
+            BookingItemRepository bookingItemRepository,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory
+    ) {
+        this.bookingRepository = bookingRepository;
+        this.bookingItemRepository = bookingItemRepository;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
 
     public BookingItemService(BookingRepository bookingRepository, BookingItemRepository bookingItemRepository) {
         this.bookingRepository = bookingRepository;
@@ -40,7 +60,14 @@ public class BookingItemService {
         Booking booking = getBookingById(bookingId);
         BookingItem bookingItem = new BookingItem();
         applyRequest(bookingItem, request, booking);
-        return bookingItemRepository.save(bookingItem);
+        BookingItem saved = bookingItemRepository.save(bookingItem);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("itemId", saved.getId());
+        details.put("sessionId", saved.getSessionId());
+        notifyObservers("BOOKING_ITEM_CREATED", Map.of(
+                "bookingId", bookingId,
+                "details", details));
+        return saved;
     }
 
     @Transactional
@@ -49,11 +76,24 @@ public class BookingItemService {
         BookingItem existing = bookingItemRepository.findByIdAndBookingId(itemId, bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking item not found"));
         applyRequest(existing, request, booking);
-        return bookingItemRepository.save(existing);
+        BookingItem saved = bookingItemRepository.save(existing);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("itemId", saved.getId());
+        details.put("sessionId", saved.getSessionId());
+        notifyObservers("BOOKING_ITEM_UPDATED", Map.of(
+                "bookingId", bookingId,
+                "details", details));
+        return saved;
     }
 
     public void deleteBookingItem(Long bookingId, Long itemId) {
-        getBookingItem(bookingId, itemId);
+        BookingItem item = getBookingItem(bookingId, itemId);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("itemId", item.getId());
+        details.put("sessionId", item.getSessionId());
+        notifyObservers("BOOKING_ITEM_DELETED", Map.of(
+                "bookingId", bookingId,
+                "details", details));
         bookingItemRepository.deleteById(itemId);
     }
 
@@ -88,5 +128,23 @@ public class BookingItemService {
             bookingItem.setMetadata(request.getMetadata() == null ? new LinkedHashMap<>() : request.getMetadata());
         }
         bookingItem.setBooking(booking);
+    }
+
+    public void register(EntityObserver observer) {
+        observers.add(observer);
+    }
+
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
+    public void notifyObservers(String action, Object payload) {
+        observers.forEach(observer -> observer.onEvent(action, payload));
+    }
+
+    private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
+        if (mongoTemplate != null && eventFactory != null) {
+            register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.BOOKING, "booking_events"));
+        }
     }
 }

@@ -1,5 +1,9 @@
 package com.team06.eventticketing.sales.service;
 
+import com.team06.eventticketing.common.observer.EntityObserver;
+import com.team06.eventticketing.common.observer.EventFactory;
+import com.team06.eventticketing.common.observer.EventType;
+import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.sales.dto.SalePromotionRequest;
 import com.team06.eventticketing.sales.dto.SalePromotionResponse;
 import com.team06.eventticketing.sales.model.Promotion;
@@ -10,9 +14,14 @@ import com.team06.eventticketing.sales.repository.PromotionRepository;
 import com.team06.eventticketing.sales.repository.SalePromotionRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,6 +32,20 @@ public class SalePromotionService {
     private final SalePromotionRepository salePromotionRepository;
     private final TicketSaleRepository ticketSaleRepository;
     private final PromotionRepository promotionRepository;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+
+    public SalePromotionService(
+            SalePromotionRepository salePromotionRepository,
+            TicketSaleRepository ticketSaleRepository,
+            PromotionRepository promotionRepository,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory
+    ) {
+        this.salePromotionRepository = salePromotionRepository;
+        this.ticketSaleRepository = ticketSaleRepository;
+        this.promotionRepository = promotionRepository;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
 
     public SalePromotionService(
             SalePromotionRepository salePromotionRepository,
@@ -48,19 +71,25 @@ public class SalePromotionService {
     public SalePromotionResponse createSalePromotion(SalePromotionRequest request) {
         SalePromotion salePromotion = new SalePromotion();
         apply(salePromotion, request);
-        return toResponse(salePromotionRepository.save(salePromotion));
+        SalePromotion saved = salePromotionRepository.save(salePromotion);
+        notifyObservers("SALE_PROMOTION_CREATED", buildAuditPayload(saved, null));
+        return toResponse(saved);
     }
 
     @Transactional
     public SalePromotionResponse updateSalePromotion(Long id, SalePromotionRequest request) {
         SalePromotion existing = findSalePromotion(id);
         apply(existing, request);
-        return toResponse(salePromotionRepository.save(existing));
+        SalePromotion saved = salePromotionRepository.save(existing);
+        notifyObservers("SALE_PROMOTION_UPDATED", buildAuditPayload(saved, null));
+        return toResponse(saved);
     }
 
     @Transactional
     public void deleteSalePromotion(Long id) {
-        salePromotionRepository.delete(findSalePromotion(id));
+        SalePromotion salePromotion = findSalePromotion(id);
+        salePromotionRepository.delete(salePromotion);
+        notifyObservers("SALE_PROMOTION_DELETED", buildAuditPayload(salePromotion, null));
     }
 
     @Transactional
@@ -80,14 +109,21 @@ public class SalePromotionService {
         ticketSale.addSalePromotion(salePromotion);
         promotion.addSalePromotion(salePromotion);
         salePromotion.setDiscountApplied(calculateDiscount(ticketSale, promotion));
+        salePromotion.setAppliedAt(LocalDateTime.now());
         try {
-            salePromotionRepository.saveAndFlush(salePromotion);
+            salePromotion = salePromotionRepository.saveAndFlush(salePromotion);
         } catch (DataIntegrityViolationException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "promotion already applied", exception);
         }
 
         promotion.setCurrentUses(currentUses(promotion) + 1);
         promotionRepository.save(promotion);
+        notifyObservers(
+                "PROMOTION_APPLIED",
+                buildAuditPayload(
+                        salePromotion,
+                        Map.of("promotionCode", promotion.getCode(), "timesUsed", promotion.getCurrentUses())
+                ));
 
         return findTicketSaleWithPromotions(saleId);
     }
@@ -165,5 +201,48 @@ public class SalePromotionService {
     private TicketSale findTicketSaleWithPromotions(Long saleId) {
         return ticketSaleRepository.findByIdWithSalePromotions(saleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
+    }
+
+    public void register(EntityObserver observer) {
+        observers.add(observer);
+    }
+
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
+    public void notifyObservers(String action, Object payload) {
+        observers.forEach(observer -> observer.onEvent(action, payload));
+    }
+
+    private Map<String, Object> buildAuditPayload(
+            SalePromotion salePromotion,
+            @Nullable Map<String, Object> extraDetails
+    ) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("salePromotionId", salePromotion.getId());
+        details.put("promotionId", salePromotion.getPromotion() == null ? null : salePromotion.getPromotion().getId());
+        details.put("discountApplied", salePromotion.getDiscountApplied());
+        details.put("appliedAt", salePromotion.getAppliedAt());
+        if (extraDetails != null) {
+            details.putAll(extraDetails);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (salePromotion.getTicketSale() != null) {
+            payload.put("saleId", salePromotion.getTicketSale().getId());
+            if (salePromotion.getTicketSale().getMethod() != null) {
+                payload.put("method", salePromotion.getTicketSale().getMethod().name());
+            }
+            payload.put("amount", salePromotion.getTicketSale().getAmount());
+        }
+        payload.put("details", details);
+        return payload;
+    }
+
+    private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
+        if (mongoTemplate != null && eventFactory != null) {
+            register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.PAYMENT_AUDIT, "payment_audit_trail"));
+        }
     }
 }

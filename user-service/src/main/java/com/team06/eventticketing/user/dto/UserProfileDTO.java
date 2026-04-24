@@ -162,5 +162,105 @@ public class UserProfileDTO {
         public void setMetadata(Map<String, Object> metadata) {
             this.metadata = metadata;
         }
+
+        public static VenueBuilder builder() {
+            return new VenueBuilder();
+        }
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private Long userId;
+        private String name;
+        private String email;
+        private String phone;
+        private Map<String, Object> preferences;
+        private List<VenueDTO> favoriteVenues;
+
+        public Builder userId(Long userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public Builder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder email(String email) {
+            this.email = email;
+            return this;
+        }
+
+        public Builder phone(String phone) {
+            this.phone = phone;
+            return this;
+        }
+
+        public Builder preferences(Map<String, Object> preferences) {
+            this.preferences = preferences;
+            return this;
+        }
+
+        public Builder favoriteVenues(List<VenueDTO> favoriteVenues) {
+            this.favoriteVenues = favoriteVenues;
+            return this;
+        }
+
+        public UserProfileDTO build() {
+            return new UserProfileDTO(userId, name, email, phone, preferences, favoriteVenues);
+        }
+    }
+
+    public static final class VenueBuilder {
+        private Long id;
+        private String label;
+        private String venueName;
+        private String location;
+        private Integer capacity;
+        private Boolean isDefault;
+        private Map<String, Object> metadata;
+
+        public VenueBuilder id(Long id) {
+            this.id = id;
+            return this;
+        }
+
+        public VenueBuilder label(String label) {
+            this.label = label;
+            return this;
+        }
+
+        public VenueBuilder venueName(String venueName) {
+            this.venueName = venueName;
+            return this;
+        }
+
+        public VenueBuilder location(String location) {
+            this.location = location;
+            return this;
+        }
+
+        public VenueBuilder capacity(Integer capacity) {
+            this.capacity = capacity;
+            return this;
+        }
+
+        public VenueBuilder isDefault(Boolean isDefault) {
+            this.isDefault = isDefault;
+            return this;
+        }
+
+        public VenueBuilder metadata(Map<String, Object> metadata) {
+            this.metadata = metadata;
+            return this;
+        }
+
+        public VenueDTO build() {
+            return new VenueDTO(id, label, venueName, location, capacity, isDefault, metadata);
+        }
     }
 }

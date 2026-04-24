@@ -1,5 +1,7 @@
 package com.team06.eventticketing.sales.controller;
 
+import com.team06.eventticketing.common.cache.CachedFeature;
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
@@ -35,35 +37,48 @@ public class TicketSaleFeatureController {
     }
 
     @GetMapping("/{saleId}/details")
+    @CachedFeature(service = "sales-service", featureId = "S5-F3", ttlSeconds = 600)
     public SaleDetailsDTO getTicketSaleDetails(@PathVariable Long saleId) {
         return ticketSaleService.getTicketSaleDetails(saleId);
     }
 
     @GetMapping("/user/{userId}/summary")
+    @CachedFeature(service = "sales-service", featureId = "S5-F8", ttlSeconds = 600)
     public UserSaleSummaryDTO getUserSaleSummary(@PathVariable Long userId) {
         return ticketSaleService.getUserSaleSummary(userId);
     }
 
     @PostMapping("/booking/{bookingId}")
     @ResponseStatus(HttpStatus.CREATED)
+    @InvalidateServiceCaches(service = "sales-service", featurePrefix = "S5-")
     public TicketSaleResponse processBookingSale(
             @PathVariable Long bookingId,
-            @RequestBody ProcessBookingSaleRequest request
+            @RequestBody ProcessBookingSaleRequest request,
+            @RequestParam(defaultValue = "false") boolean simulateFailure
     ) {
-        return ticketSaleService.processBookingSale(bookingId, request);
+        return ticketSaleService.processBookingSale(bookingId, request, simulateFailure);
     }
 
     @PutMapping("/{id}/retry")
+    @InvalidateServiceCaches(
+            service = "sales-service",
+            featurePrefix = "S5-",
+            detailKeys = {"'sales-service::ticket-sale::' + #id"})
     public TicketSale retrySale(@PathVariable Long id) {
         return ticketSaleService.retryFailedSale(id);
     }
 
     @PutMapping("/{id}/refund")
+    @InvalidateServiceCaches(
+            service = "sales-service",
+            featurePrefix = "S5-",
+            detailKeys = {"'sales-service::ticket-sale::' + #id"})
     public TicketSale refundSale(@PathVariable Long id, @RequestBody RefundRequest request) {
         return ticketSaleService.refundTicketSale(id, request);
     }
 
     @GetMapping("/reports/revenue")
+    @CachedFeature(service = "sales-service", featureId = "S5-F6", ttlSeconds = 600)
     public RevenueReportDTO getRevenueReport(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
@@ -72,6 +87,7 @@ public class TicketSaleFeatureController {
     }
 
     @GetMapping("/search")
+    @CachedFeature(service = "sales-service", featureId = "S5-F1", ttlSeconds = 300)
     public List<TicketSaleResponse> searchTicketSales(
             @RequestParam(required = false) TicketSaleStatus status,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,

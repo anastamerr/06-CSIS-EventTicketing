@@ -1,5 +1,7 @@
 package com.team06.eventticketing.event.controller;
 
+import com.team06.eventticketing.common.cache.CachedDetail;
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.service.EventSessionService;
 import java.util.List;
@@ -36,11 +38,16 @@ public class EventSessionController {
     }
 
     @GetMapping("/{sessionId}")
+    @CachedDetail(service = "event-service", entity = "event-session", key = "#sessionId", ttlSeconds = 900)
     public EventSession getSession(@PathVariable Long eventId, @PathVariable Long sessionId) {
         return eventSessionService.getSession(eventId, sessionId);
     }
 
     @PutMapping("/{sessionId}")
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event-session::' + #sessionId", "'event-service::event::' + #eventId"})
     public EventSession updateSession(
             @PathVariable Long eventId,
             @PathVariable Long sessionId,
@@ -51,6 +58,10 @@ public class EventSessionController {
 
     @DeleteMapping("/{sessionId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event-session::' + #sessionId", "'event-service::event::' + #eventId"})
     public void deleteSession(@PathVariable Long eventId, @PathVariable Long sessionId) {
         eventSessionService.deleteSession(eventId, sessionId);
     }

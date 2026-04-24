@@ -56,4 +56,64 @@ public class UserBookingSummaryDTO {
     public BigDecimal getAverageBookingAmount() {
         return averageBookingAmount;
     }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private Long userId;
+        private String name;
+        private Long totalBookings;
+        private Long completedBookings;
+        private Long cancelledBookings;
+        private BigDecimal totalSpent;
+        private BigDecimal averageBookingAmount;
+
+        public Builder userId(Long userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public Builder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder totalBookings(Long totalBookings) {
+            this.totalBookings = totalBookings;
+            return this;
+        }
+
+        public Builder completedBookings(Long completedBookings) {
+            this.completedBookings = completedBookings;
+            return this;
+        }
+
+        public Builder cancelledBookings(Long cancelledBookings) {
+            this.cancelledBookings = cancelledBookings;
+            return this;
+        }
+
+        public Builder totalSpent(BigDecimal totalSpent) {
+            this.totalSpent = totalSpent;
+            return this;
+        }
+
+        public Builder averageBookingAmount(BigDecimal averageBookingAmount) {
+            this.averageBookingAmount = averageBookingAmount;
+            return this;
+        }
+
+        public UserBookingSummaryDTO build() {
+            return new UserBookingSummaryDTO(
+                    userId,
+                    name,
+                    totalBookings,
+                    completedBookings,
+                    cancelledBookings,
+                    totalSpent,
+                    averageBookingAmount);
+        }
+    }
 }
