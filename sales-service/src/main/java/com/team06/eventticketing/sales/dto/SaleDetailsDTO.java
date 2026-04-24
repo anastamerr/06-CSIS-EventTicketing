@@ -102,6 +102,10 @@ public class SaleDetailsDTO {
         this.finalAmount = finalAmount;
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     public static class AppliedPromotionDTO {
 
         private String promotionCode;
@@ -139,6 +143,124 @@ public class SaleDetailsDTO {
 
         public void setAppliedAt(LocalDateTime appliedAt) {
             this.appliedAt = appliedAt;
+        }
+
+        public static AppliedPromotionBuilder builder() {
+            return new AppliedPromotionBuilder();
+        }
+    }
+
+    public static final class Builder {
+        private Long saleId;
+        private Long bookingId;
+        private Long userId;
+        private Double originalAmount;
+        private TicketSaleMethod method;
+        private TicketSaleStatus status;
+        private Map<String, Object> transactionDetails = new LinkedHashMap<>();
+        private List<AppliedPromotionDTO> appliedPromotions = new ArrayList<>();
+        private Double totalDiscount;
+        private Double finalAmount;
+
+        public Builder saleId(Long saleId) {
+            this.saleId = saleId;
+            return this;
+        }
+
+        public Builder bookingId(Long bookingId) {
+            this.bookingId = bookingId;
+            return this;
+        }
+
+        public Builder userId(Long userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public Builder originalAmount(Double originalAmount) {
+            this.originalAmount = originalAmount;
+            return this;
+        }
+
+        public Builder method(TicketSaleMethod method) {
+            this.method = method;
+            return this;
+        }
+
+        public Builder status(TicketSaleStatus status) {
+            this.status = status;
+            return this;
+        }
+
+        public Builder transactionDetails(Map<String, Object> transactionDetails) {
+            this.transactionDetails = transactionDetails;
+            return this;
+        }
+
+        public Builder appliedPromotions(List<AppliedPromotionDTO> appliedPromotions) {
+            this.appliedPromotions = appliedPromotions;
+            return this;
+        }
+
+        public Builder totalDiscount(Double totalDiscount) {
+            this.totalDiscount = totalDiscount;
+            return this;
+        }
+
+        public Builder finalAmount(Double finalAmount) {
+            this.finalAmount = finalAmount;
+            return this;
+        }
+
+        public SaleDetailsDTO build() {
+            SaleDetailsDTO dto = new SaleDetailsDTO();
+            dto.setSaleId(saleId);
+            dto.setBookingId(bookingId);
+            dto.setUserId(userId);
+            dto.setOriginalAmount(originalAmount);
+            dto.setMethod(method);
+            dto.setStatus(status);
+            dto.setTransactionDetails(transactionDetails);
+            dto.setAppliedPromotions(appliedPromotions);
+            dto.setTotalDiscount(totalDiscount);
+            dto.setFinalAmount(finalAmount);
+            return dto;
+        }
+    }
+
+    public static final class AppliedPromotionBuilder {
+        private String promotionCode;
+        private PromotionDiscountType discountType;
+        private Double discountApplied;
+        private LocalDateTime appliedAt;
+
+        public AppliedPromotionBuilder promotionCode(String promotionCode) {
+            this.promotionCode = promotionCode;
+            return this;
+        }
+
+        public AppliedPromotionBuilder discountType(PromotionDiscountType discountType) {
+            this.discountType = discountType;
+            return this;
+        }
+
+        public AppliedPromotionBuilder discountApplied(Double discountApplied) {
+            this.discountApplied = discountApplied;
+            return this;
+        }
+
+        public AppliedPromotionBuilder appliedAt(LocalDateTime appliedAt) {
+            this.appliedAt = appliedAt;
+            return this;
+        }
+
+        public AppliedPromotionDTO build() {
+            AppliedPromotionDTO dto = new AppliedPromotionDTO();
+            dto.setPromotionCode(promotionCode);
+            dto.setDiscountType(discountType);
+            dto.setDiscountApplied(discountApplied);
+            dto.setAppliedAt(appliedAt);
+            return dto;
         }
     }
 }

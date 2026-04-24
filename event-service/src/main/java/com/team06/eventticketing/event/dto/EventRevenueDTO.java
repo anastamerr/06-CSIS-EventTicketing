@@ -58,4 +58,45 @@ public class EventRevenueDTO {
     public void setAverageBookingAmount(double averageBookingAmount) {
         this.averageBookingAmount = averageBookingAmount;
     }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private Long eventId;
+        private String name;
+        private long totalBookings;
+        private double totalRevenue;
+        private double averageBookingAmount;
+
+        public Builder eventId(Long eventId) {
+            this.eventId = eventId;
+            return this;
+        }
+
+        public Builder name(String name) {
+            this.name = name;
+            return this;
+        }
+
+        public Builder totalBookings(long totalBookings) {
+            this.totalBookings = totalBookings;
+            return this;
+        }
+
+        public Builder totalRevenue(double totalRevenue) {
+            this.totalRevenue = totalRevenue;
+            return this;
+        }
+
+        public Builder averageBookingAmount(double averageBookingAmount) {
+            this.averageBookingAmount = averageBookingAmount;
+            return this;
+        }
+
+        public EventRevenueDTO build() {
+            return new EventRevenueDTO(eventId, name, totalBookings, totalRevenue, averageBookingAmount);
+        }
+    }
 }

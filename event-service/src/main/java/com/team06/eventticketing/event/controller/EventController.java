@@ -1,5 +1,8 @@
 package com.team06.eventticketing.event.controller;
 
+import com.team06.eventticketing.common.cache.CachedDetail;
+import com.team06.eventticketing.common.cache.CachedFeature;
+import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
@@ -48,11 +51,13 @@ public class EventController {
     }
 
     @GetMapping("/{id}")
+    @CachedDetail(service = "event-service", entity = "event", key = "#id", ttlSeconds = 900)
     public Event getEventById(@PathVariable Long id) {
         return eventService.getEventById(id);
     }
 
     @GetMapping("/{id}/revenue")
+    @CachedFeature(service = "event-service", featureId = "S2-F3", ttlSeconds = 600)
     public EventRevenueDTO getEventRevenueSummary(
             @PathVariable Long id,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -63,21 +68,34 @@ public class EventController {
 
     @PostMapping("/{id}/rate")
     @ResponseStatus(HttpStatus.OK)
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event::' + #id"})
     public void rateEvent(@PathVariable Long id, @RequestBody RateEventRequest request) {
         eventService.rateEvent(id, request);
     }
 
     @PutMapping("/{id}")
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event::' + #id"})
     public Event updateEvent(@PathVariable Long id, @RequestBody Event event) {
         return eventService.updateEvent(id, event);
     }
 
     @PutMapping("/{id}/details")
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event::' + #id"})
     public Event updateEventDetails(@PathVariable Long id, @RequestBody Map<String, Object> updates) {
         return eventService.updateEventDetails(id, updates);
     }
 
     @GetMapping("/details/search")
+    @CachedFeature(service = "event-service", featureId = "S2-F5", ttlSeconds = 300)
     public List<Event> searchByDetails(
             @RequestParam String key,
             @RequestParam String value,
@@ -88,11 +106,19 @@ public class EventController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event::' + #id"})
     public void deleteEvent(@PathVariable Long id) {
         eventService.deleteEvent(id);
     }
 
     @PutMapping("/{eventId}/sessions/{sessionId}/verify")
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event::' + #eventId", "'event-service::event-session::' + #sessionId"})
     public Event verifyEventSession(
             @PathVariable Long eventId,
             @PathVariable Long sessionId,
@@ -103,15 +129,21 @@ public class EventController {
 
     @PutMapping("/{id}/status")
     @ResponseStatus(HttpStatus.OK)
+    @InvalidateServiceCaches(
+            service = "event-service",
+            featurePrefix = "S2-",
+            detailKeys = {"'event-service::event::' + #id"})
     public void updateEventStatus(@PathVariable Long id, @RequestBody UpdateEventStatusRequest request) {
         eventService.updateEventStatus(id, request);
     }
     @GetMapping("/sessions/unverified")
+    @CachedFeature(service = "event-service", featureId = "S2-F6", ttlSeconds = 600)
     public List<EventSessionAlertDTO> getEventsWithUnverifiedSessions() {
         return eventService.getEventsWithUnverifiedSessions();
     }
 
     @GetMapping("/reports/top-rated")
+    @CachedFeature(service = "event-service", featureId = "S2-F9", ttlSeconds = 600)
     public List<TopEventDTO> getTopRatedEvents(
             @RequestParam int limit
     ) {
@@ -119,6 +151,7 @@ public class EventController {
     }
 
     @GetMapping("/search")
+    @CachedFeature(service = "event-service", featureId = "S2-F1", ttlSeconds = 300)
     public List<Event> searchEvents(
             @RequestParam(required = false) EventCategory category,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,

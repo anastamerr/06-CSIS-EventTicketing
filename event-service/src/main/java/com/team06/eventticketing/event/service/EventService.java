@@ -1,5 +1,11 @@
 package com.team06.eventticketing.event.service;
 
+import com.team06.eventticketing.common.observer.EntityObserver;
+import com.team06.eventticketing.common.observer.EventFactory;
+import com.team06.eventticketing.common.observer.EventType;
+import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.event.adapter.EventRevenueAdapter;
+import com.team06.eventticketing.event.adapter.TopEventAdapter;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
@@ -12,13 +18,17 @@ import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
+import com.team06.eventticketing.event.search.EventSearchSyncService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
+import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,10 +38,34 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final EventSessionRepository eventSessionRepository;
+    private final EventRevenueAdapter eventRevenueAdapter;
+    private final TopEventAdapter topEventAdapter;
+    private final EventSearchSyncService eventSearchSyncService;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+
+    public EventService(
+            EventRepository eventRepository,
+            EventSessionRepository eventSessionRepository,
+            EventRevenueAdapter eventRevenueAdapter,
+            TopEventAdapter topEventAdapter,
+            EventSearchSyncService eventSearchSyncService,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory
+    ) {
+        this.eventRepository = eventRepository;
+        this.eventSessionRepository = eventSessionRepository;
+        this.eventRevenueAdapter = eventRevenueAdapter;
+        this.topEventAdapter = topEventAdapter;
+        this.eventSearchSyncService = eventSearchSyncService;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
 
     public EventService(EventRepository eventRepository, EventSessionRepository eventSessionRepository) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
+        this.eventRevenueAdapter = new EventRevenueAdapter();
+        this.topEventAdapter = new TopEventAdapter();
+        this.eventSearchSyncService = null;
     }
 
     public List<Event> getAllEvents() {
@@ -44,7 +78,12 @@ public class EventService {
     }
 
     public Event createEvent(Event event) {
-        return eventRepository.save(event);
+        Event saved = eventRepository.save(event);
+        eventSearchSync(saved);
+        notifyObservers("EVENT_CREATED", Map.of(
+                "eventId", saved.getId(),
+                "details", buildEventDetails(saved)));
+        return saved;
     }
 
     public Event updateEvent(Long id, Event event) {
@@ -57,7 +96,12 @@ public class EventService {
         existingEvent.setRating(event.getRating());
         existingEvent.setTotalRatings(event.getTotalRatings());
         existingEvent.setDetails(event.getDetails());
-        return eventRepository.save(existingEvent);
+        Event saved = eventRepository.save(existingEvent);
+        eventSearchSync(saved);
+        notifyObservers("EVENT_UPDATED", Map.of(
+                "eventId", saved.getId(),
+                "details", buildEventDetails(saved)));
+        return saved;
     }
 
     public Event updateEventDetails(Long id, Map<String, Object> updates) {
@@ -71,7 +115,11 @@ public class EventService {
         }
         event.setDetails(details);
 
-        return eventRepository.save(event);
+        Event saved = eventRepository.save(event);
+        notifyObservers("DETAILS_UPDATED", Map.of(
+                "eventId", saved.getId(),
+                "details", buildEventDetails(saved)));
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -83,17 +131,15 @@ public class EventService {
         LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
         List<Object[]> results = eventRepository.findEventRevenueSummary(eventId, startDateTime, endDateTime);
         if (results.isEmpty()) {
-            return new EventRevenueDTO(event.getId(), event.getName(), 0L, 0.0, 0.0);
+            return EventRevenueDTO.builder()
+                    .eventId(event.getId())
+                    .name(event.getName())
+                    .totalBookings(0L)
+                    .totalRevenue(0.0)
+                    .averageBookingAmount(0.0)
+                    .build();
         }
-        Object[] result = results.get(0);
-
-        return new EventRevenueDTO(
-                ((Number) result[0]).longValue(),
-                (String) result[1],
-                ((Number) result[2]).longValue(),
-                result[3] == null ? 0.0 : ((Number) result[3]).doubleValue(),
-                result[4] == null ? 0.0 : ((Number) result[4]).doubleValue()
-        );
+        return eventRevenueAdapter.adapt(results.get(0));
     }
 
     public List<Event> findByDetailAttribute(String key, String value, EventStatus status) {
@@ -104,8 +150,12 @@ public class EventService {
     }
 
     public void deleteEvent(Long id) {
-        getEventById(id);
+        Event event = getEventById(id);
+        notifyObservers("EVENT_DELETED", Map.of(
+                "eventId", event.getId(),
+                "details", buildEventDetails(event)));
         eventRepository.deleteById(id);
+        eventSearchDelete(id);
     }
 
     @Transactional
@@ -145,6 +195,11 @@ public class EventService {
         event.setRating(newRating);
         event.setTotalRatings(totalRatings + 1);
         eventRepository.save(event);
+        notifyObservers("RATED", Map.of(
+                "eventId", event.getId(),
+                "details", Map.of(
+                        "rating", request.getRating(),
+                        "bookingId", request.getBookingId())));
     }
 
     @Transactional
@@ -178,6 +233,11 @@ public class EventService {
         metadata.put("verifiedBy", request.getVerifiedBy());
         session.setMetadata(metadata);
         eventSessionRepository.save(session);
+        notifyObservers("SESSION_VERIFIED", Map.of(
+                "eventId", eventId,
+                "details", Map.of(
+                        "sessionId", sessionId,
+                        "verifiedBy", request.getVerifiedBy())));
 
         return eventRepository.findByIdWithEventSessions(eventId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
@@ -200,6 +260,10 @@ public class EventService {
         }
         event.setStatus(request.getStatus());
         eventRepository.save(event);
+        eventSearchSync(event);
+        notifyObservers("STATUS_CHANGED", Map.of(
+                "eventId", eventId,
+                "details", Map.of("status", request.getStatus().name())));
     }
     @Transactional(readOnly = true)
     public List<EventSessionAlertDTO> getEventsWithUnverifiedSessions() {
@@ -211,13 +275,13 @@ public class EventService {
                             .filter(session -> Boolean.FALSE.equals(session.getVerified()))
                             .collect(Collectors.toList());
 
-                    return new EventSessionAlertDTO(
-                            event.getId(),
-                            event.getName(),
-                            event.getStatus(),
-                            unverifiedSessions,
-                            unverifiedSessions.size()
-                    );
+                    return EventSessionAlertDTO.builder()
+                            .eventId(event.getId())
+                            .eventName(event.getName())
+                            .eventStatus(event.getStatus())
+                            .unverifiedSessions(unverifiedSessions)
+                            .unverifiedCount(unverifiedSessions.size())
+                            .build();
                 })
                 .toList();
     }
@@ -232,12 +296,7 @@ public class EventService {
 
         List<Object[]> results = eventRepository.findTopRatedEvents(limit);
 
-        return results.stream().map(row -> new TopEventDTO(
-                ((Number) row[0]).longValue(),
-                (String) row[1],
-                row[2] == null ? 0.0 : ((Number) row[2]).doubleValue(),
-                ((Number) row[3]).longValue()
-        )).toList();
+        return results.stream().map(topEventAdapter::adapt).toList();
     }
 
     public List<Event> searchEvents(EventCategory category, LocalDate startDate, LocalDate endDate) {
@@ -264,5 +323,43 @@ public class EventService {
                 startDateTime,
                 endDateTime
         );
+    }
+
+    public void register(EntityObserver observer) {
+        observers.add(observer);
+    }
+
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
+    public void notifyObservers(String action, Object payload) {
+        observers.forEach(observer -> observer.onEvent(action, payload));
+    }
+
+    private Map<String, Object> buildEventDetails(Event event) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("name", event.getName());
+        details.put("status", event.getStatus() == null ? null : event.getStatus().name());
+        details.put("venue", event.getVenue());
+        return details;
+    }
+
+    private void eventSearchSync(Event event) {
+        if (eventSearchSyncService != null) {
+            eventSearchSyncService.indexEvent(event);
+        }
+    }
+
+    private void eventSearchDelete(Long eventId) {
+        if (eventSearchSyncService != null) {
+            eventSearchSyncService.removeEvent(eventId);
+        }
+    }
+
+    private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
+        if (mongoTemplate != null && eventFactory != null) {
+            register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.EVENT_ACTIVITY, "event_events"));
+        }
     }
 }
