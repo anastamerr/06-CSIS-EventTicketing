@@ -71,4 +71,38 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         """, nativeQuery = true)
     List<Object[]> findAnalyticsByDateRange(@Param("startDate") LocalDateTime startDate,
                                             @Param("endDate") LocalDateTime endDate);
+
+    @Query(value = """
+        WITH filtered_bookings AS (
+            SELECT status, total_amount
+            FROM bookings
+            WHERE booking_date BETWEEN :startDate AND :endDate
+        ),
+        totals AS (
+            SELECT
+                COUNT(*) AS total_bookings,
+                COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_amount ELSE 0 END), 0) AS total_revenue,
+                COALESCE(COUNT(*) FILTER (WHERE status = 'COMPLETED'), 0) AS completed_count,
+                COALESCE(COUNT(*) FILTER (
+                    WHERE status IN ('CONFIRMED', 'CHECKED_IN', 'COMPLETED')
+                ), 0) AS converted_count
+            FROM filtered_bookings
+        ),
+        status_counts AS (
+            SELECT status::text AS booking_status, COUNT(*) AS status_count
+            FROM filtered_bookings
+            GROUP BY status
+        )
+        SELECT
+            totals.total_bookings,
+            totals.total_revenue,
+            totals.completed_count,
+            totals.converted_count,
+            status_counts.booking_status,
+            COALESCE(status_counts.status_count, 0)
+        FROM totals
+        LEFT JOIN status_counts ON TRUE
+        """, nativeQuery = true)
+    List<Object[]> findDashboardAnalytics(@Param("startDate") LocalDateTime startDate,
+                                          @Param("endDate") LocalDateTime endDate);
 }
