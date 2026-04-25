@@ -18,6 +18,7 @@ import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
+import com.team06.eventticketing.event.search.EventFullTextSearchService;
 import com.team06.eventticketing.event.search.EventSearchSyncService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -41,6 +42,7 @@ public class EventService {
     private final EventRevenueAdapter eventRevenueAdapter;
     private final TopEventAdapter topEventAdapter;
     private final EventSearchSyncService eventSearchSyncService;
+    private final EventFullTextSearchService eventFullTextSearchService;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public EventService(
@@ -49,6 +51,7 @@ public class EventService {
             EventRevenueAdapter eventRevenueAdapter,
             TopEventAdapter topEventAdapter,
             EventSearchSyncService eventSearchSyncService,
+            EventFullTextSearchService eventFullTextSearchService,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory
     ) {
@@ -57,6 +60,7 @@ public class EventService {
         this.eventRevenueAdapter = eventRevenueAdapter;
         this.topEventAdapter = topEventAdapter;
         this.eventSearchSyncService = eventSearchSyncService;
+        this.eventFullTextSearchService = eventFullTextSearchService;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -66,6 +70,20 @@ public class EventService {
         this.eventRevenueAdapter = new EventRevenueAdapter();
         this.topEventAdapter = new TopEventAdapter();
         this.eventSearchSyncService = null;
+        this.eventFullTextSearchService = null;
+    }
+
+    public EventService(
+            EventRepository eventRepository,
+            EventSessionRepository eventSessionRepository,
+            EventFullTextSearchService eventFullTextSearchService
+    ) {
+        this.eventRepository = eventRepository;
+        this.eventSessionRepository = eventSessionRepository;
+        this.eventRevenueAdapter = new EventRevenueAdapter();
+        this.topEventAdapter = new TopEventAdapter();
+        this.eventSearchSyncService = null;
+        this.eventFullTextSearchService = eventFullTextSearchService;
     }
 
     public List<Event> getAllEvents() {
@@ -116,6 +134,7 @@ public class EventService {
         event.setDetails(details);
 
         Event saved = eventRepository.save(event);
+        eventSearchSync(saved);
         notifyObservers("DETAILS_UPDATED", Map.of(
                 "eventId", saved.getId(),
                 "details", buildEventDetails(saved)));
@@ -195,6 +214,7 @@ public class EventService {
         event.setRating(newRating);
         event.setTotalRatings(totalRatings + 1);
         eventRepository.save(event);
+        eventSearchSync(event);
         notifyObservers("RATED", Map.of(
                 "eventId", event.getId(),
                 "details", Map.of(
@@ -323,6 +343,31 @@ public class EventService {
                 startDateTime,
                 endDateTime
         );
+    }
+
+    public List<Event> searchEventsFullText(
+            String query,
+            EventCategory category,
+            String venue,
+            EventStatus status,
+            LocalDate startDate,
+            LocalDate endDate,
+            Double minRating,
+            Double maxRating
+    ) {
+        if (endDate != null && startDate != null && endDate.isBefore(startDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must be on or after startDate");
+        }
+
+        if (minRating != null && maxRating != null && maxRating < minRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "maxRating must be greater than or equal to minRating");
+        }
+
+        if (eventFullTextSearchService == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Full-text search is unavailable");
+        }
+
+        return eventFullTextSearchService.search(query, category, venue, status, startDate, endDate, minRating, maxRating);
     }
 
     public void register(EntityObserver observer) {
