@@ -160,4 +160,19 @@ public class EventController {
         return eventService.searchEvents(category, startDate, endDate);
     }
 
+    @GetMapping("/search/full-text")
+    @CachedFeature(service = "event-service", featureId = "S2-F10", ttlSeconds = 300)
+    public List<Event> searchEventsFullText(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) EventCategory category,
+            @RequestParam(required = false) String venue,
+            @RequestParam(required = false) EventStatus status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating
+    ) {
+        return eventService.searchEventsFullText(query, category, venue, status, startDate, endDate, minRating, maxRating);
+    }
+
 }
