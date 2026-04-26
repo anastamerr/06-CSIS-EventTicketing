@@ -4,9 +4,12 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.common.observer.PaymentAuditEvent;
+import com.team06.eventticketing.sales.adapter.PaymentAuditEventAdapter;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
+import com.team06.eventticketing.sales.dto.SaleAuditTrailDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
@@ -22,9 +25,13 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
@@ -34,10 +41,40 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class TicketSaleService {
 
+    private static final Set<String> SALE_AUDIT_ACTIONS = Set.of(
+            "CREATED",
+            "COMPLETED",
+            "FAILED",
+            "REFUNDED",
+            "REFUND_DENIED",
+            "PROMOTION_APPLIED",
+            "RETRY_ATTEMPTED",
+            "TRANSFERRED",
+            "RESOLD"
+    );
+
     private final TicketSaleRepository ticketSaleRepository;
     private final BookingJdbcRepository bookingJdbcRepository;
     private final UserJdbcRepository userJdbcRepository;
+    private final MongoTemplate mongoTemplate;
+    private final PaymentAuditEventAdapter paymentAuditEventAdapter;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+
+    public TicketSaleService(
+            TicketSaleRepository ticketSaleRepository,
+            BookingJdbcRepository bookingJdbcRepository,
+            UserJdbcRepository userJdbcRepository,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory,
+            PaymentAuditEventAdapter paymentAuditEventAdapter
+    ) {
+        this.ticketSaleRepository = ticketSaleRepository;
+        this.bookingJdbcRepository = bookingJdbcRepository;
+        this.userJdbcRepository = userJdbcRepository;
+        this.mongoTemplate = mongoTemplate;
+        this.paymentAuditEventAdapter = paymentAuditEventAdapter;
+        registerObserverIfAvailable(mongoTemplate, eventFactory);
+    }
 
     public TicketSaleService(
             TicketSaleRepository ticketSaleRepository,
@@ -46,10 +83,14 @@ public class TicketSaleService {
             MongoTemplate mongoTemplate,
             EventFactory eventFactory
     ) {
-        this.ticketSaleRepository = ticketSaleRepository;
-        this.bookingJdbcRepository = bookingJdbcRepository;
-        this.userJdbcRepository = userJdbcRepository;
-        registerObserverIfAvailable(mongoTemplate, eventFactory);
+        this(
+                ticketSaleRepository,
+                bookingJdbcRepository,
+                userJdbcRepository,
+                mongoTemplate,
+                eventFactory,
+                new PaymentAuditEventAdapter()
+        );
     }
 
     public TicketSaleService(
@@ -60,6 +101,8 @@ public class TicketSaleService {
         this.ticketSaleRepository = ticketSaleRepository;
         this.bookingJdbcRepository = bookingJdbcRepository;
         this.userJdbcRepository = userJdbcRepository;
+        this.mongoTemplate = null;
+        this.paymentAuditEventAdapter = new PaymentAuditEventAdapter();
     }
 
     @Transactional(readOnly = true)
@@ -70,6 +113,25 @@ public class TicketSaleService {
     @Transactional(readOnly = true)
     public TicketSaleResponse getTicketSaleById(Long id) {
         return toResponse(findTicketSale(id));
+    }
+
+    @Transactional(readOnly = true)
+    public SaleAuditTrailDTO getSaleAuditTrail(Long id) {
+        findTicketSale(id);
+
+        List<PaymentAuditEvent> events = mongoTemplate == null
+                ? List.of()
+                : mongoTemplate.find(
+                        Query.query(Criteria.where("saleId").is(id).and("action").in(SALE_AUDIT_ACTIONS))
+                                .with(Sort.by(Sort.Direction.ASC, "timestamp")),
+                        PaymentAuditEvent.class,
+                        "payment_audit_trail"
+                );
+
+        SaleAuditTrailDTO trail = new SaleAuditTrailDTO();
+        trail.setSaleId(id);
+        trail.setEvents(events.stream().map(paymentAuditEventAdapter::adapt).toList());
+        return trail;
     }
 
     @Transactional(readOnly = true)

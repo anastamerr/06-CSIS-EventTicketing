@@ -59,6 +59,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if ("PUT".equalsIgnoreCase(request.getMethod()) && path.matches(".*/api/users/\\d+/role/?$")) {
             return "ADMIN";
         }
+        if ("GET".equalsIgnoreCase(request.getMethod()) && path.matches(".*/api/sales/\\d+/audit-trail/?$")) {
+            return "USER";
+        }
         return null;
     }
 }

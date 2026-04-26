@@ -49,7 +49,10 @@ public class TicketSaleController {
     @InvalidateServiceCaches(
             service = "sales-service",
             featurePrefix = "S5-",
-            detailKeys = {"'sales-service::ticket-sale::' + #id"})
+            detailKeys = {
+                    "'sales-service::ticket-sale::' + #id",
+                    "'sales-service::sale-audit-trail::' + #id"
+            })
     public TicketSaleResponse updateTicketSale(@PathVariable Long id, @RequestBody TicketSaleRequest request) {
         return ticketSaleService.updateTicketSale(id, request);
     }
@@ -59,7 +62,10 @@ public class TicketSaleController {
     @InvalidateServiceCaches(
             service = "sales-service",
             featurePrefix = "S5-",
-            detailKeys = {"'sales-service::ticket-sale::' + #id"})
+            detailKeys = {
+                    "'sales-service::ticket-sale::' + #id",
+                    "'sales-service::sale-audit-trail::' + #id"
+            })
     public void deleteTicketSale(@PathVariable Long id) {
         ticketSaleService.deleteTicketSale(id);
     }

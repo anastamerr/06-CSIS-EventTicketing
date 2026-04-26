@@ -24,6 +24,7 @@ public class TicketSalePromotionController {
             featurePrefix = "S5-",
             detailKeys = {
                     "'sales-service::ticket-sale::' + #saleId",
+                    "'sales-service::sale-audit-trail::' + #saleId",
                     "'sales-service::promotion::' + #promotionId"
             })
     public TicketSale applyPromotionToTicketSale(
