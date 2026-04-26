@@ -1,10 +1,12 @@
 package com.team06.eventticketing.sales.controller;
 
 import com.team06.eventticketing.common.cache.CachedFeature;
+import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
+import com.team06.eventticketing.sales.dto.SaleAuditTrailDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
 import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
@@ -42,6 +44,12 @@ public class TicketSaleFeatureController {
         return ticketSaleService.getTicketSaleDetails(saleId);
     }
 
+    @GetMapping("/{saleId}/audit-trail")
+    @CachedDetail(service = "sales-service", entity = "sale-audit-trail", key = "#saleId", ttlSeconds = 600)
+    public SaleAuditTrailDTO getSaleAuditTrail(@PathVariable Long saleId) {
+        return ticketSaleService.getSaleAuditTrail(saleId);
+    }
+
     @GetMapping("/user/{userId}/summary")
     @CachedFeature(service = "sales-service", featureId = "S5-F8", ttlSeconds = 600)
     public UserSaleSummaryDTO getUserSaleSummary(@PathVariable Long userId) {
@@ -63,7 +71,10 @@ public class TicketSaleFeatureController {
     @InvalidateServiceCaches(
             service = "sales-service",
             featurePrefix = "S5-",
-            detailKeys = {"'sales-service::ticket-sale::' + #id"})
+            detailKeys = {
+                    "'sales-service::ticket-sale::' + #id",
+                    "'sales-service::sale-audit-trail::' + #id"
+            })
     public TicketSale retrySale(@PathVariable Long id) {
         return ticketSaleService.retryFailedSale(id);
     }
@@ -72,7 +83,10 @@ public class TicketSaleFeatureController {
     @InvalidateServiceCaches(
             service = "sales-service",
             featurePrefix = "S5-",
-            detailKeys = {"'sales-service::ticket-sale::' + #id"})
+            detailKeys = {
+                    "'sales-service::ticket-sale::' + #id",
+                    "'sales-service::sale-audit-trail::' + #id"
+            })
     public TicketSale refundSale(@PathVariable Long id, @RequestBody RefundRequest request) {
         return ticketSaleService.refundTicketSale(id, request);
     }
