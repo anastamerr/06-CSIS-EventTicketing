@@ -1,7 +1,6 @@
 package com.team06.eventticketing.sales.controller;
 
 import com.team06.eventticketing.common.cache.CachedFeature;
-import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
@@ -45,7 +44,7 @@ public class TicketSaleFeatureController {
     }
 
     @GetMapping("/{saleId}/audit-trail")
-    @CachedDetail(service = "sales-service", entity = "sale-audit-trail", key = "#saleId", ttlSeconds = 600)
+    @CachedFeature(service = "sales-service", featureId = "S5-F11", ttlSeconds = 600)
     public SaleAuditTrailDTO getSaleAuditTrail(@PathVariable Long saleId) {
         return ticketSaleService.getSaleAuditTrail(saleId);
     }

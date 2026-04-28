@@ -8,7 +8,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.team06.eventticketing.common.observer.PaymentAuditEvent;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import com.team06.eventticketing.sales.dto.RefundRequest;
@@ -32,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -138,10 +138,10 @@ class TicketSaleServiceTest {
         TicketSale sale = sale(7L, 800.0, TicketSaleStatus.COMPLETED);
         when(ticketSaleRepository.findById(7L)).thenReturn(Optional.of(sale));
 
-        PaymentAuditEvent created = auditEvent("CREATED", LocalDateTime.of(2026, 4, 26, 10, 0), "CREDIT_CARD", 800.0);
-        PaymentAuditEvent completed = auditEvent("COMPLETED", LocalDateTime.of(2026, 4, 26, 10, 1), "CREDIT_CARD", 800.0);
-        PaymentAuditEvent promoted = auditEvent("PROMOTION_APPLIED", LocalDateTime.of(2026, 4, 26, 10, 2), "CREDIT_CARD", 800.0);
-        when(mongoTemplate.find(any(Query.class), eq(PaymentAuditEvent.class), eq("payment_audit_trail")))
+        Document created = auditEvent("CREATED", LocalDateTime.of(2026, 4, 26, 10, 0), "CREDIT_CARD", 800.0);
+        Document completed = auditEvent("COMPLETED", LocalDateTime.of(2026, 4, 26, 10, 1), "CREDIT_CARD", 800.0);
+        Document promoted = auditEvent("PROMOTION_APPLIED", LocalDateTime.of(2026, 4, 26, 10, 2), "CREDIT_CARD", 800.0);
+        when(mongoTemplate.find(any(Query.class), eq(Document.class), eq("payment_audit_trail")))
                 .thenReturn(List.of(created, completed, promoted));
 
         SaleAuditTrailDTO trail = ticketSaleService.getSaleAuditTrail(7L);
@@ -159,7 +159,7 @@ class TicketSaleServiceTest {
     void getSaleAuditTrailReturnsEmptyEventsWhenNoAuditDocumentsExist() {
         TicketSale sale = sale(8L, 100.0, TicketSaleStatus.PENDING);
         when(ticketSaleRepository.findById(8L)).thenReturn(Optional.of(sale));
-        when(mongoTemplate.find(any(Query.class), eq(PaymentAuditEvent.class), eq("payment_audit_trail")))
+        when(mongoTemplate.find(any(Query.class), eq(Document.class), eq("payment_audit_trail")))
                 .thenReturn(List.of());
 
         SaleAuditTrailDTO trail = ticketSaleService.getSaleAuditTrail(8L);
@@ -176,7 +176,7 @@ class TicketSaleServiceTest {
                 () -> ticketSaleService.getSaleAuditTrail(999L));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
-        verify(mongoTemplate, never()).find(any(Query.class), eq(PaymentAuditEvent.class), eq("payment_audit_trail"));
+        verify(mongoTemplate, never()).find(any(Query.class), eq(Document.class), eq("payment_audit_trail"));
     }
 
     @Test
@@ -649,15 +649,13 @@ class TicketSaleServiceTest {
         return sale;
     }
 
-    private PaymentAuditEvent auditEvent(String action, LocalDateTime timestamp, String method, Double amount) {
-        PaymentAuditEvent event = new PaymentAuditEvent();
-        event.setSaleId(7L);
-        event.setAction(action);
-        event.setTimestamp(timestamp);
-        event.setMethod(method);
-        event.setAmount(amount);
-        event.setDetails(new LinkedHashMap<>(Map.of("source", "test")));
-        return event;
+    private Document auditEvent(String action, LocalDateTime timestamp, String method, Double amount) {
+        return new Document("saleId", 7L)
+                .append("action", action)
+                .append("timestamp", timestamp)
+                .append("method", method)
+                .append("amount", amount)
+                .append("details", new LinkedHashMap<>(Map.of("source", "test")));
     }
 
     private TicketSaleRepository.PaymentMethodSummaryProjection paymentMethodSummary(
