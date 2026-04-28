@@ -1,7 +1,6 @@
 package com.team06.eventticketing.user.controller;
 
 import com.team06.eventticketing.user.dto.AuthResponse;
-import com.team06.eventticketing.user.dto.LoginRequest;
 import com.team06.eventticketing.user.dto.RegisterRequest;
 import com.team06.eventticketing.user.service.UserService;
 import org.springframework.http.HttpStatus;
@@ -25,10 +24,5 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public AuthResponse register(@RequestBody RegisterRequest request) {
         return userService.register(request);
-    }
-
-    @PostMapping("/login")
-    public AuthResponse login(@RequestBody LoginRequest request) {
-        return userService.login(request);
     }
 }
