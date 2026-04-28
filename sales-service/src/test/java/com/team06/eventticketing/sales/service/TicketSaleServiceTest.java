@@ -2,13 +2,17 @@ package com.team06.eventticketing.sales.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.common.observer.PaymentAuditEvent;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import com.team06.eventticketing.sales.dto.RefundRequest;
+import com.team06.eventticketing.sales.dto.SaleAuditTrailDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
@@ -35,6 +39,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -50,6 +56,9 @@ class TicketSaleServiceTest {
     @Mock
     private UserJdbcRepository userJdbcRepository;
 
+    @Mock
+    private MongoTemplate mongoTemplate;
+
     @Captor
     private ArgumentCaptor<TicketSale> ticketSaleCaptor;
 
@@ -57,7 +66,13 @@ class TicketSaleServiceTest {
 
     @BeforeEach
     void setUp() {
-        ticketSaleService = new TicketSaleService(ticketSaleRepository, bookingJdbcRepository, userJdbcRepository);
+        ticketSaleService = new TicketSaleService(
+                ticketSaleRepository,
+                bookingJdbcRepository,
+                userJdbcRepository,
+                mongoTemplate,
+                null
+        );
     }
 
     @Test
@@ -116,6 +131,52 @@ class TicketSaleServiceTest {
                 () -> ticketSaleService.getTicketSaleById(99L));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getSaleAuditTrailReturnsChronologicalEvents() {
+        TicketSale sale = sale(7L, 800.0, TicketSaleStatus.COMPLETED);
+        when(ticketSaleRepository.findById(7L)).thenReturn(Optional.of(sale));
+
+        PaymentAuditEvent created = auditEvent("CREATED", LocalDateTime.of(2026, 4, 26, 10, 0), "CREDIT_CARD", 800.0);
+        PaymentAuditEvent completed = auditEvent("COMPLETED", LocalDateTime.of(2026, 4, 26, 10, 1), "CREDIT_CARD", 800.0);
+        PaymentAuditEvent promoted = auditEvent("PROMOTION_APPLIED", LocalDateTime.of(2026, 4, 26, 10, 2), "CREDIT_CARD", 800.0);
+        when(mongoTemplate.find(any(Query.class), eq(PaymentAuditEvent.class), eq("payment_audit_trail")))
+                .thenReturn(List.of(created, completed, promoted));
+
+        SaleAuditTrailDTO trail = ticketSaleService.getSaleAuditTrail(7L);
+
+        assertEquals(7L, trail.getSaleId());
+        assertEquals(List.of("CREATED", "COMPLETED", "PROMOTION_APPLIED"),
+                trail.getEvents().stream().map(event -> event.getAction()).toList());
+        assertEquals("CREDIT_CARD", trail.getEvents().get(0).getMethod());
+        assertEquals(800.0, trail.getEvents().get(0).getAmount());
+        assertEquals(null, trail.getEvents().get(2).getMethod());
+        assertEquals(null, trail.getEvents().get(2).getAmount());
+    }
+
+    @Test
+    void getSaleAuditTrailReturnsEmptyEventsWhenNoAuditDocumentsExist() {
+        TicketSale sale = sale(8L, 100.0, TicketSaleStatus.PENDING);
+        when(ticketSaleRepository.findById(8L)).thenReturn(Optional.of(sale));
+        when(mongoTemplate.find(any(Query.class), eq(PaymentAuditEvent.class), eq("payment_audit_trail")))
+                .thenReturn(List.of());
+
+        SaleAuditTrailDTO trail = ticketSaleService.getSaleAuditTrail(8L);
+
+        assertEquals(8L, trail.getSaleId());
+        assertEquals(0, trail.getEvents().size());
+    }
+
+    @Test
+    void getSaleAuditTrailThrows404BeforeQueryingMongoForUnknownSale() {
+        when(ticketSaleRepository.findById(999L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketSaleService.getSaleAuditTrail(999L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(mongoTemplate, never()).find(any(Query.class), eq(PaymentAuditEvent.class), eq("payment_audit_trail"));
     }
 
     @Test
@@ -586,6 +647,17 @@ class TicketSaleServiceTest {
         sale.setStatus(status);
         sale.setTransactionDetails(new LinkedHashMap<>());
         return sale;
+    }
+
+    private PaymentAuditEvent auditEvent(String action, LocalDateTime timestamp, String method, Double amount) {
+        PaymentAuditEvent event = new PaymentAuditEvent();
+        event.setSaleId(7L);
+        event.setAction(action);
+        event.setTimestamp(timestamp);
+        event.setMethod(method);
+        event.setAmount(amount);
+        event.setDetails(new LinkedHashMap<>(Map.of("source", "test")));
+        return event;
     }
 
     private TicketSaleRepository.PaymentMethodSummaryProjection paymentMethodSummary(
