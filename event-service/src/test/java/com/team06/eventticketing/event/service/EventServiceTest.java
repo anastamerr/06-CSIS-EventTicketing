@@ -14,10 +14,12 @@ import com.team06.eventticketing.event.dto.TopEventDTO;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
+import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
+import com.team06.eventticketing.event.search.EventFullTextSearchService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -41,11 +43,14 @@ class EventServiceTest {
     @Mock
     private EventSessionRepository eventSessionRepository;
 
+    @Mock
+    private EventFullTextSearchService eventFullTextSearchService;
+
     private EventService eventService;
 
     @BeforeEach
     void setUp() {
-        eventService = new EventService(eventRepository, eventSessionRepository);
+        eventService = new EventService(eventRepository, eventSessionRepository, eventFullTextSearchService);
     }
 
     @Test
@@ -480,6 +485,98 @@ class EventServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
         verify(eventRepository, never()).findTopRatedEvents(0);
+    }
+
+    @Test
+    void searchEventsFullTextRejectsInvalidDateRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.searchEventsFullText(
+                        "jazz",
+                        null,
+                        null,
+                        null,
+                        LocalDate.of(2026, 6, 30),
+                        LocalDate.of(2026, 6, 1),
+                        null,
+                        null));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventFullTextSearchService, never()).search(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void searchEventsFullTextRejectsInvalidRatingRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.searchEventsFullText(
+                        "classic",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        4.5,
+                        3.0));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(eventFullTextSearchService, never()).search(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void searchEventsFullTextDelegatesToSearchService() {
+        Event matchingEvent = new Event();
+        matchingEvent.setId(10L);
+        matchingEvent.setName("Cairo Jazz Night");
+
+        when(eventFullTextSearchService.search(
+                "cairo",
+                EventCategory.CONCERT,
+                "Opera House",
+                EventStatus.UPCOMING,
+                LocalDate.of(2026, 6, 1),
+                LocalDate.of(2026, 6, 30),
+                4.0,
+                5.0
+        )).thenReturn(List.of(matchingEvent));
+
+        List<Event> result = eventService.searchEventsFullText(
+                "cairo",
+                EventCategory.CONCERT,
+                "Opera House",
+                EventStatus.UPCOMING,
+                LocalDate.of(2026, 6, 1),
+                LocalDate.of(2026, 6, 30),
+                4.0,
+                5.0
+        );
+
+        assertEquals(1, result.size());
+        assertEquals(10L, result.get(0).getId());
+        verify(eventFullTextSearchService).search(
+                "cairo",
+                EventCategory.CONCERT,
+                "Opera House",
+                EventStatus.UPCOMING,
+                LocalDate.of(2026, 6, 1),
+                LocalDate.of(2026, 6, 30),
+                4.0,
+                5.0
+        );
     }
 
     private EventSession session(Long id, Event event, LocalDateTime startTime) {

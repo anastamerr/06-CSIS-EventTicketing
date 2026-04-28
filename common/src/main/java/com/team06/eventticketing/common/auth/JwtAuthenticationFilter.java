@@ -56,6 +56,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private String resolveRequiredRole(HttpServletRequest request) {
         String path = request.getRequestURI();
+        if ("GET".equalsIgnoreCase(request.getMethod()) && path.matches(".*/api/events/search/full-text/?$")) {
+            return "USER";
+        }
         if ("PUT".equalsIgnoreCase(request.getMethod()) && path.matches(".*/api/users/\\d+/role/?$")) {
             return "ADMIN";
         }
