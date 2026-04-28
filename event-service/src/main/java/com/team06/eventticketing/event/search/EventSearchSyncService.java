@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -12,10 +13,10 @@ public class EventSearchSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(EventSearchSyncService.class);
 
-    private final EventSearchRepository eventSearchRepository;
+    private final ElasticsearchOperations elasticsearchOperations;
 
-    public EventSearchSyncService(EventSearchRepository eventSearchRepository) {
-        this.eventSearchRepository = eventSearchRepository;
+    public EventSearchSyncService(ElasticsearchOperations elasticsearchOperations) {
+        this.elasticsearchOperations = elasticsearchOperations;
     }
 
     public void indexEvent(Event event) {
@@ -29,7 +30,7 @@ public class EventSearchSyncService {
             document.setEventDate(event.getEventDate());
             document.setRating(event.getRating());
             document.setStatus(event.getStatus() == null ? null : event.getStatus().name());
-            eventSearchRepository.save(document);
+            elasticsearchOperations.save(document);
         } catch (Exception exception) {
             log.warn("Elasticsearch indexing failed for event {}", event == null ? null : event.getId(), exception);
         }
@@ -37,7 +38,7 @@ public class EventSearchSyncService {
 
     public void removeEvent(Long eventId) {
         try {
-            eventSearchRepository.deleteById(String.valueOf(eventId));
+            elasticsearchOperations.delete(String.valueOf(eventId), EventSearchDocument.class);
         } catch (Exception exception) {
             log.warn("Elasticsearch delete failed for event {}", eventId, exception);
         }

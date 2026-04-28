@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,7 @@ public class TicketSaleService {
     private final UserJdbcRepository userJdbcRepository;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
+    @Autowired
     public TicketSaleService(
             TicketSaleRepository ticketSaleRepository,
             BookingJdbcRepository bookingJdbcRepository,
