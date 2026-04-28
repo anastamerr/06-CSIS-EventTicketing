@@ -36,7 +36,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
+import com.team06.eventticketing.user.dto.LoginRequest;
 @Service
 public class UserService {
 
@@ -390,5 +390,29 @@ public class UserService {
         if (mongoTemplate != null && eventFactory != null) {
             register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.AUTH, "auth_events"));
         }
+
+    }
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email is required");
+        }
+        if (request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "password is required");
+        }
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        }
+        notifyObservers("LOGGED_IN", Map.of(
+                "userId", user.getId(),
+                "details", buildUserDetails(user)));
+        return new AuthResponse(
+                jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name()),
+                user.getId(),
+                user.getEmail(),
+                user.getRole().name(),
+                user);
     }
 }
