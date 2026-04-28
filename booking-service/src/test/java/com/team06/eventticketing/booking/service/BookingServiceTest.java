@@ -7,11 +7,20 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
 import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
@@ -23,6 +32,10 @@ import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import com.team06.eventticketing.booking.repository.TicketJdbcRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import com.team06.eventticketing.common.cache.CacheAspect;
+import com.team06.eventticketing.common.cache.CachedFeature;
+import com.team06.eventticketing.common.cache.RedisCacheService;
+import com.team06.eventticketing.common.observer.EntityObserver;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -30,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +51,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -365,6 +381,201 @@ class BookingServiceTest {
         assertEquals(0.0, result.totalRevenue());
         assertEquals(0.0, result.averageBookingAmount());
         assertEquals(0.0, result.completionRate());
+    }
+
+    @Test
+    void getBookingAnalyticsDashboardMapsMarchAggregateRowsToDto() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        when(bookingRepository.findDashboardAnalytics(startDateTime, endDateTime))
+                .thenReturn(List.<Object[]>of(
+                        new Object[]{6L, 1500.0, 2L, 4L, "PENDING", 1L},
+                        new Object[]{6L, 1500.0, 2L, 4L, "CONFIRMED", 1L},
+                        new Object[]{6L, 1500.0, 2L, 4L, "CHECKED_IN", 1L},
+                        new Object[]{6L, 1500.0, 2L, 4L, "COMPLETED", 2L},
+                        new Object[]{6L, 1500.0, 2L, 4L, "CANCELLED", 1L}));
+
+        BookingAnalyticsDashboardDTO result = bookingService.getBookingAnalyticsDashboard(startDate, endDate);
+
+        assertEquals(6L, result.totalBookings());
+        assertEquals(1500.0, result.totalRevenue());
+        assertEquals(750.0, result.averageBookingValue());
+        assertEquals(4.0 / 6.0, result.conversionRate());
+        assertEquals(1L, result.bookingsByStatus().get("PENDING"));
+        assertEquals(1L, result.bookingsByStatus().get("CONFIRMED"));
+        assertEquals(1L, result.bookingsByStatus().get("CHECKED_IN"));
+        assertEquals(2L, result.bookingsByStatus().get("COMPLETED"));
+        assertEquals(1L, result.bookingsByStatus().get("CANCELLED"));
+        verify(bookingRepository).findDashboardAnalytics(startDateTime, endDateTime);
+    }
+
+    @Test
+    void getBookingAnalyticsDashboardReturnsZeroBreakdownForEmptyDateRange() {
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 4, 30);
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+
+        when(bookingRepository.findDashboardAnalytics(startDateTime, endDateTime))
+                .thenReturn(List.<Object[]>of(new Object[]{0L, 0.0, 0L, 0L, null, 0L}));
+
+        BookingAnalyticsDashboardDTO result = bookingService.getBookingAnalyticsDashboard(startDate, endDate);
+
+        assertEquals(0L, result.totalBookings());
+        assertEquals(0.0, result.totalRevenue());
+        assertEquals(0.0, result.averageBookingValue());
+        assertEquals(0.0, result.conversionRate());
+        for (BookingStatus status : BookingStatus.values()) {
+            assertEquals(0L, result.bookingsByStatus().get(status.name()));
+        }
+    }
+
+    @Test
+    void getBookingAnalyticsDashboardRejectsInvalidDateRangeBeforeLogging() {
+        EntityObserver observer = mock(EntityObserver.class);
+        bookingService.register(observer);
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> bookingService.getBookingAnalyticsDashboard(
+                        LocalDate.of(2026, 4, 1),
+                        LocalDate.of(2026, 3, 31)
+                ));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verifyNoInteractions(observer);
+        verify(bookingRepository, never()).findDashboardAnalytics(any(), any());
+    }
+
+    @Test
+    void getBookingAnalyticsDashboardLogsOutsideCachedAggregation() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+        BookingService serviceSpy = spy(bookingService);
+        EntityObserver observer = mock(EntityObserver.class);
+        BookingAnalyticsDashboardDTO dashboard = BookingAnalyticsDashboardDTO.builder()
+                .totalBookings(1L)
+                .totalRevenue(300.0)
+                .averageBookingValue(300.0)
+                .conversionRate(1.0)
+                .bookingsByStatus(Map.of("COMPLETED", 1L))
+                .build();
+
+        serviceSpy.register(observer);
+        doReturn(dashboard).when(serviceSpy).getCachedBookingAnalyticsDashboard(startDateTime, endDateTime);
+
+        serviceSpy.getBookingAnalyticsDashboard(startDate, endDate);
+        serviceSpy.getBookingAnalyticsDashboard(startDate, endDate);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(observer, times(2)).onEvent(eq("ANALYTICS_VIEWED"), payloadCaptor.capture());
+        verify(serviceSpy, times(2)).getCachedBookingAnalyticsDashboard(startDateTime, endDateTime);
+
+        Map<?, ?> payload = (Map<?, ?>) payloadCaptor.getAllValues().get(0);
+        Map<?, ?> details = (Map<?, ?>) payload.get("details");
+        assertEquals("2026-03-01", details.get("startDate"));
+        assertEquals("2026-03-31", details.get("endDate"));
+    }
+
+    @Test
+    void dashboardCacheHitStillLogsAnalyticsViewWithoutReaggregating() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.MAX);
+        AtomicReference<BookingService> proxyReference = new AtomicReference<>();
+        ObjectProvider<BookingService> selfProvider = new ObjectProvider<>() {
+            @Override
+            public BookingService getObject() {
+                return proxyReference.get();
+            }
+        };
+        BookingService target = new BookingService(
+                bookingRepository,
+                ticketJdbcRepository,
+                ticketSaleJdbcRepository,
+                new com.team06.eventticketing.booking.adapter.BookingAnalyticsAdapter(),
+                null,
+                null,
+                selfProvider);
+        RedisCacheService redisCacheService = mock(RedisCacheService.class);
+        BookingAnalyticsDashboardDTO cachedDashboard = BookingAnalyticsDashboardDTO.builder()
+                .totalBookings(3L)
+                .totalRevenue(300.0)
+                .averageBookingValue(300.0)
+                .conversionRate(2.0 / 3.0)
+                .bookingsByStatus(Map.of("COMPLETED", 1L))
+                .build();
+        EntityObserver observer = mock(EntityObserver.class);
+        AspectJProxyFactory proxyFactory = new AspectJProxyFactory(target);
+        proxyFactory.addAspect(new CacheAspect(redisCacheService, new ObjectMapper()));
+        BookingService proxy = proxyFactory.getProxy();
+        proxyReference.set(proxy);
+
+        when(redisCacheService.stableHash(any())).thenReturn("dashboard-key");
+        when(redisCacheService.get(eq("booking-service::S3-F10::dashboard-key"), any(JavaType.class)))
+                .thenReturn(null)
+                .thenReturn(cachedDashboard);
+        when(bookingRepository.findDashboardAnalytics(startDateTime, endDateTime))
+                .thenReturn(List.<Object[]>of(
+                        new Object[]{3L, 300.0, 1L, 2L, "PENDING", 1L},
+                        new Object[]{3L, 300.0, 1L, 2L, "CONFIRMED", 1L},
+                        new Object[]{3L, 300.0, 1L, 2L, "COMPLETED", 1L}));
+
+        proxy.register(observer);
+        proxy.getBookingAnalyticsDashboard(startDate, endDate);
+        proxy.getBookingAnalyticsDashboard(startDate, endDate);
+
+        verify(observer, times(2)).onEvent(eq("ANALYTICS_VIEWED"), any());
+        verify(bookingRepository, times(1)).findDashboardAnalytics(startDateTime, endDateTime);
+        verify(redisCacheService).put(
+                eq("booking-service::S3-F10::dashboard-key"),
+                any(BookingAnalyticsDashboardDTO.class),
+                eq(600L));
+    }
+
+    @Test
+    void cachedDashboardAggregationMethodCarriesFeatureCacheMetadata() throws NoSuchMethodException {
+        CachedFeature cachedFeature = BookingService.class
+                .getMethod("getCachedBookingAnalyticsDashboard", LocalDateTime.class, LocalDateTime.class)
+                .getAnnotation(CachedFeature.class);
+
+        assertNotNull(cachedFeature);
+        assertEquals("booking-service", cachedFeature.service());
+        assertEquals("S3-F10", cachedFeature.featureId());
+        assertEquals(600L, cachedFeature.ttlSeconds());
+    }
+
+    @Test
+    void bookingAnalyticsDashboardDtoSerializesAndDeserializesExpectedShape() throws Exception {
+        BookingAnalyticsDashboardDTO dashboard = BookingAnalyticsDashboardDTO.builder()
+                .totalBookings(3L)
+                .totalRevenue(300.0)
+                .averageBookingValue(300.0)
+                .conversionRate(2.0 / 3.0)
+                .bookingsByStatus(Map.of(
+                        "PENDING", 1L,
+                        "CONFIRMED", 1L,
+                        "COMPLETED", 1L))
+                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        String payload = objectMapper.writeValueAsString(dashboard);
+        JsonNode json = objectMapper.readTree(payload);
+        BookingAnalyticsDashboardDTO roundTrip = objectMapper.readValue(payload, BookingAnalyticsDashboardDTO.class);
+
+        assertEquals(5, json.size());
+        assertEquals(3L, json.get("totalBookings").asLong());
+        assertEquals(300.0, json.get("totalRevenue").asDouble());
+        assertEquals(300.0, json.get("averageBookingValue").asDouble());
+        assertEquals(2.0 / 3.0, json.get("conversionRate").asDouble());
+        assertEquals(1L, json.get("bookingsByStatus").get("COMPLETED").asLong());
+        assertEquals(3L, roundTrip.totalBookings());
+        assertEquals(1L, roundTrip.bookingsByStatus().get("COMPLETED"));
     }
 
     @Test
