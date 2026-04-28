@@ -4,8 +4,7 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
-import com.team06.eventticketing.common.observer.PaymentAuditEvent;
-import com.team06.eventticketing.sales.adapter.PaymentAuditEventAdapter;
+import com.team06.eventticketing.sales.adapter.MongoDocumentAdapter;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
@@ -27,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.bson.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -58,7 +58,7 @@ public class TicketSaleService {
     private final BookingJdbcRepository bookingJdbcRepository;
     private final UserJdbcRepository userJdbcRepository;
     private final MongoTemplate mongoTemplate;
-    private final PaymentAuditEventAdapter paymentAuditEventAdapter;
+    private final MongoDocumentAdapter mongoDocumentAdapter;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
@@ -68,13 +68,13 @@ public class TicketSaleService {
             UserJdbcRepository userJdbcRepository,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory,
-            PaymentAuditEventAdapter paymentAuditEventAdapter
+            MongoDocumentAdapter mongoDocumentAdapter
     ) {
         this.ticketSaleRepository = ticketSaleRepository;
         this.bookingJdbcRepository = bookingJdbcRepository;
         this.userJdbcRepository = userJdbcRepository;
         this.mongoTemplate = mongoTemplate;
-        this.paymentAuditEventAdapter = paymentAuditEventAdapter;
+        this.mongoDocumentAdapter = mongoDocumentAdapter;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -91,7 +91,7 @@ public class TicketSaleService {
                 userJdbcRepository,
                 mongoTemplate,
                 eventFactory,
-                new PaymentAuditEventAdapter()
+                new MongoDocumentAdapter()
         );
     }
 
@@ -104,7 +104,7 @@ public class TicketSaleService {
         this.bookingJdbcRepository = bookingJdbcRepository;
         this.userJdbcRepository = userJdbcRepository;
         this.mongoTemplate = null;
-        this.paymentAuditEventAdapter = new PaymentAuditEventAdapter();
+        this.mongoDocumentAdapter = new MongoDocumentAdapter();
     }
 
     @Transactional(readOnly = true)
@@ -121,18 +121,18 @@ public class TicketSaleService {
     public SaleAuditTrailDTO getSaleAuditTrail(Long id) {
         findTicketSale(id);
 
-        List<PaymentAuditEvent> events = mongoTemplate == null
+        List<Document> events = mongoTemplate == null
                 ? List.of()
                 : mongoTemplate.find(
                         Query.query(Criteria.where("saleId").is(id).and("action").in(SALE_AUDIT_ACTIONS))
                                 .with(Sort.by(Sort.Direction.ASC, "timestamp")),
-                        PaymentAuditEvent.class,
+                        Document.class,
                         "payment_audit_trail"
                 );
 
         SaleAuditTrailDTO trail = new SaleAuditTrailDTO();
         trail.setSaleId(id);
-        trail.setEvents(events.stream().map(paymentAuditEventAdapter::adapt).toList());
+        trail.setEvents(events.stream().map(mongoDocumentAdapter::adapt).toList());
         return trail;
     }
 
