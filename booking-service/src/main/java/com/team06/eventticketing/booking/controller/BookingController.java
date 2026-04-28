@@ -3,6 +3,8 @@ package com.team06.eventticketing.booking.controller;
 import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
 import com.team06.eventticketing.booking.dto.BookingDetailsDTO;
 import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
@@ -25,7 +27,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -72,6 +73,7 @@ public class BookingController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @InvalidateServiceCaches(service = "booking-service", featurePrefix = "S3-")
     public Booking createBooking(@RequestBody BookingRequest request) {
         return bookingService.createBooking(request);
     }
@@ -110,6 +112,13 @@ public class BookingController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return bookingService.getBookingAnalytics(startDate, endDate);
+    }
+
+    @GetMapping("/analytics/dashboard")
+    public BookingAnalyticsDashboardDTO getBookingAnalyticsDashboard(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return bookingService.getBookingAnalyticsDashboard(startDate, endDate);
     }
 
     @GetMapping("/metadata/search")

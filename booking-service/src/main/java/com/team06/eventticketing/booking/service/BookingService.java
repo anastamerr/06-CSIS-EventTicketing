@@ -1,6 +1,8 @@
 package com.team06.eventticketing.booking.service;
 
 import com.team06.eventticketing.booking.adapter.BookingAnalyticsAdapter;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
+import com.team06.eventticketing.booking.dto.BookingAnalyticsDashboardDTO;
 import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
 import com.team06.eventticketing.booking.dto.BookingDetailsDTO;
 import com.team06.eventticketing.booking.dto.BookingDetailsItemDTO;
@@ -14,6 +16,7 @@ import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
 import com.team06.eventticketing.booking.repository.TicketJdbcRepository;
 import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
+import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
@@ -29,6 +32,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
@@ -36,7 +40,6 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
 
 @Service
 public class BookingService {
@@ -47,6 +50,7 @@ public class BookingService {
     private final TicketJdbcRepository ticketJdbcRepository;
     private final TicketSaleJdbcRepository ticketSaleJdbcRepository;
     private final BookingAnalyticsAdapter bookingAnalyticsAdapter;
+    private final ObjectProvider<BookingService> selfProvider;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
@@ -56,12 +60,14 @@ public class BookingService {
             TicketSaleJdbcRepository ticketSaleJdbcRepository,
             BookingAnalyticsAdapter bookingAnalyticsAdapter,
             MongoTemplate mongoTemplate,
-            EventFactory eventFactory
+            EventFactory eventFactory,
+            ObjectProvider<BookingService> selfProvider
     ) {
         this.bookingRepository = bookingRepository;
         this.ticketJdbcRepository = ticketJdbcRepository;
         this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
         this.bookingAnalyticsAdapter = bookingAnalyticsAdapter;
+        this.selfProvider = selfProvider;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -74,6 +80,7 @@ public class BookingService {
         this.ticketJdbcRepository = ticketJdbcRepository;
         this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
         this.bookingAnalyticsAdapter = new BookingAnalyticsAdapter();
+        this.selfProvider = null;
     }
 
     public List<Booking> getAllBookings() {
@@ -219,6 +226,28 @@ public class BookingService {
             return BookingAnalyticsDTO.builder().build();
         }
         return bookingAnalyticsAdapter.adapt(rows.get(0));
+    }
+
+    @Transactional(readOnly = true)
+    public BookingAnalyticsDashboardDTO getBookingAnalyticsDashboard(LocalDate startDate, LocalDate endDate) {
+        validateAnalyticsDateRange(startDate, endDate);
+
+        notifyObservers("ANALYTICS_VIEWED", Map.of(
+                "details", Map.of(
+                        "startDate", startDate.toString(),
+                        "endDate", endDate.toString())));
+
+        return self().getCachedBookingAnalyticsDashboard(startDate.atStartOfDay(), endDate.atTime(LocalTime.MAX));
+    }
+
+    @Transactional(readOnly = true)
+    @CachedFeature(service = "booking-service", featureId = "S3-F10", ttlSeconds = 600)
+    public BookingAnalyticsDashboardDTO getCachedBookingAnalyticsDashboard(
+            LocalDateTime startDateTime,
+            LocalDateTime endDateTime
+    ) {
+        List<Object[]> rows = bookingRepository.findDashboardAnalytics(startDateTime, endDateTime);
+        return buildDashboardAnalytics(rows);
     }
 
     @Transactional(readOnly = true)
@@ -472,6 +501,69 @@ public class BookingService {
         }
     }
 
+    private void validateAnalyticsDateRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be on or before endDate");
+        }
+    }
+
+    private BookingAnalyticsDashboardDTO buildDashboardAnalytics(List<Object[]> rows) {
+        Map<String, Long> bookingsByStatus = new LinkedHashMap<>();
+        for (BookingStatus status : BookingStatus.values()) {
+            bookingsByStatus.put(status.name(), 0L);
+        }
+
+        long totalBookings = 0L;
+        double totalRevenue = 0.0;
+        long completedCount = 0L;
+        long convertedCount = 0L;
+
+        for (Object[] row : rows) {
+            totalBookings = longValue(row[0]);
+            totalRevenue = doubleValue(row[1]);
+            completedCount = longValue(row[2]);
+            convertedCount = longValue(row[3]);
+
+            if (row[4] != null) {
+                bookingsByStatus.put(row[4].toString(), longValue(row[5]));
+            }
+        }
+
+        double averageBookingValue = completedCount == 0L ? 0.0 : totalRevenue / completedCount;
+        double conversionRate = totalBookings == 0L ? 0.0 : (double) convertedCount / totalBookings;
+
+        return BookingAnalyticsDashboardDTO.builder()
+                .totalBookings(totalBookings)
+                .totalRevenue(totalRevenue)
+                .averageBookingValue(averageBookingValue)
+                .conversionRate(conversionRate)
+                .bookingsByStatus(bookingsByStatus)
+                .build();
+    }
+
+    private long longValue(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(String.valueOf(value));
+    }
+
+    private double doubleValue(Object value) {
+        if (value == null) {
+            return 0.0;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        return Double.parseDouble(String.valueOf(value));
+    }
+
     private Map<String, Object> buildTransactionDetails(Booking booking, double totalAmount) {
         Map<String, Object> transactionDetails = new LinkedHashMap<>();
         transactionDetails.put("bookingTotalAmount", totalAmount);
@@ -520,6 +612,10 @@ public class BookingService {
 
     public void notifyObservers(String action, Object payload) {
         observers.forEach(observer -> observer.onEvent(action, payload));
+    }
+
+    private BookingService self() {
+        return selfProvider == null ? this : selfProvider.getObject();
     }
 
     private Map<String, Object> buildBookingDetails(Booking booking) {
