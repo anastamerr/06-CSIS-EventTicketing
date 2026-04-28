@@ -29,6 +29,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.lang.Nullable;
@@ -48,6 +49,7 @@ public class BookingService {
     private final BookingAnalyticsAdapter bookingAnalyticsAdapter;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
+    @Autowired
     public BookingService(
             BookingRepository bookingRepository,
             TicketJdbcRepository ticketJdbcRepository,

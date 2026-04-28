@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.LinkedHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.lang.Nullable;
@@ -39,6 +40,7 @@ public class TicketService {
     private final EventAttendanceSummaryAdapter eventAttendanceSummaryAdapter;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
+    @Autowired
     public TicketService(
             TicketRepository ticketRepository,
             Clock clock,

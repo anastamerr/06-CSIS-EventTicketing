@@ -13,7 +13,8 @@ public class RoleAuthorizationHandler extends AuthHandler {
         if (context.getRequiredRole().equals(actualRole)) {
             return true;
         }
-        context.getResponse().sendError(403, "Forbidden");
+        context.getResponse().setStatus(403);
+        context.getResponse().getWriter().write("Forbidden");
         return false;
     }
 }

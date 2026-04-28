@@ -118,11 +118,11 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
                                 rs.getLong("id"));
                     }
                 });
-        Integer adminCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM users WHERE role = ?::user_role",
+        Integer seededAdminCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE email = ?",
                 Integer.class,
-                UserRole.ADMIN.name());
-        if (adminCount != null && adminCount == 0) {
+                "admin@eventticketing.local");
+        if (seededAdminCount != null && seededAdminCount == 0) {
             jdbcTemplate.update(
                     """
                     INSERT INTO users (name, email, password, phone, role, status, preferences, created_at)
@@ -134,6 +134,19 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
                     "01000000000",
                     UserRole.ADMIN.name(),
                     "ACTIVE");
+        } else {
+            jdbcTemplate.update(
+                    """
+                    UPDATE users
+                    SET password = ?,
+                        role = ?::user_role,
+                        status = ?::user_status
+                    WHERE email = ?
+                    """,
+                    passwordEncoder.encode("admin123"),
+                    UserRole.ADMIN.name(),
+                    "ACTIVE",
+                    "admin@eventticketing.local");
         }
 
         jdbcTemplate.execute("""
