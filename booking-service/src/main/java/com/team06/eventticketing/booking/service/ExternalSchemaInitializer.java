@@ -43,13 +43,15 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
                           AND data_type <> 'USER-DEFINED'
                     ) THEN
                         ALTER TABLE bookings
+                        ALTER COLUMN status DROP DEFAULT,
                         ALTER COLUMN status TYPE booking_status
                         USING status::booking_status;
+                        ALTER TABLE bookings
+                        ALTER COLUMN status SET DEFAULT 'PENDING'::booking_status;
                     END IF;
                 END
                 $$;
                 """);
-        jdbcTemplate.execute("ALTER TABLE bookings ALTER COLUMN status SET DEFAULT 'PENDING'");
 
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS events (
@@ -133,8 +135,11 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
                           AND data_type <> 'USER-DEFINED'
                     ) THEN
                         ALTER TABLE booking_items
+                        ALTER COLUMN status DROP DEFAULT,
                         ALTER COLUMN status TYPE booking_item_status
                         USING status::booking_item_status;
+                        ALTER TABLE booking_items
+                        ALTER COLUMN status SET DEFAULT 'RESERVED'::booking_item_status;
                     END IF;
                 END
                 $$;

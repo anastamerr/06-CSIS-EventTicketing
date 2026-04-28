@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.lang.Nullable;
@@ -28,6 +29,7 @@ public class BookingItemService {
     private final BookingItemRepository bookingItemRepository;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
+    @Autowired
     public BookingItemService(
             BookingRepository bookingRepository,
             BookingItemRepository bookingItemRepository,
