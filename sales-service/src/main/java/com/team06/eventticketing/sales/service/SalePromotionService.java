@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,7 @@ public class SalePromotionService {
     private final PromotionRepository promotionRepository;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
+    @Autowired
     public SalePromotionService(
             SalePromotionRepository salePromotionRepository,
             TicketSaleRepository ticketSaleRepository,

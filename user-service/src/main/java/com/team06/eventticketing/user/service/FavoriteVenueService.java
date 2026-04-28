@@ -9,6 +9,7 @@ import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
 import java.util.LinkedHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.lang.Nullable;
@@ -25,6 +26,7 @@ public class FavoriteVenueService {
     private final UserRepository userRepository;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
+    @Autowired
     public FavoriteVenueService(
             FavoriteVenueRepository favoriteVenueRepository,
             UserRepository userRepository,
