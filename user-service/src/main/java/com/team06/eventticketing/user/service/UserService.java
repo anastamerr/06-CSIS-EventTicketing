@@ -8,7 +8,6 @@ import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.user.adapter.TopAttendeeAdapter;
 import com.team06.eventticketing.user.adapter.UserBookingSummaryAdapter;
 import com.team06.eventticketing.user.dto.AuthResponse;
-import com.team06.eventticketing.user.dto.LoginRequest;
 import com.team06.eventticketing.user.dto.RegisterRequest;
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UpdateUserRoleRequest;
@@ -20,8 +19,6 @@ import com.team06.eventticketing.user.model.UserRole;
 import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -310,27 +307,6 @@ public class UserService {
                 saved.getEmail(),
                 saved.getRole().name(),
                 saved);
-    }
-
-    @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
-        if (request == null || request.getEmail() == null || request.getPassword() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
-        }
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
-        if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
-        }
-        notifyObservers("LOGGED_IN", Map.of(
-                "userId", user.getId(),
-                "details", buildUserDetails(user)));
-        return new AuthResponse(
-                jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name()),
-                user.getId(),
-                user.getEmail(),
-                user.getRole().name(),
-                user);
     }
 
     public void register(EntityObserver observer) {
