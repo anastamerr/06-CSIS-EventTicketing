@@ -1,11 +1,16 @@
 package com.team06.eventticketing.event.service;
 
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team06.eventticketing.common.cache.RedisCacheService;
 import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.event.adapter.EventDashboardAdapter;
 import com.team06.eventticketing.event.adapter.EventRevenueAdapter;
 import com.team06.eventticketing.event.adapter.TopEventAdapter;
+import com.team06.eventticketing.event.dto.EventDashboardDTO;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
@@ -40,39 +45,51 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final EventSessionRepository eventSessionRepository;
+    private final EventDashboardAdapter eventDashboardAdapter;
     private final EventRevenueAdapter eventRevenueAdapter;
     private final TopEventAdapter topEventAdapter;
     private final EventSearchSyncService eventSearchSyncService;
     private final EventFullTextSearchService eventFullTextSearchService;
+    private final RedisCacheService redisCacheService;
+    private final JavaType eventDashboardType;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
     public EventService(
             EventRepository eventRepository,
             EventSessionRepository eventSessionRepository,
+            EventDashboardAdapter eventDashboardAdapter,
             EventRevenueAdapter eventRevenueAdapter,
             TopEventAdapter topEventAdapter,
             EventSearchSyncService eventSearchSyncService,
             EventFullTextSearchService eventFullTextSearchService,
+            RedisCacheService redisCacheService,
+            ObjectMapper objectMapper,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory
     ) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
+        this.eventDashboardAdapter = eventDashboardAdapter;
         this.eventRevenueAdapter = eventRevenueAdapter;
         this.topEventAdapter = topEventAdapter;
         this.eventSearchSyncService = eventSearchSyncService;
         this.eventFullTextSearchService = eventFullTextSearchService;
+        this.redisCacheService = redisCacheService;
+        this.eventDashboardType = objectMapper.getTypeFactory().constructType(EventDashboardDTO.class);
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
     public EventService(EventRepository eventRepository, EventSessionRepository eventSessionRepository) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
+        this.eventDashboardAdapter = new EventDashboardAdapter();
         this.eventRevenueAdapter = new EventRevenueAdapter();
         this.topEventAdapter = new TopEventAdapter();
         this.eventSearchSyncService = null;
         this.eventFullTextSearchService = null;
+        this.redisCacheService = null;
+        this.eventDashboardType = null;
     }
 
     public EventService(
@@ -82,10 +99,13 @@ public class EventService {
     ) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
+        this.eventDashboardAdapter = new EventDashboardAdapter();
         this.eventRevenueAdapter = new EventRevenueAdapter();
         this.topEventAdapter = new TopEventAdapter();
         this.eventSearchSyncService = null;
         this.eventFullTextSearchService = eventFullTextSearchService;
+        this.redisCacheService = null;
+        this.eventDashboardType = null;
     }
 
     public List<Event> getAllEvents() {
@@ -161,6 +181,27 @@ public class EventService {
                     .build();
         }
         return eventRevenueAdapter.adapt(results.get(0));
+    }
+
+    @Transactional(readOnly = true)
+    public EventDashboardDTO getEventDashboard(Long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+
+        notifyObservers("DASHBOARD_VIEWED", Map.of(
+                "eventId", event.getId(),
+                "details", Map.of("eventId", event.getId())));
+
+        EventDashboardDTO cached = getCachedEventDashboard(eventId);
+        if (cached != null) {
+            return cached;
+        }
+
+        List<Object[]> results = eventRepository.findEventDashboardMetrics(eventId);
+        Object[] row = results.isEmpty() ? new Object[]{0L, 0.0, 0L, 0L} : results.get(0);
+        EventDashboardDTO dashboard = eventDashboardAdapter.adapt(event, row);
+        putCachedEventDashboard(eventId, dashboard);
+        return dashboard;
     }
 
     public List<Event> findByDetailAttribute(String key, String value, EventStatus status) {
@@ -402,6 +443,23 @@ public class EventService {
         if (eventSearchSyncService != null) {
             eventSearchSyncService.removeEvent(eventId);
         }
+    }
+
+    private EventDashboardDTO getCachedEventDashboard(Long eventId) {
+        if (redisCacheService == null || eventDashboardType == null) {
+            return null;
+        }
+        return redisCacheService.get(eventDashboardCacheKey(eventId), eventDashboardType);
+    }
+
+    private void putCachedEventDashboard(Long eventId, EventDashboardDTO dashboard) {
+        if (redisCacheService != null) {
+            redisCacheService.put(eventDashboardCacheKey(eventId), dashboard, 600);
+        }
+    }
+
+    private String eventDashboardCacheKey(Long eventId) {
+        return "event-service::S2-F12::" + eventId;
     }
 
     private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
