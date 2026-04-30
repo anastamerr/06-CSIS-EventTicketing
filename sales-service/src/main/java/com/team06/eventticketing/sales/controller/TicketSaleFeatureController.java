@@ -8,6 +8,7 @@ import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import com.team06.eventticketing.sales.dto.SaleAuditTrailDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
+import com.team06.eventticketing.sales.dto.TierRevenueDTO;
 import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
@@ -47,6 +48,13 @@ public class TicketSaleFeatureController {
     @CachedFeature(service = "sales-service", featureId = "S5-F11", ttlSeconds = 600)
     public SaleAuditTrailDTO getSaleAuditTrail(@PathVariable Long saleId) {
         return ticketSaleService.getSaleAuditTrail(saleId);
+    }
+
+    @GetMapping("/analytics/tier")
+    public List<TierRevenueDTO> getTierRevenue(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ticketSaleService.getTierRevenue(startDate, endDate);
     }
 
     @GetMapping("/user/{userId}/summary")
