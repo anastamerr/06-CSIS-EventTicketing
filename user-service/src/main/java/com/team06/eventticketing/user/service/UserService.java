@@ -292,6 +292,26 @@ public class UserService {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
+        if (isBlank(request.getName())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
+        }
+        if (isBlank(request.getEmail())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email is required");
+        }
+        if (isBlank(request.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "password is required");
+        }
+        if (isBlank(request.getPhone())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phone is required");
+        }
+
+        userRepository.findByEmail(request.getEmail()).ifPresent(existing -> {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
+        });
+        userRepository.findByPhone(request.getPhone()).ifPresent(existing -> {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Phone already registered");
+        });
+
         User user = new User();
         user.setName(request.getName());
         user.setEmail(request.getEmail());
@@ -299,6 +319,7 @@ public class UserService {
         user.setPhone(request.getPhone());
         user.setPreferences(request.getPreferences());
         user.setRole(UserRole.ATTENDEE);
+        user.setStatus(UserStatus.ACTIVE);
 
         User saved = createUser(user);
         notifyObservers("REGISTERED", Map.of(
@@ -310,6 +331,10 @@ public class UserService {
                 saved.getEmail(),
                 saved.getRole().name(),
                 saved);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     @Transactional(readOnly = true)

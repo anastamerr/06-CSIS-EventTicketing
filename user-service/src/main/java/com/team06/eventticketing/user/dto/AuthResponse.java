@@ -1,10 +1,12 @@
 package com.team06.eventticketing.user.dto;
 
+import com.team06.eventticketing.common.auth.JwtConfigurationManager;
 import com.team06.eventticketing.user.model.User;
 
 public class AuthResponse {
 
     private final String token;
+    private final long expiresIn;
     private final Long userId;
     private final String email;
     private final String role;
@@ -12,6 +14,7 @@ public class AuthResponse {
 
     public AuthResponse(String token, Long userId, String email, String role, User user) {
         this.token = token;
+        this.expiresIn = JwtConfigurationManager.getInstance().getExpirationMs();
         this.userId = userId;
         this.email = email;
         this.role = role;
@@ -20,6 +23,10 @@ public class AuthResponse {
 
     public String getToken() {
         return token;
+    }
+
+    public long getExpiresIn() {
+        return expiresIn;
     }
 
     public Long getUserId() {
