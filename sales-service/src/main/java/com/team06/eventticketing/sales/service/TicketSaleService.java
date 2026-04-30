@@ -1,10 +1,14 @@
 package com.team06.eventticketing.sales.service;
 
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team06.eventticketing.common.cache.RedisCacheService;
 import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.sales.adapter.MongoDocumentAdapter;
+import com.team06.eventticketing.sales.adapter.TierRevenueRowAdapter;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RefundRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
@@ -12,15 +16,18 @@ import com.team06.eventticketing.sales.dto.SaleAuditTrailDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
+import com.team06.eventticketing.sales.dto.TierRevenueDTO;
 import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.SalePromotion;
 import com.team06.eventticketing.sales.model.TicketSale;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
+import com.team06.eventticketing.sales.repository.TierRevenueJdbcRepository;
 import com.team06.eventticketing.sales.repository.UserJdbcRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +66,10 @@ public class TicketSaleService {
     private final UserJdbcRepository userJdbcRepository;
     private final MongoTemplate mongoTemplate;
     private final MongoDocumentAdapter mongoDocumentAdapter;
+    private final TierRevenueJdbcRepository tierRevenueJdbcRepository;
+    private final TierRevenueRowAdapter tierRevenueRowAdapter;
+    private final RedisCacheService redisCacheService;
+    private final JavaType tierRevenueListType;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
@@ -68,13 +79,23 @@ public class TicketSaleService {
             UserJdbcRepository userJdbcRepository,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory,
-            MongoDocumentAdapter mongoDocumentAdapter
+            MongoDocumentAdapter mongoDocumentAdapter,
+            TierRevenueJdbcRepository tierRevenueJdbcRepository,
+            TierRevenueRowAdapter tierRevenueRowAdapter,
+            RedisCacheService redisCacheService,
+            ObjectMapper objectMapper
     ) {
         this.ticketSaleRepository = ticketSaleRepository;
         this.bookingJdbcRepository = bookingJdbcRepository;
         this.userJdbcRepository = userJdbcRepository;
         this.mongoTemplate = mongoTemplate;
         this.mongoDocumentAdapter = mongoDocumentAdapter;
+        this.tierRevenueJdbcRepository = tierRevenueJdbcRepository;
+        this.tierRevenueRowAdapter = tierRevenueRowAdapter;
+        this.redisCacheService = redisCacheService;
+        this.tierRevenueListType = objectMapper == null
+                ? null
+                : objectMapper.getTypeFactory().constructCollectionType(List.class, TierRevenueDTO.class);
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -91,7 +112,11 @@ public class TicketSaleService {
                 userJdbcRepository,
                 mongoTemplate,
                 eventFactory,
-                new MongoDocumentAdapter()
+                new MongoDocumentAdapter(),
+                null,
+                new TierRevenueRowAdapter(),
+                null,
+                null
         );
     }
 
@@ -105,6 +130,10 @@ public class TicketSaleService {
         this.userJdbcRepository = userJdbcRepository;
         this.mongoTemplate = null;
         this.mongoDocumentAdapter = new MongoDocumentAdapter();
+        this.tierRevenueJdbcRepository = null;
+        this.tierRevenueRowAdapter = new TierRevenueRowAdapter();
+        this.redisCacheService = null;
+        this.tierRevenueListType = null;
     }
 
     @Transactional(readOnly = true)
@@ -134,6 +163,41 @@ public class TicketSaleService {
         trail.setSaleId(id);
         trail.setEvents(events.stream().map(mongoDocumentAdapter::adapt).toList());
         return trail;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TierRevenueDTO> getTierRevenue(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate cannot be after endDate");
+        }
+
+        notifyObservers("ANALYTICS_VIEWED", Map.of(
+                "details", Map.of(
+                        "startDate", startDate.toString(),
+                        "endDate", endDate.toString())));
+
+        LocalDateTime startInclusive = startDate.atStartOfDay();
+        LocalDateTime endInclusive = endDate.atTime(LocalTime.MAX);
+        String cacheKey = "sales-service::S5-F10::" + startInclusive + "::" + endInclusive;
+        if (redisCacheService != null && tierRevenueListType != null) {
+            List<TierRevenueDTO> cached = redisCacheService.get(cacheKey, tierRevenueListType);
+            if (cached != null) {
+                return cached;
+            }
+        }
+
+        List<TierRevenueDTO> response = tierRevenueJdbcRepository == null
+                ? List.of()
+                : tierRevenueJdbcRepository.aggregateByTier(startInclusive, endInclusive).stream()
+                        .map(tierRevenueRowAdapter::adapt)
+                        .toList();
+        if (redisCacheService != null) {
+            redisCacheService.put(cacheKey, response, 600);
+        }
+        return response;
     }
 
     @Transactional(readOnly = true)
