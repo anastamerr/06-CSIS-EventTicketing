@@ -8,6 +8,8 @@ import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
+import com.team06.eventticketing.ticket.scan.TicketScanEvent;
+import com.team06.eventticketing.ticket.scan.TicketScanRequest;
 import com.team06.eventticketing.ticket.service.TicketService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -156,6 +158,12 @@ public class TicketController {
         List<Ticket> tickets = ticketMaps.stream().map(this::toBatchTicket).toList();
 
         return ticketService.batchIssue(bookingId, tickets);
+    }
+
+    @PostMapping("/{id}/scan")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TicketScanEvent recordScanEvent(@PathVariable Long id, @RequestBody TicketScanRequest request) {
+        return ticketService.recordScanEvent(id, request);
     }
 
     private List<?> requireTicketList(Object value) {

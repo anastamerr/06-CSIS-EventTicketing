@@ -1,33 +1,12 @@
 package com.team06.eventticketing.ticket.scan;
 
-import java.time.Instant;
+public class TicketScanRequest {
 
-public class TicketScanEvent {
-
-    private Long ticketId;
-    private Instant timestamp;
     private String scanType;
-    private String attendeeName;
     private String gate;
     private String section;
     private String seatNumber;
     private String notes;
-
-    public Long getTicketId() {
-        return ticketId;
-    }
-
-    public void setTicketId(Long ticketId) {
-        this.ticketId = ticketId;
-    }
-
-    public Instant getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(Instant timestamp) {
-        this.timestamp = timestamp;
-    }
 
     public String getScanType() {
         return scanType;
@@ -35,14 +14,6 @@ public class TicketScanEvent {
 
     public void setScanType(String scanType) {
         this.scanType = scanType;
-    }
-
-    public String getAttendeeName() {
-        return attendeeName;
-    }
-
-    public void setAttendeeName(String attendeeName) {
-        this.attendeeName = attendeeName;
     }
 
     public String getGate() {

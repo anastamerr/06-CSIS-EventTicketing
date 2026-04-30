@@ -13,7 +13,12 @@ import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
 import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
+import com.team06.eventticketing.ticket.scan.TicketScanEvent;
+import com.team06.eventticketing.ticket.scan.TicketScanEventRepository;
+import com.team06.eventticketing.ticket.scan.TicketScanRequest;
+import com.team06.eventticketing.common.cache.RedisCacheService;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.math.BigDecimal;
@@ -38,6 +43,8 @@ public class TicketService {
     private final TicketRepository ticketRepository;
     private final Clock clock;
     private final EventAttendanceSummaryAdapter eventAttendanceSummaryAdapter;
+    private final TicketScanEventRepository ticketScanEventRepository;
+    private final RedisCacheService redisCacheService;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
@@ -46,11 +53,15 @@ public class TicketService {
             Clock clock,
             EventAttendanceSummaryAdapter eventAttendanceSummaryAdapter,
             MongoTemplate mongoTemplate,
-            EventFactory eventFactory
+            EventFactory eventFactory,
+            TicketScanEventRepository ticketScanEventRepository,
+            RedisCacheService redisCacheService
     ) {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
         this.eventAttendanceSummaryAdapter = eventAttendanceSummaryAdapter;
+        this.ticketScanEventRepository = ticketScanEventRepository;
+        this.redisCacheService = redisCacheService;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -58,6 +69,8 @@ public class TicketService {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
         this.eventAttendanceSummaryAdapter = new EventAttendanceSummaryAdapter();
+        this.ticketScanEventRepository = null;
+        this.redisCacheService = null;
     }
 
     public List<Ticket> getAllTickets() { return ticketRepository.findAll(); }
@@ -310,6 +323,40 @@ public class TicketService {
                 "details", Map.of("count", savedTickets.size(), "bookingId", bookingId)));
 
         return Map.of("count", tickets.size());
+    }
+
+    @Transactional
+    public TicketScanEvent recordScanEvent(Long ticketId, TicketScanRequest request) {
+        Ticket ticket = getTicketById(ticketId);
+        TicketScanRequest safeRequest = request == null ? new TicketScanRequest() : request;
+
+        TicketScanEvent scanEvent = new TicketScanEvent();
+        scanEvent.setTicketId(ticketId);
+        scanEvent.setTimestamp(Instant.now(clock));
+        scanEvent.setScanType(safeRequest.getScanType());
+        scanEvent.setAttendeeName(ticket.getAttendeeName());
+        scanEvent.setGate(safeRequest.getGate());
+        scanEvent.setSection(safeRequest.getSection());
+        scanEvent.setSeatNumber(safeRequest.getSeatNumber());
+        scanEvent.setNotes(safeRequest.getNotes());
+
+        TicketScanEvent saved = ticketScanEventRepository.save(scanEvent);
+        notifyObservers("TRACKING_RECORDED", Map.of(
+                "ticketId", ticketId,
+                "details", Map.of(
+                        "scanType", safeText(safeRequest.getScanType()),
+                        "gate", safeText(safeRequest.getGate()),
+                        "section", safeText(safeRequest.getSection()),
+                        "seatNumber", safeText(safeRequest.getSeatNumber()))));
+        if (redisCacheService != null) {
+            redisCacheService.deleteByPattern("ticket-service::S4-F12::*");
+            redisCacheService.deleteByPattern("ticket-service::S4-F10::*");
+        }
+        return saved;
+    }
+
+    private String safeText(String value) {
+        return value == null ? "" : value;
     }
 
     private void validateGeoParameters(double latitude, double longitude, double radiusKm) {
