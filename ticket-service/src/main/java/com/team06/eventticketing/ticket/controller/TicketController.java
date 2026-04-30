@@ -77,6 +77,13 @@ public class TicketController {
         return ticketService.getTicketsHistory(startDateTime, endDateTime, status);
     }
 
+    @GetMapping("/analytics")
+    public com.team06.eventticketing.ticket.dto.TicketAnalyticsDTO getTicketAnalytics(
+            @RequestParam(name = "startDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate startDate,
+            @RequestParam(name = "endDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate endDate) {
+        return ticketService.getTicketAnalytics(startDate, endDate);
+    }
+
     @GetMapping("/nearby")
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(
             @RequestParam(name = "lat") double latitude,

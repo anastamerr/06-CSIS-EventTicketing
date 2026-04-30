@@ -33,6 +33,13 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             @Param("endDate") LocalDateTime endDate,
             @Param("status") String status);
 
+    long countByIssuedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
+
+    @Query("SELECT t.status, COUNT(t) FROM Ticket t WHERE t.issuedAt >= :startDate AND t.issuedAt <= :endDate GROUP BY t.status")
+    List<Object[]> countStatusByIssuedAtBetween(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate);
+
     @Query(value = """
             SELECT COUNT(*)
             FROM tickets

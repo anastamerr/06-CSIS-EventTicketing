@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: sales-service
+  datasource:
+    url: jdbc:postgresql://postgres:5432/eventticketingdb
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    mongodb:
+      uri: mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin
+    redis:
+      host: redis
+      port: 6379
+      password: redispass
+server:
+  port: 8085
+jwt:
+  secret: "7zvE7YVtVltaZG9tcGxleVNlY3JldEtleTEyMzQ1Njc4OQ=="
+  expiration: 86400000
