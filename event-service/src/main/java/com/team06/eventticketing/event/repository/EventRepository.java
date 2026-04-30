@@ -56,6 +56,43 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             @Param("endDateTime") LocalDateTime endDateTime
     );
 
+    @Query(value = """
+            WITH booking_metrics AS (
+                SELECT
+                    COUNT(*) AS total_bookings,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN status = 'COMPLETED' THEN COALESCE(total_amount, 0)
+                            ELSE 0
+                        END
+                    ), 0) AS total_revenue
+                FROM bookings
+                WHERE event_id = :eventId
+            ),
+            ticket_metrics AS (
+                SELECT
+                    COUNT(t.id) AS total_tickets_sold,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN t.status = 'USED' THEN 1
+                            ELSE 0
+                        END
+                    ), 0) AS used_tickets
+                FROM bookings b
+                JOIN tickets t
+                    ON t.booking_id = b.id
+                WHERE b.event_id = :eventId
+            )
+            SELECT
+                bm.total_bookings,
+                bm.total_revenue,
+                tm.total_tickets_sold,
+                tm.used_tickets
+            FROM booking_metrics bm
+            CROSS JOIN ticket_metrics tm
+            """, nativeQuery = true)
+    List<Object[]> findEventDashboardMetrics(@Param("eventId") Long eventId);
+
     @Query(value = "SELECT id, event_id, status FROM bookings WHERE id = :bookingId", nativeQuery = true)
     List<Object[]> findBookingById(@Param("bookingId") Long bookingId);
 

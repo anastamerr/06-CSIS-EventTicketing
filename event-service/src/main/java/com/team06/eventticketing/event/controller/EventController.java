@@ -3,6 +3,7 @@ package com.team06.eventticketing.event.controller;
 import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
+import com.team06.eventticketing.event.dto.EventDashboardDTO;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
@@ -64,6 +65,11 @@ public class EventController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
         return eventService.getEventRevenueSummary(id, startDate, endDate);
+    }
+
+    @GetMapping("/{id}/dashboard")
+    public EventDashboardDTO getEventDashboard(@PathVariable Long id) {
+        return eventService.getEventDashboard(id);
     }
 
     @PostMapping("/{id}/rate")
