@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.event.dto.EventDashboardDTO;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
@@ -111,6 +112,59 @@ class EventServiceTest {
                 () -> eventService.getEventRevenueSummary(404L, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31)));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void getEventDashboardReturnsAggregatedMetrics() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setName("Spring Concert");
+        event.setRating(4.5);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findEventDashboardMetrics(10L))
+                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{4L, 1400.0, 10L, 7L}));
+
+        EventDashboardDTO dto = eventService.getEventDashboard(10L);
+
+        assertEquals(10L, dto.getEventId());
+        assertEquals("Spring Concert", dto.getName());
+        assertEquals(4L, dto.getTotalBookings());
+        assertEquals(10L, dto.getTotalTicketsSold());
+        assertEquals(1400.0, dto.getTotalRevenue());
+        assertEquals(0.7, dto.getAverageAttendanceRate());
+        assertEquals(4.5, dto.getAverageRating());
+    }
+
+    @Test
+    void getEventDashboardReturnsZeroesWhenNoTicketsExist() {
+        Event event = new Event();
+        event.setId(10L);
+        event.setName("Spring Concert");
+        event.setRating(0.0);
+
+        when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
+        when(eventRepository.findEventDashboardMetrics(10L))
+                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{0L, 0.0, 0L, 0L}));
+
+        EventDashboardDTO dto = eventService.getEventDashboard(10L);
+
+        assertEquals(0L, dto.getTotalBookings());
+        assertEquals(0L, dto.getTotalTicketsSold());
+        assertEquals(0.0, dto.getTotalRevenue());
+        assertEquals(0.0, dto.getAverageAttendanceRate());
+        assertEquals(0.0, dto.getAverageRating());
+    }
+
+    @Test
+    void getEventDashboardRejectsUnknownEvent() {
+        when(eventRepository.findById(404L)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> eventService.getEventDashboard(404L));
+
+        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        verify(eventRepository, never()).findEventDashboardMetrics(404L);
     }
 
     @Test
