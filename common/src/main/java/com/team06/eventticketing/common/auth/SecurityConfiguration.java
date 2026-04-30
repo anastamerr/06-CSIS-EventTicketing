@@ -35,7 +35,7 @@ public class SecurityConfiguration {
                             }
                         }))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/actuator/health", "/health")
+                        .requestMatchers("/api/auth/**", "/actuator/health", "/health", "/error")
                         .permitAll()
                         .requestMatchers(
                                 PathPatternRequestMatcher.pathPattern("/api/{service}/health"),
