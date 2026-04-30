@@ -4,9 +4,11 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.ticket.adapter.CassandraRowAdapter;
 import com.team06.eventticketing.ticket.adapter.EventAttendanceSummaryAdapter;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.TicketScanDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
@@ -43,6 +45,7 @@ public class TicketService {
     private final TicketRepository ticketRepository;
     private final Clock clock;
     private final EventAttendanceSummaryAdapter eventAttendanceSummaryAdapter;
+    private final CassandraRowAdapter cassandraRowAdapter;
     private final TicketScanEventRepository ticketScanEventRepository;
     private final RedisCacheService redisCacheService;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
@@ -52,6 +55,7 @@ public class TicketService {
             TicketRepository ticketRepository,
             Clock clock,
             EventAttendanceSummaryAdapter eventAttendanceSummaryAdapter,
+            CassandraRowAdapter cassandraRowAdapter,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory,
             TicketScanEventRepository ticketScanEventRepository,
@@ -60,6 +64,7 @@ public class TicketService {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
         this.eventAttendanceSummaryAdapter = eventAttendanceSummaryAdapter;
+        this.cassandraRowAdapter = cassandraRowAdapter;
         this.ticketScanEventRepository = ticketScanEventRepository;
         this.redisCacheService = redisCacheService;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
@@ -69,6 +74,7 @@ public class TicketService {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
         this.eventAttendanceSummaryAdapter = new EventAttendanceSummaryAdapter();
+        this.cassandraRowAdapter = new CassandraRowAdapter();
         this.ticketScanEventRepository = null;
         this.redisCacheService = null;
     }
@@ -353,6 +359,22 @@ public class TicketService {
             redisCacheService.deleteByPattern("ticket-service::S4-F10::*");
         }
         return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TicketScanDTO> getTicketScanHistory(Long ticketId, LocalDateTime startTime, LocalDateTime endTime) {
+        getTicketById(ticketId);
+        if (startTime != null && endTime != null && startTime.isAfter(endTime)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startTime must not be after endTime");
+        }
+        Instant startInstant = startTime == null ? null : startTime.atZone(ZoneOffset.UTC).toInstant();
+        Instant endInstant = endTime == null ? null : endTime.atZone(ZoneOffset.UTC).toInstant();
+        var rows = (startInstant == null && endInstant == null)
+                ? ticketScanEventRepository.findByTicketId(ticketId)
+                : ticketScanEventRepository.findByTicketIdAndRange(ticketId, startInstant, endInstant);
+        return rows.stream()
+                .map(cassandraRowAdapter::adaptScan)
+                .toList();
     }
 
     private String safeText(String value) {

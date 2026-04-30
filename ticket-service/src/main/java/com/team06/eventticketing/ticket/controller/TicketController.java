@@ -5,6 +5,7 @@ import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.TicketScanDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
@@ -164,6 +165,15 @@ public class TicketController {
     @ResponseStatus(HttpStatus.CREATED)
     public TicketScanEvent recordScanEvent(@PathVariable Long id, @RequestBody TicketScanRequest request) {
         return ticketService.recordScanEvent(id, request);
+    }
+
+    @GetMapping("/{id}/scans")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F12", ttlSeconds = 300)
+    public List<TicketScanDTO> getTicketScanHistory(
+            @PathVariable Long id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
+        return ticketService.getTicketScanHistory(id, startTime, endTime);
     }
 
     private List<?> requireTicketList(Object value) {
