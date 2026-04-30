@@ -72,6 +72,12 @@ public class EventController {
         return eventService.getEventDashboard(id);
     }
 
+    @PostMapping("/{id}/index")
+    @ResponseStatus(HttpStatus.OK)
+    public void indexEventForSearch(@PathVariable Long id) {
+        eventService.indexEventForSearch(id);
+    }
+
     @PostMapping("/{id}/rate")
     @ResponseStatus(HttpStatus.OK)
     @InvalidateServiceCaches(
