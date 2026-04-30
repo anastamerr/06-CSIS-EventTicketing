@@ -5,9 +5,11 @@ import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UpdateUserRoleRequest;
+import com.team06.eventticketing.user.dto.UserActivityFeedResponse;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
 import com.team06.eventticketing.user.model.User;
+import com.team06.eventticketing.user.service.UserActivityService;
 import com.team06.eventticketing.user.service.UserService;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDate;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,9 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserService userService;
+    private final UserActivityService userActivityService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, UserActivityService userActivityService) {
         this.userService = userService;
+        this.userActivityService = userActivityService;
     }
 
     @PostMapping
@@ -90,6 +95,15 @@ public class UserController {
     @CachedFeature(service = "user-service", featureId = "S1-F3", ttlSeconds = 600)
     public UserBookingSummaryDTO getUserBookingsSummary(@PathVariable Long id) {
         return userService.getUserBookingSummary(id);
+    }
+
+    @GetMapping("/{id}/activity")
+    public UserActivityFeedResponse getActivityFeed(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestHeader(name = "Authorization", required = false) String authorization) {
+        return userActivityService.getActivityFeed(id, page, size, authorization);
     }
 
     @PutMapping("/{userId}/venues/{venueId}/default")
