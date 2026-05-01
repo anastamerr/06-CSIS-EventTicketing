@@ -8,6 +8,7 @@ import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.user.adapter.TopAttendeeAdapter;
 import com.team06.eventticketing.user.adapter.UserBookingSummaryAdapter;
 import com.team06.eventticketing.user.dto.AuthResponse;
+import com.team06.eventticketing.user.dto.LoginRequest;
 import com.team06.eventticketing.user.dto.RegisterRequest;
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UpdateUserRoleRequest;
@@ -334,6 +335,27 @@ public class UserService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request) {
+        if (request == null || request.getEmail() == null || request.getPassword() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email and password are required");
+        }
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        }
+        notifyObservers("LOGGED_IN", Map.of(
+                "userId", user.getId(),
+                "details", buildUserDetails(user)));
+        return new AuthResponse(
+                jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name()),
+                user.getId(),
+                user.getEmail(),
+                user.getRole().name(),
+                user);
     }
 
     public void register(EntityObserver observer) {
