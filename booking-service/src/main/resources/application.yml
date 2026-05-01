@@ -23,10 +23,11 @@ spring:
       host: ${SPRING_DATA_REDIS_HOST:redis}
       port: ${SPRING_DATA_REDIS_PORT:6379}
       password: ${SPRING_DATA_REDIS_PASSWORD:redispass}
-    neo4j:
-      uri: ${SPRING_DATA_NEO4J_URI:bolt://neo4j:7687}
-      username: ${SPRING_DATA_NEO4J_USERNAME:neo4j}
-      password: ${SPRING_DATA_NEO4J_PASSWORD:neo4jpass}
+  neo4j:
+    uri: ${SPRING_NEO4J_URI:bolt://neo4j:7687}
+    authentication:
+      username: ${SPRING_NEO4J_AUTHENTICATION_USERNAME:neo4j}
+      password: ${SPRING_NEO4J_AUTHENTICATION_PASSWORD:neo4jpass}
   mongodb:
     uri: ${SPRING_MONGODB_URI:mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin}
 
