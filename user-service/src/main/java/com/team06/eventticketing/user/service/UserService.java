@@ -8,6 +8,7 @@ import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.user.adapter.TopAttendeeAdapter;
 import com.team06.eventticketing.user.adapter.UserBookingSummaryAdapter;
 import com.team06.eventticketing.user.dto.AuthResponse;
+import com.team06.eventticketing.user.dto.LoginRequest;
 import com.team06.eventticketing.user.dto.RegisterRequest;
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UpdateUserRoleRequest;
@@ -19,8 +20,6 @@ import com.team06.eventticketing.user.model.UserRole;
 import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -324,12 +323,34 @@ public class UserService {
         notifyObservers("REGISTERED", Map.of(
                 "userId", saved.getId(),
                 "details", buildUserDetails(saved)));
-        return new AuthResponse(
-                jwtService.generateToken(saved.getId(), saved.getEmail(), saved.getRole().name()),
-                saved.getId(),
-                saved.getEmail(),
-                saved.getRole().name(),
-                saved);
+        return AuthResponse.builder()
+                .token(jwtService.generateToken(saved.getId(), saved.getEmail(), saved.getRole().name()))
+                .userId(saved.getId())
+                .email(saved.getEmail())
+                .role(saved.getRole().name())
+                .user(saved)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request) {
+        User user = userRepository.findByEmail(
+                        request != null && request.getEmail() != null ? request.getEmail() : "")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+        if (user.getPassword() == null || !passwordEncoder.matches(
+                request.getPassword() != null ? request.getPassword() : "", user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        }
+        notifyObservers("LOGGED_IN", Map.of(
+                "userId", user.getId(),
+                "details", buildUserDetails(user)));
+        return AuthResponse.builder()
+                .token(jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name()))
+                .userId(user.getId())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .user(user)
+                .build();
     }
 
     private boolean isBlank(String value) {
