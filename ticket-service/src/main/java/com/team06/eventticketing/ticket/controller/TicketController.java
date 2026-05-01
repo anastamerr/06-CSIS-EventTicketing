@@ -3,8 +3,10 @@ package com.team06.eventticketing.ticket.controller;
 import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
+import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.TicketAnalyticsDTO;
 import com.team06.eventticketing.ticket.dto.TicketScanDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
@@ -12,6 +14,7 @@ import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.scan.TicketScanEvent;
 import com.team06.eventticketing.ticket.scan.TicketScanRequest;
 import com.team06.eventticketing.ticket.service.TicketService;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +31,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 
 @RestController
 @RequestMapping("/api/tickets")
@@ -144,6 +146,15 @@ public class TicketController {
             @RequestParam double radiusKm
     ) {
         return ticketService.findTicketsNearVenue(latitude, longitude, radiusKm);
+    }
+
+    @GetMapping("/analytics")
+    public TicketAnalyticsDTO getTicketAnalytics(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        ticketService.logAnalyticsViewed(startDate, endDate);
+        return ticketService.getTicketAnalytics(startDate, endDate);
     }
 
     @PostMapping("/batch")

@@ -34,6 +34,21 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             @Param("status") String status);
 
     @Query(value = """
+            SELECT
+                COUNT(t.id) AS totalIssued,
+                COALESCE(SUM(CASE WHEN t.status = 'USED' THEN 1 ELSE 0 END), 0) AS usedCount,
+                COALESCE(SUM(CASE WHEN t.status = 'VALID' THEN 1 ELSE 0 END), 0) AS validCount,
+                COALESCE(SUM(CASE WHEN t.status = 'EXPIRED' THEN 1 ELSE 0 END), 0) AS expiredCount,
+                COALESCE(SUM(CASE WHEN t.status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelledCount
+            FROM tickets t
+            WHERE t.issued_at >= :startDateTime
+              AND t.issued_at <= :endDateTime
+            """, nativeQuery = true)
+    List<Object[]> findAnalyticsByIssuedAtBetween(
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime);
+
+    @Query(value = """
             SELECT COUNT(*)
             FROM tickets
             WHERE status IN ('EXPIRED', 'CANCELLED')

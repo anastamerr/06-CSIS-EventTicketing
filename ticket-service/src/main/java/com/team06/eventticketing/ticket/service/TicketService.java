@@ -1,13 +1,17 @@
 package com.team06.eventticketing.ticket.service;
 
+import com.team06.eventticketing.common.cache.CachedFeature;
+import com.team06.eventticketing.common.cache.RedisCacheService;
 import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.ticket.adapter.CassandraRowAdapter;
 import com.team06.eventticketing.ticket.adapter.EventAttendanceSummaryAdapter;
+import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.TicketAnalyticsDTO;
 import com.team06.eventticketing.ticket.dto.TicketScanDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
@@ -18,26 +22,25 @@ import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 import com.team06.eventticketing.ticket.scan.TicketScanEvent;
 import com.team06.eventticketing.ticket.scan.TicketScanEventRepository;
 import com.team06.eventticketing.ticket.scan.TicketScanRequest;
-import com.team06.eventticketing.common.cache.RedisCacheService;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
-
-import java.util.List;
-import java.util.Map;
 
 @Service
 public class TicketService {
@@ -161,6 +164,53 @@ public class TicketService {
 
         String statusValue = status == null ? null : status.name();
         return ticketRepository.findByIssuedAtBetweenAndStatus(startDateTime, endExclusive, statusValue);
+    }
+
+    @Transactional(readOnly = true)
+    @CachedFeature(service = "ticket-service", featureId = "S4-F10", ttlSeconds = 600)
+    public TicketAnalyticsDTO getTicketAnalytics(LocalDate startDate, LocalDate endDate) {
+        validateDateRange(startDate, endDate);
+
+        LocalDateTime startDateTime = startDate.atStartOfDay();
+        LocalDateTime endDateTime = endDate.atTime(LocalTime.of(23, 59, 59, 999_000_000));
+        List<Object[]> rows = ticketRepository.findAnalyticsByIssuedAtBetween(startDateTime, endDateTime);
+        Object[] row = rows.isEmpty() ? new Object[]{0L, 0L, 0L, 0L, 0L} : rows.getFirst();
+
+        long totalIssued = toLong(row[0]);
+        long usedCount = toLong(row[1]);
+        long validCount = toLong(row[2]);
+        long expiredCount = toLong(row[3]);
+        long cancelledCount = toLong(row[4]);
+        double attendanceRate = totalIssued == 0 ? 0.0 : (double) usedCount / totalIssued;
+
+        Map<String, Long> ticketsByStatus = new LinkedHashMap<>();
+        if (totalIssued > 0) {
+            ticketsByStatus.put(TicketStatus.USED.name(), usedCount);
+            ticketsByStatus.put(TicketStatus.VALID.name(), validCount);
+            ticketsByStatus.put(TicketStatus.EXPIRED.name(), expiredCount);
+            ticketsByStatus.put(TicketStatus.CANCELLED.name(), cancelledCount);
+        }
+
+        return TicketAnalyticsDTO.builder()
+                .totalIssued(totalIssued)
+                .usedCount(usedCount)
+                .validCount(validCount)
+                .expiredCount(expiredCount)
+                .cancelledCount(cancelledCount)
+                .attendanceRate(attendanceRate)
+                .ticketsByStatus(ticketsByStatus)
+                .build();
+    }
+
+    public void logAnalyticsViewed(LocalDate startDate, LocalDate endDate) {
+        validateDateRange(startDate, endDate);
+        notifyObservers("ANALYTICS_VIEWED", Map.of(
+                "ticketId", 0L,
+                "timestamp", LocalDateTime.now(clock),
+                "details", Map.of(
+                        "featureId", "S4-F10",
+                        "startDate", startDate.toString(),
+                        "endDate", endDate.toString())));
     }
 
     public Ticket updateTicket(Long id, Ticket ticket) {
@@ -405,6 +455,15 @@ public class TicketService {
             new BigDecimal(value);
         } catch (NumberFormatException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "value must be numeric for gt/lt");
+        }
+    }
+
+    private void validateDateRange(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must not be after endDate");
         }
     }
 
