@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
+import com.team06.eventticketing.ticket.dto.TicketAnalyticsDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
@@ -22,9 +24,12 @@ import com.team06.eventticketing.ticket.repository.TicketRepository;
 import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.lang.reflect.Method;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -161,6 +166,84 @@ class TicketServiceTest {
         List<Ticket> actualTickets = ticketService.getTicketsHistory(start, endExclusive, TicketStatus.VALID);
 
         assertIterableEquals(expectedTickets, actualTickets);
+    }
+
+    @Test
+    void getTicketAnalyticsBuildsDashboardFromRepositoryCounts() {
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 4, 30);
+        when(ticketRepository.findAnalyticsByIssuedAtBetween(
+                LocalDateTime.of(2026, 4, 1, 0, 0),
+                LocalDateTime.of(2026, 4, 30, 23, 59, 59, 999_000_000)))
+                .thenReturn(List.<Object[]>of(new Object[]{10L, 6L, 2L, 1L, 1L}));
+
+        TicketAnalyticsDTO result = ticketService.getTicketAnalytics(startDate, endDate);
+
+        assertEquals(10L, result.totalIssued());
+        assertEquals(6L, result.usedCount());
+        assertEquals(2L, result.validCount());
+        assertEquals(1L, result.expiredCount());
+        assertEquals(1L, result.cancelledCount());
+        assertEquals(0.6, result.attendanceRate());
+        assertEquals(Map.of(
+                "USED", 6L,
+                "VALID", 2L,
+                "EXPIRED", 1L,
+                "CANCELLED", 1L), result.ticketsByStatus());
+    }
+
+    @Test
+    void getTicketAnalyticsReturnsEmptyStatusMapWhenNoTicketsMatch() {
+        when(ticketRepository.findAnalyticsByIssuedAtBetween(any(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{0L, 0L, 0L, 0L, 0L}));
+
+        TicketAnalyticsDTO result = ticketService.getTicketAnalytics(
+                LocalDate.of(2026, 5, 1),
+                LocalDate.of(2026, 5, 31));
+
+        assertEquals(0L, result.totalIssued());
+        assertEquals(0.0, result.attendanceRate());
+        assertEquals(Map.of(), result.ticketsByStatus());
+    }
+
+    @Test
+    void getTicketAnalyticsRejectsInvalidDateRange() {
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> ticketService.getTicketAnalytics(
+                        LocalDate.of(2026, 5, 1),
+                        LocalDate.of(2026, 4, 30)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketRepository, never()).findAnalyticsByIssuedAtBetween(any(), any());
+    }
+
+    @Test
+    void logAnalyticsViewedPublishesObserverEventAfterDateValidation() {
+        List<String> actions = new ArrayList<>();
+        List<Object> payloads = new ArrayList<>();
+        ticketService.register((action, payload) -> {
+            actions.add(action);
+            payloads.add(payload);
+        });
+
+        ticketService.logAnalyticsViewed(LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 30));
+
+        assertEquals(List.of("ANALYTICS_VIEWED"), actions);
+        assertTrue(payloads.getFirst().toString().contains("S4-F10"));
+    }
+
+    @Test
+    void ticketAnalyticsDtoExposesStaticInnerBuilder() throws Exception {
+        Method builderMethod = TicketAnalyticsDTO.class.getDeclaredMethod("builder");
+        Object builder = builderMethod.invoke(null);
+
+        assertEquals("Builder", builder.getClass().getSimpleName());
+        assertEquals(TicketAnalyticsDTO.class, builder.getClass()
+                .getDeclaredMethod("build")
+                .getReturnType());
+        assertEquals(builder, builder.getClass()
+                .getDeclaredMethod("totalIssued", long.class)
+                .invoke(builder, 10L));
     }
 
     @Test
