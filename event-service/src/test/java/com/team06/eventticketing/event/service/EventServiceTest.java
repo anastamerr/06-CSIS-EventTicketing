@@ -21,6 +21,8 @@ import com.team06.eventticketing.event.model.EventStatus;
 import com.team06.eventticketing.event.repository.EventRepository;
 import com.team06.eventticketing.event.repository.EventSessionRepository;
 import com.team06.eventticketing.event.search.EventFullTextSearchService;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -165,6 +167,19 @@ class EventServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
         verify(eventRepository, never()).findEventDashboardMetrics(404L);
+    }
+
+    @Test
+    void eventDashboardDtoExposesStaticFluentBuilder() throws Exception {
+        Method builderMethod = EventDashboardDTO.class.getDeclaredMethod("builder");
+        Object builder = builderMethod.invoke(null);
+
+        assertEquals(true, Modifier.isStatic(builderMethod.getModifiers()));
+        assertEquals("Builder", builder.getClass().getSimpleName());
+        assertEquals(builder, builder.getClass().getDeclaredMethod("eventId", Long.class).invoke(builder, 10L));
+        assertEquals(builder, builder.getClass().getDeclaredMethod("name", String.class).invoke(builder, "Spring Concert"));
+        assertEquals(builder, builder.getClass().getDeclaredMethod("totalBookings", long.class).invoke(builder, 4L));
+        assertEquals(EventDashboardDTO.class, builder.getClass().getDeclaredMethod("build").getReturnType());
     }
 
     @Test
