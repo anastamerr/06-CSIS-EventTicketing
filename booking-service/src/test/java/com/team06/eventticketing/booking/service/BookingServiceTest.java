@@ -3,6 +3,7 @@ package com.team06.eventticketing.booking.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -36,6 +37,8 @@ import com.team06.eventticketing.common.cache.CacheAspect;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.RedisCacheService;
 import com.team06.eventticketing.common.observer.EntityObserver;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -576,6 +579,24 @@ class BookingServiceTest {
         assertEquals(1L, json.get("bookingsByStatus").get("COMPLETED").asLong());
         assertEquals(3L, roundTrip.totalBookings());
         assertEquals(1L, roundTrip.bookingsByStatus().get("COMPLETED"));
+    }
+
+    @Test
+    void bookingAnalyticsDashboardDtoExposesStaticFluentBuilder() throws Exception {
+        Method builderMethod = BookingAnalyticsDashboardDTO.class.getDeclaredMethod("builder");
+        Object builder = builderMethod.invoke(null);
+
+        assertTrue(Modifier.isStatic(builderMethod.getModifiers()));
+        assertEquals("Builder", builder.getClass().getSimpleName());
+        assertEquals(builder, builder.getClass()
+                .getDeclaredMethod("totalBookings", long.class)
+                .invoke(builder, 10L));
+        assertEquals(builder, builder.getClass()
+                .getDeclaredMethod("totalRevenue", double.class)
+                .invoke(builder, 1500.0));
+        assertEquals(BookingAnalyticsDashboardDTO.class, builder.getClass()
+                .getDeclaredMethod("build")
+                .getReturnType());
     }
 
     @Test
