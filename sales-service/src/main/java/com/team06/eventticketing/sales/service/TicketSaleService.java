@@ -25,6 +25,10 @@ import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
 import com.team06.eventticketing.sales.repository.TierRevenueJdbcRepository;
 import com.team06.eventticketing.sales.repository.UserJdbcRepository;
+import com.team06.eventticketing.sales.strategy.RefundResult;
+import com.team06.eventticketing.sales.strategy.RefundStrategy;
+import com.team06.eventticketing.sales.strategy.RefundStrategySelector;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -45,6 +49,9 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+
+
 
 @Service
 public class TicketSaleService {
@@ -69,6 +76,7 @@ public class TicketSaleService {
     private final TierRevenueJdbcRepository tierRevenueJdbcRepository;
     private final TierRevenueRowAdapter tierRevenueRowAdapter;
     private final RedisCacheService redisCacheService;
+    private final RefundStrategySelector refundStrategySelector;
     private final JavaType tierRevenueListType;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
@@ -83,7 +91,8 @@ public class TicketSaleService {
             TierRevenueJdbcRepository tierRevenueJdbcRepository,
             TierRevenueRowAdapter tierRevenueRowAdapter,
             RedisCacheService redisCacheService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            RefundStrategySelector refundStrategySelector
     ) {
         this.ticketSaleRepository = ticketSaleRepository;
         this.bookingJdbcRepository = bookingJdbcRepository;
@@ -93,6 +102,7 @@ public class TicketSaleService {
         this.tierRevenueJdbcRepository = tierRevenueJdbcRepository;
         this.tierRevenueRowAdapter = tierRevenueRowAdapter;
         this.redisCacheService = redisCacheService;
+        this.refundStrategySelector = refundStrategySelector;
         this.tierRevenueListType = objectMapper == null
                 ? null
                 : objectMapper.getTypeFactory().constructCollectionType(List.class, TierRevenueDTO.class);
@@ -116,7 +126,8 @@ public class TicketSaleService {
                 null,
                 new TierRevenueRowAdapter(),
                 null,
-                null
+                null,
+                new RefundStrategySelector()
         );
     }
 
@@ -133,6 +144,7 @@ public class TicketSaleService {
         this.tierRevenueJdbcRepository = null;
         this.tierRevenueRowAdapter = new TierRevenueRowAdapter();
         this.redisCacheService = null;
+        this.refundStrategySelector = new RefundStrategySelector();
         this.tierRevenueListType = null;
     }
 
@@ -567,4 +579,78 @@ public class TicketSaleService {
             register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.PAYMENT_AUDIT, "payment_audit_trail"));
         }
     }
+
+
+    @Transactional
+    public TicketSaleResponse processRefundWithWindowPolicy(Long id, RefundRequest request) {
+        TicketSale sale = findTicketSale(id);
+
+        if (sale.getStatus() != TicketSaleStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket sale must be completed before refund");
+        }
+
+        BookingJdbcRepository.SaleEventDateRow eventRow = bookingJdbcRepository.findEventDateByTicketSaleId(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking has no associated event"));
+
+        if (eventRow.eventId() == null || eventRow.eventDate() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking has no associated event");
+        }
+
+        LocalDateTime eventDate = eventRow.eventDate();
+        long hoursUntilEvent = Duration.between(LocalDateTime.now(), eventDate).toHours();
+
+        RefundStrategy strategy = refundStrategySelector.select(sale, eventDate);
+        RefundResult result = strategy.calculateRefund(sale, request, eventDate);
+
+        if ("refund window expired".equals(result.getReasonCode())) {
+            Map<String, Object> deniedDetails = new LinkedHashMap<>();
+            deniedDetails.put("refundPolicy", result.getStrategyName());
+            deniedDetails.put("denialReason", result.getReasonCode());
+            deniedDetails.put("hoursUntilEvent", hoursUntilEvent);
+            deniedDetails.put("refundReason", request == null ? null : request.getReason());
+
+            notifyObservers("REFUND_DENIED", buildAuditPayload(sale, deniedDetails));
+            invalidateRefundWindowCaches(id);
+
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "refund window expired");
+        }
+
+        Map<String, Object> details = new LinkedHashMap<>(copyTransactionDetails(sale.getTransactionDetails()));
+        details.put("refundAmount", result.getAmount());
+        details.put("refundPolicy", result.getStrategyName());
+        details.put("refundReason", request == null ? null : request.getReason());
+        details.put("refundedAt", LocalDateTime.now().toString());
+
+        sale.setTransactionDetails(details);
+        sale.setStatus(TicketSaleStatus.REFUNDED);
+
+        TicketSale saved = ticketSaleRepository.save(sale);
+
+        Map<String, Object> auditDetails = new LinkedHashMap<>();
+        auditDetails.put("refundPolicy", result.getStrategyName());
+        auditDetails.put("refundReason", request == null ? null : request.getReason());
+        auditDetails.put("originalAmount", sale.getAmount());
+        auditDetails.put("refundAmount", result.getAmount());
+        auditDetails.put("hoursUntilEvent", hoursUntilEvent);
+
+        notifyObservers("REFUNDED", buildAuditPayload(saved, auditDetails));
+        invalidateRefundWindowCaches(id);
+
+        return toResponse(saved);
+    }
+
+
+    private void invalidateRefundWindowCaches(Long saleId) {
+        if (redisCacheService == null) {
+            return;
+        }
+
+        redisCacheService.deleteByPattern("sales-service::S5-F10::*");
+        redisCacheService.delete("sales-service::S5-F11::" + saleId);
+        redisCacheService.delete("sales-service::ticket-sale::" + saleId);
+    }
+
+
+
+
 }

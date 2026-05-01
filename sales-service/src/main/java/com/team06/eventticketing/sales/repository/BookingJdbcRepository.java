@@ -38,4 +38,36 @@ public class BookingJdbcRepository {
 
     public record BookingPaymentRow(Long id, String status, Double totalAmount) {
     }
+
+
+    private SaleEventDateRow mapSaleEventDateRow(ResultSet resultSet) throws SQLException {
+        Object eventIdValue = resultSet.getObject("event_id");
+        java.sql.Timestamp eventDateValue = resultSet.getTimestamp("event_date");
+
+        return new SaleEventDateRow(
+                eventIdValue == null ? null : ((Number) eventIdValue).longValue(),
+                eventDateValue == null ? null : eventDateValue.toLocalDateTime()
+        );
+    }
+
+
+    public Optional<SaleEventDateRow> findEventDateByTicketSaleId(Long saleId) {
+        return jdbcTemplate.query(
+                """
+                SELECT b.event_id, e.event_date
+                FROM ticket_sales ts
+                JOIN bookings b ON b.id = ts.booking_id
+                LEFT JOIN events e ON e.id = b.event_id
+                WHERE ts.id = ?
+                """,
+                (resultSet, rowNum) -> mapSaleEventDateRow(resultSet),
+                saleId
+        ).stream().findFirst();
+    }
+
+
+    public record SaleEventDateRow(Long eventId, java.time.LocalDateTime eventDate) {
+    }
+
+
 }
