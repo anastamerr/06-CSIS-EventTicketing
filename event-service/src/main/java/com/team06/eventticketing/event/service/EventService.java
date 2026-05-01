@@ -43,6 +43,17 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class EventService {
 
+    private static final List<String> INDEXED_FIELDS = List.of(
+            "id",
+            "name",
+            "category",
+            "venue",
+            "description",
+            "eventDate",
+            "rating",
+            "status"
+    );
+
     private final EventRepository eventRepository;
     private final EventSessionRepository eventSessionRepository;
     private final EventDashboardAdapter eventDashboardAdapter;
@@ -108,6 +119,23 @@ public class EventService {
         this.eventDashboardType = null;
     }
 
+    public EventService(
+            EventRepository eventRepository,
+            EventSessionRepository eventSessionRepository,
+            EventSearchSyncService eventSearchSyncService,
+            EventFullTextSearchService eventFullTextSearchService
+    ) {
+        this.eventRepository = eventRepository;
+        this.eventSessionRepository = eventSessionRepository;
+        this.eventDashboardAdapter = new EventDashboardAdapter();
+        this.eventRevenueAdapter = new EventRevenueAdapter();
+        this.topEventAdapter = new TopEventAdapter();
+        this.eventSearchSyncService = eventSearchSyncService;
+        this.eventFullTextSearchService = eventFullTextSearchService;
+        this.redisCacheService = null;
+        this.eventDashboardType = null;
+    }
+
     public List<Event> getAllEvents() {
         return eventRepository.findAll();
     }
@@ -119,7 +147,7 @@ public class EventService {
 
     public Event createEvent(Event event) {
         Event saved = eventRepository.save(event);
-        eventSearchSync(saved);
+        eventSearchSync(saved, "auto_crud_create");
         notifyObservers("EVENT_CREATED", Map.of(
                 "eventId", saved.getId(),
                 "details", buildEventDetails(saved)));
@@ -137,7 +165,7 @@ public class EventService {
         existingEvent.setTotalRatings(event.getTotalRatings());
         existingEvent.setDetails(event.getDetails());
         Event saved = eventRepository.save(existingEvent);
-        eventSearchSync(saved);
+        eventSearchSync(saved, "auto_crud_update");
         notifyObservers("EVENT_UPDATED", Map.of(
                 "eventId", saved.getId(),
                 "details", buildEventDetails(saved)));
@@ -156,11 +184,16 @@ public class EventService {
         event.setDetails(details);
 
         Event saved = eventRepository.save(event);
-        eventSearchSync(saved);
+        eventSearchSync(saved, "auto_crud_update");
         notifyObservers("DETAILS_UPDATED", Map.of(
                 "eventId", saved.getId(),
                 "details", buildEventDetails(saved)));
         return saved;
+    }
+
+    public void indexEventForSearch(Long id) {
+        Event event = getEventById(id);
+        eventSearchSync(event, "explicit");
     }
 
     @Transactional(readOnly = true)
@@ -213,11 +246,11 @@ public class EventService {
 
     public void deleteEvent(Long id) {
         Event event = getEventById(id);
+        eventSearchDelete(id);
         notifyObservers("EVENT_DELETED", Map.of(
                 "eventId", event.getId(),
                 "details", buildEventDetails(event)));
         eventRepository.deleteById(id);
-        eventSearchDelete(id);
     }
 
     @Transactional
@@ -257,7 +290,7 @@ public class EventService {
         event.setRating(newRating);
         event.setTotalRatings(totalRatings + 1);
         eventRepository.save(event);
-        eventSearchSync(event);
+        eventSearchSync(event, "auto_crud_update");
         notifyObservers("RATED", Map.of(
                 "eventId", event.getId(),
                 "details", Map.of(
@@ -323,7 +356,7 @@ public class EventService {
         }
         event.setStatus(request.getStatus());
         eventRepository.save(event);
-        eventSearchSync(event);
+        eventSearchSync(event, "auto_crud_update");
         notifyObservers("STATUS_CHANGED", Map.of(
                 "eventId", eventId,
                 "details", Map.of("status", request.getStatus().name())));
@@ -433,9 +466,12 @@ public class EventService {
         return details;
     }
 
-    private void eventSearchSync(Event event) {
+    private void eventSearchSync(Event event, String source) {
         if (eventSearchSyncService != null) {
             eventSearchSyncService.indexEvent(event);
+            notifyObservers("INDEXED", Map.of(
+                    "eventId", event.getId(),
+                    "details", buildIndexedDetails(event.getId(), source)));
         }
     }
 
@@ -460,6 +496,14 @@ public class EventService {
 
     private String eventDashboardCacheKey(Long eventId) {
         return "event-service::S2-F12::" + eventId;
+    }
+
+    private Map<String, Object> buildIndexedDetails(Long eventId, String source) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("eventId", eventId);
+        details.put("indexedFields", INDEXED_FIELDS);
+        details.put("source", source);
+        return details;
     }
 
     private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {
