@@ -1,5 +1,8 @@
 package com.team06.eventticketing.booking.repository;
 
+import com.team06.eventticketing.booking.adapter.EventRecommendationAdapter;
+import com.team06.eventticketing.booking.dto.EventRecommendationCandidate;
+import java.util.List;
 import java.util.Map;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Repository;
@@ -8,9 +11,11 @@ import org.springframework.stereotype.Repository;
 public class AttendanceGraphRepository {
 
     private final Neo4jClient neo4jClient;
+    private final EventRecommendationAdapter recommendationAdapter;
 
-    public AttendanceGraphRepository(Neo4jClient neo4jClient) {
+    public AttendanceGraphRepository(Neo4jClient neo4jClient, EventRecommendationAdapter recommendationAdapter) {
         this.neo4jClient = neo4jClient;
+        this.recommendationAdapter = recommendationAdapter;
     }
 
     public boolean alreadyRecorded(Long userId, Long eventId, Long bookingId) {
@@ -68,5 +73,29 @@ public class AttendanceGraphRepository {
                 .mappedBy((typeSystem, record) -> record.get("result").asMap())
                 .one()
                 .orElse(Map.of());
+    }
+
+    public List<EventRecommendationCandidate> findRecommendations(Long userId, int limit) {
+        if (limit == 0) {
+            return List.of();
+        }
+
+        return neo4jClient.query("""
+                        MATCH (target:UserNode {userId: $userId})-[:ATTENDED]->(shared:EventNode)
+                              <-[:ATTENDED]-(similar:UserNode)
+                        WHERE similar.userId <> $userId
+                        MATCH (similar)-[:ATTENDED]->(recommended:EventNode)
+                        WHERE NOT (target)-[:ATTENDED]->(recommended)
+                        RETURN recommended.eventId AS eventId, count(DISTINCT similar) AS score
+                        ORDER BY score DESC, eventId ASC
+                        LIMIT $limit
+                        """)
+                .bind(userId).to("userId")
+                .bind(limit).to("limit")
+                .fetchAs(EventRecommendationCandidate.class)
+                .mappedBy((typeSystem, record) -> recommendationAdapter.candidateFromRecord(record))
+                .all()
+                .stream()
+                .toList();
     }
 }
