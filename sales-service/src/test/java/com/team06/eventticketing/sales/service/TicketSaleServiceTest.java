@@ -8,6 +8,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.team06.eventticketing.common.cache.RedisCacheService;
+import com.team06.eventticketing.sales.adapter.MongoDocumentAdapter;
+import com.team06.eventticketing.sales.adapter.TierRevenueRowAdapter;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
 import com.team06.eventticketing.sales.dto.RevenueReportDTO;
 import com.team06.eventticketing.sales.dto.RefundRequest;
@@ -15,6 +19,7 @@ import com.team06.eventticketing.sales.dto.SaleAuditTrailDTO;
 import com.team06.eventticketing.sales.dto.SaleDetailsDTO;
 import com.team06.eventticketing.sales.dto.TicketSaleRequest;
 import com.team06.eventticketing.sales.dto.TicketSaleResponse;
+import com.team06.eventticketing.sales.dto.TierRevenueDTO;
 import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.Promotion;
 import com.team06.eventticketing.sales.model.PromotionDiscountType;
@@ -24,9 +29,14 @@ import com.team06.eventticketing.sales.model.TicketSaleMethod;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
+import com.team06.eventticketing.sales.repository.TierRevenueJdbcRepository;
 import com.team06.eventticketing.sales.repository.UserJdbcRepository;
+import com.team06.eventticketing.sales.strategy.RefundStrategySelector;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +68,12 @@ class TicketSaleServiceTest {
 
     @Mock
     private MongoTemplate mongoTemplate;
+
+    @Mock
+    private TierRevenueJdbcRepository tierRevenueJdbcRepository;
+
+    @Mock
+    private RedisCacheService redisCacheService;
 
     @Captor
     private ArgumentCaptor<TicketSale> ticketSaleCaptor;
@@ -177,6 +193,43 @@ class TicketSaleServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
         verify(mongoTemplate, never()).find(any(Query.class), eq(Document.class), eq("payment_audit_trail"));
+    }
+
+    @Test
+    void getTierRevenueMapsPdfScenarioRowsAndCachesForTenMinutes() {
+        TicketSaleService service = m2Service();
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 4, 30);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.toString().equals("2026-04-30")
+                ? LocalDateTime.of(2026, 4, 30, 23, 59, 59, 999_999_999)
+                : endDate.atTime(java.time.LocalTime.MAX);
+        when(tierRevenueJdbcRepository.aggregateByTier(start, end)).thenReturn(List.of(
+                new Object[]{"VIP", 3500.0, 2L, 7L},
+                new Object[]{"standard", 600.0, 1L, 3L},
+                new Object[]{"early-bird", 100.0, 1L, 1L}));
+
+        List<TierRevenueDTO> result = service.getTierRevenue(startDate, endDate);
+
+        assertEquals(3, result.size());
+        assertEquals("VIP", result.get(0).getTier());
+        assertEquals(3500.0, result.get(0).getTotalRevenue());
+        assertEquals(2L, result.get(0).getSaleCount());
+        assertEquals(7L, result.get(0).getTicketsSold());
+        assertEquals(1750.0, result.get(0).getAverageRevenuePerSale());
+        verify(redisCacheService).put("sales-service::S5-F10::2026-04-01T00:00::2026-04-30T23:59:59.999999999", result, 600L);
+    }
+
+    @Test
+    void tierRevenueDtoExposesStaticFluentBuilder() throws Exception {
+        Method builderMethod = TierRevenueDTO.class.getDeclaredMethod("builder");
+        Object builder = builderMethod.invoke(null);
+
+        assertEquals(true, Modifier.isStatic(builderMethod.getModifiers()));
+        assertEquals("Builder", builder.getClass().getSimpleName());
+        assertEquals(builder, builder.getClass().getDeclaredMethod("tier", String.class).invoke(builder, "VIP"));
+        assertEquals(builder, builder.getClass().getDeclaredMethod("totalRevenue", double.class).invoke(builder, 3500.0));
+        assertEquals(TierRevenueDTO.class, builder.getClass().getDeclaredMethod("build").getReturnType());
     }
 
     @Test
@@ -459,6 +512,108 @@ class TicketSaleServiceTest {
     }
 
     @Test
+    void processRefundWithWindowPolicyAppliesFullRefundAndWritesStrategyDetails() {
+        TicketSaleService service = m2Service();
+        TicketSale sale = sale(91L, 300.0, TicketSaleStatus.COMPLETED);
+        sale.setTransactionDetails(new LinkedHashMap<>(Map.of("gatewayResponse", "approved")));
+        RefundRequest request = refundRequest("unable_to_attend");
+        List<String> actions = new ArrayList<>();
+        List<Object> payloads = new ArrayList<>();
+        service.register((action, payload) -> {
+            actions.add(action);
+            payloads.add(payload);
+        });
+
+        when(ticketSaleRepository.findById(91L)).thenReturn(Optional.of(sale));
+        when(bookingJdbcRepository.findEventDateByTicketSaleId(91L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(15L, LocalDateTime.now().plusDays(7))));
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TicketSaleResponse response = service.processRefundWithWindowPolicy(91L, request);
+
+        TicketSale saved = ticketSaleCaptor.getValue();
+        assertEquals(TicketSaleStatus.REFUNDED, response.getStatus());
+        assertEquals(TicketSaleStatus.REFUNDED, saved.getStatus());
+        assertEquals(300.0, saved.getTransactionDetails().get("refundAmount"));
+        assertEquals("FullWindowRefundStrategy", saved.getTransactionDetails().get("refundPolicy"));
+        assertEquals("unable_to_attend", saved.getTransactionDetails().get("refundReason"));
+        assertEquals(List.of("REFUNDED"), actions);
+        assertEquals(true, payloads.get(0).toString().contains("FullWindowRefundStrategy"));
+        verifyRefundWindowCacheInvalidation(91L);
+    }
+
+    @Test
+    void processRefundWithWindowPolicyAppliesPartialRefundForThirtySixHourWindow() {
+        TicketSaleService service = m2Service();
+        TicketSale sale = sale(92L, 400.0, TicketSaleStatus.COMPLETED);
+        RefundRequest request = refundRequest("unable_to_attend");
+
+        when(ticketSaleRepository.findById(92L)).thenReturn(Optional.of(sale));
+        when(bookingJdbcRepository.findEventDateByTicketSaleId(92L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(16L, LocalDateTime.now().plusHours(36))));
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TicketSaleResponse response = service.processRefundWithWindowPolicy(92L, request);
+
+        assertEquals(TicketSaleStatus.REFUNDED, response.getStatus());
+        assertEquals(200.0, ticketSaleCaptor.getValue().getTransactionDetails().get("refundAmount"));
+        assertEquals("PartialWindowRefundStrategy", ticketSaleCaptor.getValue().getTransactionDetails().get("refundPolicy"));
+    }
+
+    @Test
+    void processRefundWithWindowPolicyLogsDeniedRefundAndInvalidatesCachesBeforeThrowing() {
+        TicketSaleService service = m2Service();
+        TicketSale sale = sale(93L, 250.0, TicketSaleStatus.COMPLETED);
+        RefundRequest request = refundRequest("unable_to_attend");
+        List<String> actions = new ArrayList<>();
+        List<Object> payloads = new ArrayList<>();
+        service.register((action, payload) -> {
+            actions.add(action);
+            payloads.add(payload);
+        });
+
+        when(ticketSaleRepository.findById(93L)).thenReturn(Optional.of(sale));
+        when(bookingJdbcRepository.findEventDateByTicketSaleId(93L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(17L, LocalDateTime.now().plusHours(6))));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.processRefundWithWindowPolicy(93L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        assertEquals("refund window expired", exception.getReason());
+        assertEquals(List.of("REFUND_DENIED"), actions);
+        assertEquals(true, payloads.get(0).toString().contains("NoRefundStrategy"));
+        verify(ticketSaleRepository, never()).save(any(TicketSale.class));
+        verifyRefundWindowCacheInvalidation(93L);
+    }
+
+    @Test
+    void processRefundWithWindowPolicyRejectsPendingRefundedMissingAndNoEventCases() {
+        TicketSale pending = sale(94L, 250.0, TicketSaleStatus.PENDING);
+        TicketSale refunded = sale(95L, 250.0, TicketSaleStatus.REFUNDED);
+        TicketSale noEvent = sale(96L, 250.0, TicketSaleStatus.COMPLETED);
+        TicketSaleService service = m2Service();
+
+        when(ticketSaleRepository.findById(94L)).thenReturn(Optional.of(pending));
+        when(ticketSaleRepository.findById(95L)).thenReturn(Optional.of(refunded));
+        when(ticketSaleRepository.findById(96L)).thenReturn(Optional.of(noEvent));
+        when(ticketSaleRepository.findById(999L)).thenReturn(Optional.empty());
+        when(bookingJdbcRepository.findEventDateByTicketSaleId(96L))
+                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(null, null)));
+
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> service.processRefundWithWindowPolicy(94L, refundRequest("pending"))).getStatusCode());
+        assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
+                () -> service.processRefundWithWindowPolicy(95L, refundRequest("refunded"))).getStatusCode());
+        ResponseStatusException noEventException = assertThrows(ResponseStatusException.class,
+                () -> service.processRefundWithWindowPolicy(96L, refundRequest("no_event")));
+        assertEquals(HttpStatus.BAD_REQUEST, noEventException.getStatusCode());
+        assertEquals("booking has no associated event", noEventException.getReason());
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
+                () -> service.processRefundWithWindowPolicy(999L, refundRequest("missing"))).getStatusCode());
+    }
+
+    @Test
     void getRevenueReportAggregatesCompletedAndRefundedSales() {
         TicketSale completedOne = sale(1L, 200.0, TicketSaleStatus.COMPLETED);
         TicketSale completedTwo = sale(2L, 400.0, TicketSaleStatus.COMPLETED);
@@ -647,6 +802,33 @@ class TicketSaleServiceTest {
         sale.setStatus(status);
         sale.setTransactionDetails(new LinkedHashMap<>());
         return sale;
+    }
+
+    private TicketSaleService m2Service() {
+        return new TicketSaleService(
+                ticketSaleRepository,
+                bookingJdbcRepository,
+                userJdbcRepository,
+                mongoTemplate,
+                null,
+                new MongoDocumentAdapter(),
+                tierRevenueJdbcRepository,
+                new TierRevenueRowAdapter(),
+                redisCacheService,
+                new ObjectMapper(),
+                new RefundStrategySelector());
+    }
+
+    private RefundRequest refundRequest(String reason) {
+        RefundRequest request = new RefundRequest();
+        request.setReason(reason);
+        return request;
+    }
+
+    private void verifyRefundWindowCacheInvalidation(Long saleId) {
+        verify(redisCacheService).deleteByPattern("sales-service::S5-F10::*");
+        verify(redisCacheService).delete("sales-service::S5-F11::" + saleId);
+        verify(redisCacheService).delete("sales-service::ticket-sale::" + saleId);
     }
 
     private Document auditEvent(String action, LocalDateTime timestamp, String method, Double amount) {
