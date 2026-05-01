@@ -117,4 +117,20 @@ public class TicketSaleFeatureController {
         return ticketSaleService.searchTicketSales(status, startDate, endDate);
     }
 
+    @PostMapping("/{id}/refund-window-policy")
+    @InvalidateServiceCaches(
+            service = "sales-service",
+            featurePrefix = "S5-",
+            detailKeys = {
+                    "'sales-service::ticket-sale::' + #id",
+                    "'sales-service::sale-audit-trail::' + #id"
+            })
+    public TicketSaleResponse refundSaleWithWindowPolicy(
+            @PathVariable Long id,
+            @RequestBody RefundRequest request
+    ) {
+        return ticketSaleService.processRefundWithWindowPolicy(id, request);
+    }
+
+
 }
