@@ -37,6 +37,10 @@ public class PromotionUsageDTO {
         return promotionId;
     }
 
+    public Long getDiscountId() {
+        return promotionId;
+    }
+
     public Long promotionId() {
         return promotionId;
     }

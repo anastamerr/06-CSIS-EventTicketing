@@ -18,7 +18,7 @@ public class UserAttendanceController {
         this.userAttendanceService = userAttendanceService;
     }
 
-    @PostMapping("/{bookingId}/record-attendance")
+    @PostMapping({"/{bookingId}/record-attendance", "/{bookingId}/attend"})
     public ResponseEntity<AttendanceResponse> recordAttendance(@PathVariable Long bookingId) {
         return ResponseEntity.ok(userAttendanceService.recordAttendance(bookingId));
     }

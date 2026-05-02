@@ -33,6 +33,10 @@ public class AuthResponse {
         return userId;
     }
 
+    public Long getId() {
+        return userId;
+    }
+
     public String getEmail() {
         return email;
     }

@@ -7,7 +7,7 @@ import java.math.BigInteger;
 import org.springframework.stereotype.Component;
 
 @Component
-public class UserBookingSummaryAdapter {
+public class UserBookingSummaryAdapter implements ObjectArrayDtoAdapter<UserBookingSummaryDTO> {
 
     public UserBookingSummaryDTO adapt(User user, Object[] source) {
         Object[] row = unwrap(source);
@@ -20,6 +20,14 @@ public class UserBookingSummaryAdapter {
                 .totalSpent(toBigDecimal(valueAt(row, 5)))
                 .averageBookingAmount(toBigDecimal(valueAt(row, 6)))
                 .build();
+    }
+
+    @Override
+    public UserBookingSummaryDTO adapt(Object[] source) {
+        User fallbackUser = new User();
+        fallbackUser.setId(0L);
+        fallbackUser.setName("");
+        return adapt(fallbackUser, source);
     }
 
     public UserBookingSummaryDTO empty(User user) {
