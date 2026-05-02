@@ -1,0 +1,8 @@
+{
+  "name": "event-ticketing-m2-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test m2-http-tests.mjs"
+  }
+}

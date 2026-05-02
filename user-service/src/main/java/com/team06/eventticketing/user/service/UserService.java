@@ -131,6 +131,9 @@ public class UserService {
     @Transactional
     public User deactivateUser(Long id) {
         User user = getUserById(id);
+        if (user.getStatus() == UserStatus.DEACTIVATED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is already deactivated");
+        }
         if (userRepository.existsActiveBookingsByUserId(id)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User has active bookings");
         }

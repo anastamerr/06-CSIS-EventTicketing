@@ -178,7 +178,7 @@ public class TicketController {
         return ticketService.recordScanEvent(id, request);
     }
 
-    @GetMapping("/{id}/scans")
+    @GetMapping({"/{id}/scans", "/{id}/scan-history"})
     @CachedFeature(service = "ticket-service", featureId = "S4-F12", ttlSeconds = 300)
     public List<TicketScanDTO> getTicketScanHistory(
             @PathVariable Long id,

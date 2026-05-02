@@ -64,7 +64,7 @@ public class UserController {
         return userService.searchUsers(name, email, role);
     }
 
-    @GetMapping("/reports/top-attendees")
+    @GetMapping({"/reports/top-attendees", "/reports/top-clients"})
     @CachedFeature(service = "user-service", featureId = "S1-F6", ttlSeconds = 600)
     public List<TopAttendeeDTO> getTopAttendeesBySpending(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,

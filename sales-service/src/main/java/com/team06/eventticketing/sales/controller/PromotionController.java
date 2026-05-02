@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/sales/promotions")
+@RequestMapping({"/api/sales/promotions", "/api/sales/discounts"})
 public class PromotionController {
 
     private final PromotionService promotionService;

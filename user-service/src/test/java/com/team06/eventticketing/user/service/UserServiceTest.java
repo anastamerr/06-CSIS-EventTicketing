@@ -107,6 +107,22 @@ class UserServiceTest {
     }
 
     @Test
+    void deactivateUserRejectsAlreadyDeactivatedUser() {
+        User user = new User();
+        user.setId(6L);
+        user.setStatus(UserStatus.DEACTIVATED);
+
+        when(userRepository.findById(6L)).thenReturn(Optional.of(user));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.deactivateUser(6L));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(userRepository, never()).existsActiveBookingsByUserId(6L);
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
     void deactivateUserPersistsDeactivatedStatusWhenNoActiveBookingsExist() {
         User user = new User();
         user.setId(5L);
