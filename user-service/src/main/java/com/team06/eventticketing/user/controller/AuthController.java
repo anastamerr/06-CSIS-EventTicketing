@@ -21,14 +21,14 @@ public class AuthController {
         this.userService = userService;
     }
 
+    @PostMapping("/login")
+    public AuthResponse login(@RequestBody LoginRequest request) {
+        return userService.login(request);
+    }
+
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     public AuthResponse register(@RequestBody RegisterRequest request) {
         return userService.register(request);
-    }
-
-    @PostMapping("/login")
-    public AuthResponse login(@RequestBody LoginRequest request) {
-        return userService.login(request);
     }
 }

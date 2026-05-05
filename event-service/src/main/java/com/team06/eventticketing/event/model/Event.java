@@ -10,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -64,8 +65,23 @@ public class Event {
 
     @PrePersist
     void onCreate() {
+        fillDefaults();
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        fillDefaults();
+    }
+
+    private void fillDefaults() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (eventDate == null) {
+            eventDate = LocalDateTime.of(2026, 12, 1, 0, 0);
+        }
+        if (venue == null || venue.isBlank()) {
+            venue = "Default Venue";
         }
         if (rating == null) {
             rating = 0.0;
