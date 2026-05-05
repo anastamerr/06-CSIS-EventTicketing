@@ -107,7 +107,7 @@ public class UserBookingSummaryDTO {
 
         public UserBookingSummaryDTO build() {
             return new UserBookingSummaryDTO(
-                    userId,
+                    userId == null ? 0L : userId,
                     name,
                     totalBookings,
                     completedBookings,

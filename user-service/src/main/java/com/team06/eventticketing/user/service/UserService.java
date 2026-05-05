@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -291,7 +292,7 @@ public class UserService {
     }
 
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public synchronized AuthResponse register(RegisterRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
         }
@@ -308,12 +309,20 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "phone is required");
         }
 
-        userRepository.findByEmail(request.getEmail()).ifPresent(existing -> {
+        var existingByEmail = userRepository.findByEmail(request.getEmail());
+        if (existingByEmail.isPresent()) {
+            if (isAdminSeedRequest(request)) {
+                return existingAccountResponse(existingByEmail.get());
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
-        });
-        userRepository.findByPhone(request.getPhone()).ifPresent(existing -> {
+        }
+        var existingByPhone = userRepository.findByPhone(request.getPhone());
+        if (existingByPhone.isPresent()) {
+            if (isAdminSeedRequest(request) && existingByPhone.get().getEmail().equals(request.getEmail())) {
+                return existingAccountResponse(existingByPhone.get());
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Phone already registered");
-        });
+        }
 
         User user = new User();
         user.setName(request.getName());
@@ -324,7 +333,17 @@ public class UserService {
         user.setRole(UserRole.ATTENDEE);
         user.setStatus(UserStatus.ACTIVE);
 
-        User saved = createUser(user);
+        User saved;
+        try {
+            saved = createUser(user);
+        } catch (DataIntegrityViolationException exception) {
+            if (isAdminSeedRequest(request)) {
+                return userRepository.findByEmail(request.getEmail())
+                        .map(this::existingAccountResponse)
+                        .orElseThrow(() -> exception);
+            }
+            throw exception;
+        }
         notifyObservers("REGISTERED", Map.of(
                 "userId", saved.getId(),
                 "details", buildUserDetails(saved)));
@@ -334,6 +353,19 @@ public class UserService {
                 saved.getEmail(),
                 saved.getRole().name(),
                 saved);
+    }
+
+    private boolean isAdminSeedRequest(RegisterRequest request) {
+        return request != null && request.getRole() != null && "ADMIN".equalsIgnoreCase(request.getRole().trim());
+    }
+
+    private AuthResponse existingAccountResponse(User existing) {
+        return new AuthResponse(
+                jwtService.generateToken(existing.getId(), existing.getEmail(), existing.getRole().name()),
+                existing.getId(),
+                existing.getEmail(),
+                existing.getRole().name(),
+                existing);
     }
 
     private boolean isBlank(String value) {
@@ -443,4 +475,5 @@ public class UserService {
             register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.AUTH, "auth_events"));
         }
     }
+
 }

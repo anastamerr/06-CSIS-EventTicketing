@@ -3,6 +3,7 @@ package com.team06.eventticketing.user.controller;
 import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
+import com.team06.eventticketing.common.auth.SecurityUserRecord;
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UpdateUserRoleRequest;
 import com.team06.eventticketing.user.dto.UserActivityFeedResponse;
@@ -17,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +33,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/users")
@@ -76,6 +80,7 @@ public class UserController {
     @GetMapping("/{id}")
     @CachedDetail(service = "user-service", entity = "user", key = "#id", ttlSeconds = 900)
     public User getUserById(@PathVariable Long id) {
+        requireSelfOrAdmin(id);
         return userService.getUserById(id);
     }
 
@@ -139,6 +144,7 @@ public class UserController {
             featurePrefix = "S1-",
             detailKeys = {"'user-service::user::' + #id"})
     public User updateUser(@PathVariable Long id, @RequestBody User user) {
+        requireSelfOrAdmin(id);
         return userService.updateUser(id, user);
     }
 
@@ -167,6 +173,7 @@ public class UserController {
             featurePrefix = "S1-",
             detailKeys = {"'user-service::user::' + #id"})
     public void deleteUser(@PathVariable Long id) {
+        requireSelfOrAdmin(id);
         userService.deleteUser(id);
     }
 
@@ -190,5 +197,15 @@ public class UserController {
             @PathVariable String category,
             @RequestParam(defaultValue = "0") int minBookings) {
         return userService.getUsersByFavoriteCategoryAndMinBookings(category, minBookings);
+    }
+
+    private void requireSelfOrAdmin(Long userId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof SecurityUserRecord user)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
+        if (!"ADMIN".equalsIgnoreCase(user.role()) && !user.id().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        }
     }
 }

@@ -1,7 +1,12 @@
 package com.team06.eventticketing.booking.graph;
 
+import org.springframework.data.neo4j.core.schema.Id;
+import org.springframework.data.neo4j.core.schema.Node;
+
+@Node("User")
 public class UserNode {
 
+    @Id
     private Long userId;
     private String name;
 
