@@ -47,6 +47,10 @@ public class EventRevenueDTO {
         return totalRevenue;
     }
 
+    public double getTotalEarnings() {
+        return totalRevenue;
+    }
+
     public void setTotalRevenue(double totalRevenue) {
         this.totalRevenue = totalRevenue;
     }

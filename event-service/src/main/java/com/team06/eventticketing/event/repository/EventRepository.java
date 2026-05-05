@@ -101,7 +101,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             SELECT 1
             FROM bookings
             WHERE event_id = :eventId
-              AND status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+              AND status IN ('REQUESTED', 'PENDING', 'CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN')
         )
         """, nativeQuery = true)
     boolean existsActiveBookingsForEvent(@Param("eventId") Long eventId);

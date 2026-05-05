@@ -51,6 +51,10 @@ public class EventDashboardDTO {
         return totalBookings;
     }
 
+    public long getTotalOrders() {
+        return totalBookings;
+    }
+
     public void setTotalBookings(long totalBookings) {
         this.totalBookings = totalBookings;
     }

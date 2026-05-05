@@ -94,7 +94,7 @@ public class TicketSaleFeatureController {
                     "'sales-service::ticket-sale::' + #id",
                     "'sales-service::sale-audit-trail::' + #id"
             })
-    public TicketSale refundSale(@PathVariable Long id, @RequestBody RefundRequest request) {
+    public TicketSale refundSale(@PathVariable Long id, @RequestBody(required = false) RefundRequest request) {
         return ticketSaleService.refundTicketSale(id, request);
     }
 
@@ -127,7 +127,7 @@ public class TicketSaleFeatureController {
             })
     public TicketSaleResponse refundSaleWithWindowPolicy(
             @PathVariable Long id,
-            @RequestBody RefundRequest request
+            @RequestBody(required = false) RefundRequest request
     ) {
         return ticketSaleService.processRefundWithWindowPolicy(id, request);
     }

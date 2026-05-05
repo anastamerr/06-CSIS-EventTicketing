@@ -259,10 +259,10 @@ public class BookingService {
     @Transactional
     public Booking cancelBooking(Long bookingId) {
         Booking booking = getBookingByIdForUpdate(bookingId);
-        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+        if (!isRequested(booking) && booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Only PENDING or CONFIRMED bookings can be cancelled"
+                    "Only requested or confirmed bookings can be cancelled"
             );
         }
 
@@ -279,8 +279,8 @@ public class BookingService {
     public Booking confirmBooking(Long bookingId, Long eventId) {
         Booking booking = getBookingByIdForUpdate(bookingId);
 
-        if (booking.getStatus() != BookingStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only PENDING bookings can be confirmed");
+        if (!isRequested(booking) && booking.getStatus() != BookingStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only requested bookings can be confirmed");
         }
 
         List<Object[]> eventRows = bookingRepository.findEventById(eventId);
@@ -331,6 +331,7 @@ public class BookingService {
                     : new LinkedHashMap<>(itemRequest.getMetadata()));
             booking.addBookingItem(bookingItem);
         }
+        booking.setTotalAmount(calculateTotalAmount(booking));
 
         Booking saved = bookingRepository.save(booking);
         notifyObservers("ITEMS_ADDED", Map.of(
@@ -455,7 +456,8 @@ public class BookingService {
     }
 
     private void validateAppendableBooking(Booking booking) {
-        if (booking.getStatus() != BookingStatus.PENDING
+        if (!isRequested(booking)
+                && booking.getStatus() != BookingStatus.PENDING
                 && booking.getStatus() != BookingStatus.CONFIRMED
                 && booking.getStatus() != BookingStatus.CHECKED_IN
                 && booking.getStatus() != BookingStatus.IN_PROGRESS) {
@@ -464,6 +466,10 @@ public class BookingService {
                     "Cannot add items to a booking with status " + booking.getStatus()
             );
         }
+    }
+
+    private boolean isRequested(Booking booking) {
+        return booking.getStatus() == BookingStatus.REQUESTED;
     }
 
     private void validateBookingItemsRequest(List<BookingItemRequest> items) {

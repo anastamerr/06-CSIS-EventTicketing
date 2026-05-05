@@ -68,6 +68,15 @@ public class TicketSaleResponse {
         return transactionDetails;
     }
 
+    public Double getRefundAmount() {
+        return asDouble(transactionDetails == null ? null : transactionDetails.get("refundAmount"));
+    }
+
+    public String getRefundPolicy() {
+        Object value = transactionDetails == null ? null : transactionDetails.get("refundPolicy");
+        return value == null ? null : value.toString();
+    }
+
     public void setTransactionDetails(Map<String, Object> transactionDetails) {
         this.transactionDetails = transactionDetails;
     }
@@ -82,6 +91,16 @@ public class TicketSaleResponse {
 
     public static Builder builder() {
         return new Builder();
+    }
+
+    private Double asDouble(Object value) {
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            return Double.parseDouble(text);
+        }
+        return null;
     }
 
     public static final class Builder {

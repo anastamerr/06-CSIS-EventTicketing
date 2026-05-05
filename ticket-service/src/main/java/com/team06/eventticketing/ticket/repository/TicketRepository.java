@@ -51,7 +51,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     @Query(value = """
             SELECT COUNT(*)
             FROM tickets
-            WHERE status IN ('EXPIRED', 'CANCELLED')
+            WHERE status = 'EXPIRED'
               AND issued_at < :cutoff
             """, nativeQuery = true)
     long countPurgeableTickets(@Param("cutoff") LocalDateTime cutoff);
@@ -59,7 +59,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
             DELETE FROM tickets
-            WHERE status IN ('EXPIRED', 'CANCELLED')
+            WHERE status = 'EXPIRED'
               AND issued_at < :cutoff
             """, nativeQuery = true)
     int deletePurgeableTickets(@Param("cutoff") LocalDateTime cutoff);
