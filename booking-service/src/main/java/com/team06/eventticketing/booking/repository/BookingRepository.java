@@ -60,33 +60,45 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByMetadataField(@Param("key") String key, @Param("value") String value);
 
     @Query(value = """
+        WITH sales_by_booking AS (
+            SELECT booking_id, SUM(amount) AS sale_amount
+            FROM ticket_sales
+            GROUP BY booking_id
+        )
         SELECT
             COUNT(*) AS totalBookings,
-            COALESCE(COUNT(*) FILTER (WHERE status = 'COMPLETED'), 0) AS completedBookings,
-            COALESCE(COUNT(*) FILTER (WHERE status = 'CANCELLED'), 0) AS cancelledBookings,
-            COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_amount ELSE 0 END), 0) AS totalRevenue,
-            COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN total_amount END), 0) AS averageBookingAmount
-        FROM bookings
-        WHERE booking_date BETWEEN :startDate AND :endDate
+            COALESCE(COUNT(*) FILTER (WHERE b.status = 'COMPLETED'), 0) AS completedBookings,
+            COALESCE(COUNT(*) FILTER (WHERE b.status = 'CANCELLED'), 0) AS cancelledBookings,
+            COALESCE(SUM(CASE WHEN b.status = 'COMPLETED' THEN COALESCE(s.sale_amount, 0) ELSE 0 END), 0) AS totalRevenue,
+            COALESCE(AVG(CASE WHEN b.status = 'COMPLETED' THEN COALESCE(s.sale_amount, 0) END), 0) AS averageBookingAmount
+        FROM bookings b
+        LEFT JOIN sales_by_booking s ON s.booking_id = b.id
+        WHERE b.booking_date BETWEEN :startDate AND :endDate
         """, nativeQuery = true)
     List<Object[]> findAnalyticsByDateRange(@Param("startDate") LocalDateTime startDate,
                                             @Param("endDate") LocalDateTime endDate);
 
     @Query(value = """
         WITH filtered_bookings AS (
-            SELECT status, total_amount
-            FROM bookings
-            WHERE booking_date BETWEEN :startDate AND :endDate
+            SELECT b.id, b.status
+            FROM bookings b
+            WHERE b.booking_date BETWEEN :startDate AND :endDate
+        ),
+        sales_by_booking AS (
+            SELECT booking_id, SUM(amount) AS sale_amount
+            FROM ticket_sales
+            GROUP BY booking_id
         ),
         totals AS (
             SELECT
-                COUNT(*) AS total_bookings,
-                COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN total_amount ELSE 0 END), 0) AS total_revenue,
-                COALESCE(COUNT(*) FILTER (WHERE status = 'COMPLETED'), 0) AS completed_count,
+                COUNT(f.id) AS total_bookings,
+                COALESCE(SUM(CASE WHEN f.status = 'COMPLETED' THEN COALESCE(s.sale_amount, 0) ELSE 0 END), 0) AS total_revenue,
+                COALESCE(COUNT(*) FILTER (WHERE f.status = 'COMPLETED'), 0) AS completed_count,
                 COALESCE(COUNT(*) FILTER (
-                    WHERE status IN ('CONFIRMED', 'CHECKED_IN', 'COMPLETED')
+                    WHERE f.status IN ('CONFIRMED', 'CHECKED_IN', 'COMPLETED')
                 ), 0) AS converted_count
-            FROM filtered_bookings
+            FROM filtered_bookings f
+            LEFT JOIN sales_by_booking s ON s.booking_id = f.id
         ),
         status_counts AS (
             SELECT status::text AS booking_status, COUNT(*) AS status_count

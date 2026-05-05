@@ -20,8 +20,8 @@ public class AttendanceGraphRepository {
 
     public boolean alreadyRecorded(Long userId, Long eventId, Long bookingId) {
         return neo4jClient.query("""
-                        MATCH (u:UserNode {userId: $userId})-[r:ATTENDED]->(e:EventNode {eventId: $eventId})
-                        WHERE $bookingId IN coalesce(r.recorded_booking_ids, [])
+                        MATCH (u:User {userId: $userId})-[r:ATTENDED]->(e:Event {eventId: $eventId})
+                        WHERE $bookingId IN coalesce(r.recordedBookingIds, [])
                         RETURN count(r) > 0 AS alreadyRecorded
                         """)
                 .bind(userId).to("userId")
@@ -41,26 +41,36 @@ public class AttendanceGraphRepository {
             String eventCategory,
             Long bookingId) {
         return neo4jClient.query("""
-                        MERGE (u:UserNode {userId: $userId})
+                        MERGE (u:User {userId: $userId})
                         ON CREATE SET u.name = $userName
                         ON MATCH SET u.name = $userName
-                        MERGE (e:EventNode {eventId: $eventId})
+                        MERGE (e:Event {eventId: $eventId})
                         ON CREATE SET e.name = $eventName, e.category = $eventCategory
                         ON MATCH SET e.name = $eventName, e.category = $eventCategory
                         MERGE (u)-[r:ATTENDED]->(e)
                         ON CREATE SET
                             r.attendanceCount = 1,
                             r.lastAttendedDate = datetime(),
-                            r.recorded_booking_ids = [$bookingId]
+                            r.recordedBookingIds = [$bookingId]
                         ON MATCH SET
-                            r.attendanceCount = coalesce(r.attendanceCount, 0) + 1,
-                            r.lastAttendedDate = datetime(),
-                            r.recorded_booking_ids = coalesce(r.recorded_booking_ids, []) + $bookingId
+                            r.attendanceCount = CASE
+                                WHEN $bookingId IN coalesce(r.recordedBookingIds, []) THEN coalesce(r.attendanceCount, 0)
+                                ELSE coalesce(r.attendanceCount, 0) + 1
+                            END,
+                            r.lastAttendedDate = CASE
+                                WHEN $bookingId IN coalesce(r.recordedBookingIds, []) THEN r.lastAttendedDate
+                                ELSE datetime()
+                            END,
+                            r.recordedBookingIds = CASE
+                                WHEN $bookingId IN coalesce(r.recordedBookingIds, []) THEN coalesce(r.recordedBookingIds, [])
+                                ELSE coalesce(r.recordedBookingIds, []) + [$bookingId]
+                            END
                         RETURN {
                             userId: u.userId,
                             eventId: e.eventId,
                             attendanceCount: r.attendanceCount,
-                            recordedBookingIds: r.recorded_booking_ids
+                            lastAttendedDate: r.lastAttendedDate,
+                            recordedBookingIds: r.recordedBookingIds
                         } AS result
                         """)
                 .bind(userId).to("userId")
@@ -81,10 +91,10 @@ public class AttendanceGraphRepository {
         }
 
         return neo4jClient.query("""
-                        MATCH (target:UserNode {userId: $userId})-[:ATTENDED]->(shared:EventNode)
-                              <-[:ATTENDED]-(similar:UserNode)
+                        MATCH (target:User {userId: $userId})-[:ATTENDED]->(shared:Event)
+                              <-[:ATTENDED]-(similar:User)
                         WHERE similar.userId <> $userId
-                        MATCH (similar)-[:ATTENDED]->(recommended:EventNode)
+                        MATCH (similar)-[:ATTENDED]->(recommended:Event)
                         WHERE NOT (target)-[:ATTENDED]->(recommended)
                         RETURN recommended.eventId AS eventId, count(DISTINCT similar) AS score
                         ORDER BY score DESC, eventId ASC

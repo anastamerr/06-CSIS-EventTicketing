@@ -1,10 +1,14 @@
 package com.team06.eventticketing.ticket.scan;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 public class TicketScanRequest {
 
+    @JsonAlias("scan_type")
     private String scanType;
     private String gate;
     private String section;
+    @JsonAlias("seat_number")
     private String seatNumber;
     private String notes;
 

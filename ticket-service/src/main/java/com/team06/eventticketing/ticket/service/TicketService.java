@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
@@ -52,6 +53,7 @@ public class TicketService {
     private final TicketScanEventRepository ticketScanEventRepository;
     private final RedisCacheService redisCacheService;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+    private final AtomicLong lastScanEpochMillis = new AtomicLong();
 
     @Autowired
     public TicketService(
@@ -184,12 +186,10 @@ public class TicketService {
         double attendanceRate = totalIssued == 0 ? 0.0 : (double) usedCount / totalIssued;
 
         Map<String, Long> ticketsByStatus = new LinkedHashMap<>();
-        if (totalIssued > 0) {
-            ticketsByStatus.put(TicketStatus.USED.name(), usedCount);
-            ticketsByStatus.put(TicketStatus.VALID.name(), validCount);
-            ticketsByStatus.put(TicketStatus.EXPIRED.name(), expiredCount);
-            ticketsByStatus.put(TicketStatus.CANCELLED.name(), cancelledCount);
-        }
+        ticketsByStatus.put(TicketStatus.VALID.name(), validCount);
+        ticketsByStatus.put(TicketStatus.USED.name(), usedCount);
+        ticketsByStatus.put(TicketStatus.EXPIRED.name(), expiredCount);
+        ticketsByStatus.put(TicketStatus.CANCELLED.name(), cancelledCount);
 
         return TicketAnalyticsDTO.builder()
                 .totalIssued(totalIssued)
@@ -388,7 +388,7 @@ public class TicketService {
 
         TicketScanEvent scanEvent = new TicketScanEvent();
         scanEvent.setTicketId(ticketId);
-        scanEvent.setTimestamp(Instant.now(clock));
+        scanEvent.setTimestamp(nextScanTimestamp());
         scanEvent.setScanType(safeRequest.getScanType());
         scanEvent.setAttendeeName(ticket.getAttendeeName());
         scanEvent.setGate(safeRequest.getGate());
@@ -429,6 +429,12 @@ public class TicketService {
 
     private String safeText(String value) {
         return value == null ? "" : value;
+    }
+
+    private Instant nextScanTimestamp() {
+        long nowMillis = Instant.now(clock).toEpochMilli();
+        long uniqueMillis = lastScanEpochMillis.updateAndGet(previous -> Math.max(nowMillis, previous + 1));
+        return Instant.ofEpochMilli(uniqueMillis);
     }
 
     private void validateGeoParameters(double latitude, double longitude, double radiusKm) {

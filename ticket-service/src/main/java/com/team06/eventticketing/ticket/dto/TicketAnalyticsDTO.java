@@ -1,5 +1,7 @@
 package com.team06.eventticketing.ticket.dto;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -13,14 +15,36 @@ public class TicketAnalyticsDTO {
     private final double attendanceRate;
     private final Map<String, Long> ticketsByStatus;
 
+    @JsonCreator
+    private TicketAnalyticsDTO(
+            @JsonProperty("totalIssued") long totalIssued,
+            @JsonProperty("usedCount") long usedCount,
+            @JsonProperty("validCount") long validCount,
+            @JsonProperty("expiredCount") long expiredCount,
+            @JsonProperty("cancelledCount") long cancelledCount,
+            @JsonProperty("attendanceRate") double attendanceRate,
+            @JsonProperty("ticketsByStatus") Map<String, Long> ticketsByStatus
+    ) {
+        this.totalIssued = totalIssued;
+        this.usedCount = usedCount;
+        this.validCount = validCount;
+        this.expiredCount = expiredCount;
+        this.cancelledCount = cancelledCount;
+        this.attendanceRate = attendanceRate;
+        this.ticketsByStatus = ticketsByStatus == null
+                ? Map.of()
+                : Map.copyOf(ticketsByStatus);
+    }
+
     private TicketAnalyticsDTO(Builder builder) {
-        this.totalIssued = builder.totalIssued;
-        this.usedCount = builder.usedCount;
-        this.validCount = builder.validCount;
-        this.expiredCount = builder.expiredCount;
-        this.cancelledCount = builder.cancelledCount;
-        this.attendanceRate = builder.attendanceRate;
-        this.ticketsByStatus = Map.copyOf(builder.ticketsByStatus);
+        this(
+                builder.totalIssued,
+                builder.usedCount,
+                builder.validCount,
+                builder.expiredCount,
+                builder.cancelledCount,
+                builder.attendanceRate,
+                builder.ticketsByStatus);
     }
 
     public long getTotalIssued() {

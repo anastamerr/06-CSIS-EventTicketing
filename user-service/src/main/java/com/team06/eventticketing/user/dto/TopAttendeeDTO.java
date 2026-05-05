@@ -64,7 +64,7 @@ public class TopAttendeeDTO {
         }
 
         public TopAttendeeDTO build() {
-            return new TopAttendeeDTO(userId, name, totalSpent, bookingCount);
+            return new TopAttendeeDTO(userId == null ? 0L : userId, name, totalSpent, bookingCount);
         }
     }
 }

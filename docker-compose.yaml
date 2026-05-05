@@ -53,7 +53,7 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      ES_JAVA_OPTS: -Xms256m -Xmx256m
     ports:
       - "9200:9200"
     volumes:
@@ -70,8 +70,9 @@ services:
     container_name: eventticketing-neo4j
     environment:
       NEO4J_AUTH: neo4j/neo4jpass
-      NEO4J_server_memory_heap_max__size: 512m
-      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 256m
+      NEO4J_server_memory_heap_initial__size: 128m
+      NEO4J_server_memory_pagecache_size: 128m
     ports:
       - "7474:7474"
       - "7687:7687"
@@ -85,7 +86,7 @@ services:
       start_period: 30s
 
   cassandra:
-    image: cassandra:latest
+    image: cassandra:4.1
     container_name: eventticketing-cassandra
     environment:
       CASSANDRA_CLUSTER_NAME: eventticketingcluster
@@ -93,6 +94,7 @@ services:
       CASSANDRA_KEYSPACE: eventticketingks
       MAX_HEAP_SIZE: 512M
       HEAP_NEWSIZE: 128M
+      JVM_EXTRA_OPTS: -XX:MaxDirectMemorySize=256M
     ports:
       - "9042:9042"
     volumes:
@@ -115,6 +117,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -141,6 +144,7 @@ services:
       elasticsearch:
         condition: service_healthy
     environment:
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -168,6 +172,7 @@ services:
       neo4j:
         condition: service_healthy
     environment:
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -200,6 +205,7 @@ services:
       cassandra:
         condition: service_healthy
     environment:
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -228,6 +234,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
