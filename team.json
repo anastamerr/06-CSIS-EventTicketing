@@ -84,6 +84,12 @@
     "service": "event-service"
   },
   {
+    "studentId": "55-9234",
+    "name": "Haidy Amr",
+    "githubUsername": "haidyyamrr",
+    "service": ["booking-service", "ticket-service"]
+  },
+  {
     "studentId": "559234",
     "name": "Haidy Amr",
     "githubUsername": "haidyyamrr",
