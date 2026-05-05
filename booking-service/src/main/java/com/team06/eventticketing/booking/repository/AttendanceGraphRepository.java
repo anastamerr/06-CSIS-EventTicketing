@@ -20,7 +20,7 @@ public class AttendanceGraphRepository {
 
     public boolean alreadyRecorded(Long userId, Long eventId, Long bookingId) {
         return neo4jClient.query("""
-                        MATCH (u:User {userId: $userId})-[r:ATTENDED]->(e:Event {eventId: $eventId})
+                        MATCH (u:User {id: $userId})-[r:ATTENDED]->(e:Event {id: $eventId})
                         WHERE $bookingId IN coalesce(r.recordedBookingIds, [])
                         RETURN count(r) > 0 AS alreadyRecorded
                         """)
@@ -41,12 +41,12 @@ public class AttendanceGraphRepository {
             String eventCategory,
             Long bookingId) {
         return neo4jClient.query("""
-                        MERGE (u:User {userId: $userId})
-                        ON CREATE SET u.name = $userName
-                        ON MATCH SET u.name = $userName
-                        MERGE (e:Event {eventId: $eventId})
-                        ON CREATE SET e.name = $eventName, e.category = $eventCategory
-                        ON MATCH SET e.name = $eventName, e.category = $eventCategory
+                        MERGE (u:User {id: $userId})
+                        ON CREATE SET u.name = $userName, u.userId = $userId
+                        ON MATCH SET u.name = $userName, u.userId = $userId
+                        MERGE (e:Event {id: $eventId})
+                        ON CREATE SET e.name = $eventName, e.category = $eventCategory, e.eventId = $eventId
+                        ON MATCH SET e.name = $eventName, e.category = $eventCategory, e.eventId = $eventId
                         MERGE (u)-[r:ATTENDED]->(e)
                         ON CREATE SET
                             r.attendanceCount = 1,
@@ -66,8 +66,8 @@ public class AttendanceGraphRepository {
                                 ELSE coalesce(r.recordedBookingIds, []) + [$bookingId]
                             END
                         RETURN {
-                            userId: u.userId,
-                            eventId: e.eventId,
+                            userId: u.id,
+                            eventId: e.id,
                             attendanceCount: r.attendanceCount,
                             lastAttendedDate: r.lastAttendedDate,
                             recordedBookingIds: r.recordedBookingIds
@@ -91,12 +91,12 @@ public class AttendanceGraphRepository {
         }
 
         return neo4jClient.query("""
-                        MATCH (target:User {userId: $userId})-[:ATTENDED]->(shared:Event)
+                        MATCH (target:User {id: $userId})-[:ATTENDED]->(shared:Event)
                               <-[:ATTENDED]-(similar:User)
-                        WHERE similar.userId <> $userId
+                        WHERE similar.id <> $userId
                         MATCH (similar)-[:ATTENDED]->(recommended:Event)
                         WHERE NOT (target)-[:ATTENDED]->(recommended)
-                        RETURN recommended.eventId AS eventId, count(DISTINCT similar) AS score
+                        RETURN recommended.id AS eventId, count(DISTINCT similar) AS score
                         ORDER BY score DESC, eventId ASC
                         LIMIT $limit
                         """)
