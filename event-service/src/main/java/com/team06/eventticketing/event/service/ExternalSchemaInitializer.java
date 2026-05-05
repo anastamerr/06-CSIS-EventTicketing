@@ -60,6 +60,8 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
 
         jdbcTemplate.execute("""
                 ALTER TABLE events
+                ALTER COLUMN venue SET DEFAULT 'Default Venue',
+                ALTER COLUMN event_date SET DEFAULT TIMESTAMP '2026-12-01 00:00:00',
                 ALTER COLUMN details SET DEFAULT '{}'::jsonb,
                 ALTER COLUMN rating SET DEFAULT 0.0,
                 ALTER COLUMN total_ratings SET DEFAULT 0,
@@ -67,11 +69,16 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
                 """);
         jdbcTemplate.execute("""
                 UPDATE events
-                SET details = COALESCE(details, '{}'::jsonb),
+                SET venue = COALESCE(NULLIF(venue, ''), 'Default Venue'),
+                    event_date = COALESCE(event_date, TIMESTAMP '2026-12-01 00:00:00'),
+                    details = COALESCE(details, '{}'::jsonb),
                     rating = COALESCE(rating, 0.0),
                     total_ratings = COALESCE(total_ratings, 0),
                     created_at = COALESCE(created_at, CURRENT_TIMESTAMP)
-                WHERE details IS NULL
+                WHERE venue IS NULL
+                   OR venue = ''
+                   OR event_date IS NULL
+                   OR details IS NULL
                    OR rating IS NULL
                    OR total_ratings IS NULL
                    OR created_at IS NULL
