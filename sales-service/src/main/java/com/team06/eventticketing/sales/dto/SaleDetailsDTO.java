@@ -82,6 +82,10 @@ public class SaleDetailsDTO {
         return appliedPromotions;
     }
 
+    public List<AppliedPromotionDTO> getAppliedDiscounts() {
+        return appliedPromotions;
+    }
+
     public void setAppliedPromotions(List<AppliedPromotionDTO> appliedPromotions) {
         this.appliedPromotions = appliedPromotions == null ? new ArrayList<>() : appliedPromotions;
     }

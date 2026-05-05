@@ -54,7 +54,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
             FROM users u
             LEFT JOIN bookings b
                 ON b.user_id = u.id
-               AND b.status IN ('COMPLETED', 'CONFIRMED')
+               AND b.status = 'COMPLETED'
             WHERE u.preferences->>'favoriteCategory' = :category
             GROUP BY u.id
             HAVING COUNT(b.id) >= :minBookings
@@ -72,7 +72,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 COUNT(b.id) AS booking_count
             FROM users u
             JOIN bookings b ON b.user_id = u.id
-            WHERE b.status IN ('COMPLETED', 'CONFIRMED')
+            WHERE b.status = 'COMPLETED'
               AND u.role::text = 'ATTENDEE'
               AND b.booking_date >= :startInclusive
               AND b.booking_date < :endExclusive

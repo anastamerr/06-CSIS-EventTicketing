@@ -58,6 +58,14 @@ public class EventSearchDocument {
         this.category = category;
     }
 
+    public String getSpecialty() {
+        return category;
+    }
+
+    public void setSpecialty(String specialty) {
+        this.category = specialty;
+    }
+
     public String getVenue() {
         return venue;
     }

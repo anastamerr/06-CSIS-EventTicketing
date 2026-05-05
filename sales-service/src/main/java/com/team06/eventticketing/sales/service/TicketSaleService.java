@@ -28,7 +28,6 @@ import com.team06.eventticketing.sales.repository.UserJdbcRepository;
 import com.team06.eventticketing.sales.strategy.RefundResult;
 import com.team06.eventticketing.sales.strategy.RefundStrategy;
 import com.team06.eventticketing.sales.strategy.RefundStrategySelector;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -485,6 +484,7 @@ public class TicketSaleService {
                 ticketSaleRepository.getCompletedSalesSummaryByMethod(userId);
 
         Map<String, Double> methodBreakdown = new LinkedHashMap<>();
+        Map<String, Long> methodCounts = new LinkedHashMap<>();
         long totalSales = 0L;
         double totalAmount = 0.0;
 
@@ -494,6 +494,7 @@ public class TicketSaleService {
             Double amount = row.getTotalAmount() == null ? 0.0 : row.getTotalAmount();
 
             methodBreakdown.put(method, amount);
+            methodCounts.put(method, saleCount);
             totalSales += saleCount;
             totalAmount += amount;
         }
@@ -503,6 +504,7 @@ public class TicketSaleService {
                 .totalSales(totalSales)
                 .totalAmount(totalAmount)
                 .methodBreakdown(new LinkedHashMap<>(methodBreakdown))
+                .methodCounts(new LinkedHashMap<>(methodCounts))
                 .build();
     }
 
@@ -597,8 +599,6 @@ public class TicketSaleService {
         }
 
         LocalDateTime eventDate = eventRow.eventDate();
-        long hoursUntilEvent = Duration.between(LocalDateTime.now(), eventDate).toHours();
-
         RefundStrategy strategy = refundStrategySelector.select(sale, eventDate);
         RefundResult result = strategy.calculateRefund(sale, request, eventDate);
 
@@ -606,7 +606,7 @@ public class TicketSaleService {
             Map<String, Object> deniedDetails = new LinkedHashMap<>();
             deniedDetails.put("refundPolicy", result.getStrategyName());
             deniedDetails.put("denialReason", result.getReasonCode());
-            deniedDetails.put("hoursUntilEvent", hoursUntilEvent);
+            deniedDetails.put("eventLeadTimeHours", result.getEventLeadTimeHours());
             deniedDetails.put("refundReason", request == null ? null : request.getReason());
 
             notifyObservers("REFUND_DENIED", buildAuditPayload(sale, deniedDetails));
@@ -631,7 +631,7 @@ public class TicketSaleService {
         auditDetails.put("refundReason", request == null ? null : request.getReason());
         auditDetails.put("originalAmount", sale.getAmount());
         auditDetails.put("refundAmount", result.getAmount());
-        auditDetails.put("hoursUntilEvent", hoursUntilEvent);
+        auditDetails.put("eventLeadTimeHours", result.getEventLeadTimeHours());
 
         notifyObservers("REFUNDED", buildAuditPayload(saved, auditDetails));
         invalidateRefundWindowCaches(id);
@@ -646,7 +646,7 @@ public class TicketSaleService {
         }
 
         redisCacheService.deleteByPattern("sales-service::S5-F10::*");
-        redisCacheService.delete("sales-service::S5-F11::" + saleId);
+        redisCacheService.deleteByPattern("sales-service::S5-F11::*");
         redisCacheService.delete("sales-service::ticket-sale::" + saleId);
     }
 

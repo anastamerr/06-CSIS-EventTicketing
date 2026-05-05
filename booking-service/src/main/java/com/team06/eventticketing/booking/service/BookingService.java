@@ -418,7 +418,7 @@ public class BookingService {
     }
 
     private void validateCompletableBooking(Booking booking) {
-        if (booking.getStatus() != BookingStatus.CHECKED_IN) {
+        if (booking.getStatus() != BookingStatus.CHECKED_IN && booking.getStatus() != BookingStatus.IN_PROGRESS) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Booking must be checked in before completion"
@@ -457,7 +457,8 @@ public class BookingService {
     private void validateAppendableBooking(Booking booking) {
         if (booking.getStatus() != BookingStatus.PENDING
                 && booking.getStatus() != BookingStatus.CONFIRMED
-                && booking.getStatus() != BookingStatus.CHECKED_IN) {
+                && booking.getStatus() != BookingStatus.CHECKED_IN
+                && booking.getStatus() != BookingStatus.IN_PROGRESS) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Cannot add items to a booking with status " + booking.getStatus()
