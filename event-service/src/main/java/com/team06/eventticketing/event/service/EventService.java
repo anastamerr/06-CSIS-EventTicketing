@@ -327,7 +327,9 @@ public class EventService {
         }
 
         session.setVerified(Boolean.TRUE);
-        Map<String, Object> metadata = new LinkedHashMap<>(session.getMetadata());
+        Map<String, Object> metadata = session.getMetadata() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(session.getMetadata());
         metadata.put("verifiedAt", now.toString());
         metadata.put("verifiedBy", request.getVerifiedBy());
         session.setMetadata(metadata);

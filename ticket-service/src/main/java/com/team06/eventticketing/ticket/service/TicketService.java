@@ -389,7 +389,7 @@ public class TicketService {
         TicketScanEvent scanEvent = new TicketScanEvent();
         scanEvent.setTicketId(ticketId);
         scanEvent.setTimestamp(nextScanTimestamp());
-        scanEvent.setScanType(safeRequest.getScanType());
+        scanEvent.setScanType(defaultScanType(safeRequest.getScanType()));
         scanEvent.setAttendeeName(ticket.getAttendeeName());
         scanEvent.setGate(safeRequest.getGate());
         scanEvent.setSection(safeRequest.getSection());
@@ -400,7 +400,7 @@ public class TicketService {
         notifyObservers("TRACKING_RECORDED", Map.of(
                 "ticketId", ticketId,
                 "details", Map.of(
-                        "scanType", safeText(safeRequest.getScanType()),
+                        "scanType", scanEvent.getScanType(),
                         "gate", safeText(safeRequest.getGate()),
                         "section", safeText(safeRequest.getSection()),
                         "seatNumber", safeText(safeRequest.getSeatNumber()))));
@@ -429,6 +429,10 @@ public class TicketService {
 
     private String safeText(String value) {
         return value == null ? "" : value;
+    }
+
+    private String defaultScanType(String value) {
+        return value == null || value.isBlank() ? "CHECKED_IN" : value;
     }
 
     private Instant nextScanTimestamp() {

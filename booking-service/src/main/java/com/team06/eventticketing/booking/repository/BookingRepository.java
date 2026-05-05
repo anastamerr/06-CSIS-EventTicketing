@@ -23,7 +23,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             SELECT COUNT(*)
             FROM bookings
             WHERE event_id = :eventId
-              AND status::text IN ('PENDING', 'CONFIRMED', 'CHECKED_IN')
+              AND status::text IN ('REQUESTED', 'PENDING', 'CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN')
             """, nativeQuery = true)
     long countActiveBookingsByEventId(@Param("eventId") Long eventId);
 
@@ -95,7 +95,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                 COALESCE(SUM(CASE WHEN f.status = 'COMPLETED' THEN COALESCE(s.sale_amount, 0) ELSE 0 END), 0) AS total_revenue,
                 COALESCE(COUNT(*) FILTER (WHERE f.status = 'COMPLETED'), 0) AS completed_count,
                 COALESCE(COUNT(*) FILTER (
-                    WHERE f.status IN ('CONFIRMED', 'CHECKED_IN', 'COMPLETED')
+                    WHERE f.status IN ('CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED')
                 ), 0) AS converted_count
             FROM filtered_bookings f
             LEFT JOIN sales_by_booking s ON s.booking_id = f.id
