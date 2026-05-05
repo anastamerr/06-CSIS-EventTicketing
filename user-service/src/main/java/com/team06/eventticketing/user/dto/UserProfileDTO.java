@@ -71,6 +71,10 @@ public class UserProfileDTO {
         return favoriteVenues;
     }
 
+    public List<VenueDTO> getSavedAddresses() {
+        return favoriteVenues;
+    }
+
     public void setFavoriteVenues(List<VenueDTO> favoriteVenues) {
         this.favoriteVenues = favoriteVenues;
         this.totalFavoriteVenues = favoriteVenues != null ? favoriteVenues.size() : 0;

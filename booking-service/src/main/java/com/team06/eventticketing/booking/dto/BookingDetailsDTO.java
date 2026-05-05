@@ -70,7 +70,15 @@ public class BookingDetailsDTO {
         return totalItems;
     }
 
+    public int getTotalServices() {
+        return totalItems;
+    }
+
     public int getConfirmedItems() {
+        return confirmedItems;
+    }
+
+    public int getCompletedServices() {
         return confirmedItems;
     }
 

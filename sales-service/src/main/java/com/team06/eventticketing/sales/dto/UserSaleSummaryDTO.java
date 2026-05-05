@@ -6,13 +6,18 @@ public class UserSaleSummaryDTO {
     private Long totalSales;
     private Double totalAmount;
     private Map<String, Double> methodBreakdown;
+    private Map<String, Long> methodCounts;
     public UserSaleSummaryDTO() {
     }
     public UserSaleSummaryDTO(Long userId, Long totalSales, Double totalAmount, Map<String, Double> methodBreakdown) {
+        this(userId, totalSales, totalAmount, methodBreakdown, null);
+    }
+    public UserSaleSummaryDTO(Long userId, Long totalSales, Double totalAmount, Map<String, Double> methodBreakdown, Map<String, Long> methodCounts) {
         this.userId = userId;
         this.totalSales = totalSales;
         this.totalAmount = totalAmount;
         this.methodBreakdown = methodBreakdown;
+        this.methodCounts = methodCounts;
     }
     public Long getUserId() {
         return userId;
@@ -21,6 +26,9 @@ public class UserSaleSummaryDTO {
         this.userId = userId;
     }
     public Long getTotalSales() {
+        return totalSales;
+    }
+    public Long getTotalInvoices() {
         return totalSales;
     }
     public void setTotalSales(Long totalSales) {
@@ -38,6 +46,12 @@ public class UserSaleSummaryDTO {
     public void setMethodBreakdown(Map<String, Double> methodBreakdown) {
         this.methodBreakdown = methodBreakdown;
     }
+    public Map<String, Long> getMethodCounts() {
+        return methodCounts;
+    }
+    public void setMethodCounts(Map<String, Long> methodCounts) {
+        this.methodCounts = methodCounts;
+    }
 
     public static Builder builder() {
         return new Builder();
@@ -48,6 +62,7 @@ public class UserSaleSummaryDTO {
         private Long totalSales;
         private Double totalAmount;
         private Map<String, Double> methodBreakdown;
+        private Map<String, Long> methodCounts;
 
         public Builder userId(Long userId) {
             this.userId = userId;
@@ -68,9 +83,13 @@ public class UserSaleSummaryDTO {
             this.methodBreakdown = methodBreakdown;
             return this;
         }
+        public Builder methodCounts(Map<String, Long> methodCounts) {
+            this.methodCounts = methodCounts;
+            return this;
+        }
 
         public UserSaleSummaryDTO build() {
-            return new UserSaleSummaryDTO(userId, totalSales, totalAmount, methodBreakdown);
+            return new UserSaleSummaryDTO(userId, totalSales, totalAmount, methodBreakdown, methodCounts);
         }
     }
 }

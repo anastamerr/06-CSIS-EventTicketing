@@ -8,15 +8,21 @@ public class UserSalesSummaryDTO {
     private Long totalSales;
     private Double totalAmount;
     private Map<String, Double> methodBreakdown;
+    private Map<String, Long> methodCounts;
 
     public UserSalesSummaryDTO() {
     }
 
     public UserSalesSummaryDTO(Long userId, Long totalSales, Double totalAmount, Map<String, Double> methodBreakdown) {
+        this(userId, totalSales, totalAmount, methodBreakdown, null);
+    }
+
+    public UserSalesSummaryDTO(Long userId, Long totalSales, Double totalAmount, Map<String, Double> methodBreakdown, Map<String, Long> methodCounts) {
         this.userId = userId;
         this.totalSales = totalSales;
         this.totalAmount = totalAmount;
         this.methodBreakdown = methodBreakdown;
+        this.methodCounts = methodCounts;
     }
 
     public Long getUserId() {
@@ -28,6 +34,10 @@ public class UserSalesSummaryDTO {
     }
 
     public Long getTotalSales() {
+        return totalSales;
+    }
+
+    public Long getTotalInvoices() {
         return totalSales;
     }
 
@@ -51,6 +61,14 @@ public class UserSalesSummaryDTO {
         this.methodBreakdown = methodBreakdown;
     }
 
+    public Map<String, Long> getMethodCounts() {
+        return methodCounts;
+    }
+
+    public void setMethodCounts(Map<String, Long> methodCounts) {
+        this.methodCounts = methodCounts;
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -60,6 +78,7 @@ public class UserSalesSummaryDTO {
         private Long totalSales;
         private Double totalAmount;
         private Map<String, Double> methodBreakdown;
+        private Map<String, Long> methodCounts;
 
         public Builder userId(Long userId) {
             this.userId = userId;
@@ -81,8 +100,13 @@ public class UserSalesSummaryDTO {
             return this;
         }
 
+        public Builder methodCounts(Map<String, Long> methodCounts) {
+            this.methodCounts = methodCounts;
+            return this;
+        }
+
         public UserSalesSummaryDTO build() {
-            return new UserSalesSummaryDTO(userId, totalSales, totalAmount, methodBreakdown);
+            return new UserSalesSummaryDTO(userId, totalSales, totalAmount, methodBreakdown, methodCounts);
         }
     }
 }

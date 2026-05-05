@@ -1,21 +1,22 @@
 package com.team06.eventticketing.booking.adapter;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.team06.eventticketing.booking.dto.EventRecommendationCandidate;
 import org.neo4j.driver.Record;
 import org.springframework.stereotype.Component;
 
 @Component
 public class Neo4jRecordAdapter {
 
-    public Map<String, Object> adapt(Record record) {
+    public EventRecommendationCandidate adapt(Record record) {
         if (record == null) {
-            return Map.of();
+            return new EventRecommendationCandidate(null, 0L);
         }
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (String key : record.keys()) {
-            values.put(key, record.get(key).asObject());
-        }
-        return values;
+        Long eventId = record.containsKey("eventId") && !record.get("eventId").isNull()
+                ? record.get("eventId").asLong()
+                : null;
+        long score = record.containsKey("score") && !record.get("score").isNull()
+                ? record.get("score").asLong()
+                : 0L;
+        return new EventRecommendationCandidate(eventId, score);
     }
 }

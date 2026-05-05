@@ -12,13 +12,13 @@ public class RefundStrategySelector {
         long hoursUntilEvent = Duration.between(LocalDateTime.now(), eventDate).toHours();
 
         if (hoursUntilEvent > 48) {
-            return new FullWindowRefundStrategy();
+            return new FullWindowRefundStrategy(hoursUntilEvent);
         }
 
         if (hoursUntilEvent > 24) {
-            return new PartialWindowRefundStrategy();
+            return new PartialWindowRefundStrategy(hoursUntilEvent);
         }
 
-        return new NoRefundStrategy();
+        return new NoRefundStrategy(hoursUntilEvent);
     }
 }

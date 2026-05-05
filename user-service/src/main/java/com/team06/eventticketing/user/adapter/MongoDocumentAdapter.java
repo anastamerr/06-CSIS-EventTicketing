@@ -6,7 +6,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import org.bson.Document;
 import org.springframework.stereotype.Component;
@@ -14,8 +13,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class MongoDocumentAdapter {
 
-    public Map<String, Object> adapt(Document document) {
-        return document == null ? Map.of() : new LinkedHashMap<>(document);
+    public UserActivityEventDTO adapt(Document document) {
+        if (document == null) {
+            return new UserActivityEventDTO(null, null, Map.of());
+        }
+        return adaptActivity(document);
     }
 
     public UserActivityEventDTO adapt(AuthEvent event) {
@@ -51,11 +53,11 @@ public class MongoDocumentAdapter {
     @SuppressWarnings("unchecked")
     private Map<String, Object> extractDetails(Object value) {
         if (value instanceof Document document) {
-            return new LinkedHashMap<>(document);
+            return document;
         }
         if (value instanceof Map<?, ?> map) {
-            return new LinkedHashMap<>((Map<String, Object>) map);
+            return (Map<String, Object>) map;
         }
-        return new LinkedHashMap<>();
+        return Map.of();
     }
 }
