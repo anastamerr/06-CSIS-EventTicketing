@@ -7,6 +7,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.EventBookingRevenueDTO;
+import com.team06.eventticketing.contracts.dto.EventTicketSummaryDTO;
+import com.team06.eventticketing.contracts.dto.UserDTO;
+import com.team06.eventticketing.contracts.events.EventRatedEvent;
+import com.team06.eventticketing.contracts.events.EventStatusChangedEvent;
+import com.team06.eventticketing.contracts.feign.BookingServiceClient;
+import com.team06.eventticketing.contracts.feign.TicketServiceClient;
+import com.team06.eventticketing.contracts.feign.UserServiceClient;
 import com.team06.eventticketing.event.dto.EventDashboardDTO;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
@@ -14,6 +23,7 @@ import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.TopEventDTO;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
+import com.team06.eventticketing.event.messaging.EventEventPublisher;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventSession;
@@ -49,11 +59,30 @@ class EventServiceTest {
     @Mock
     private EventFullTextSearchService eventFullTextSearchService;
 
+    @Mock
+    private BookingServiceClient bookingServiceClient;
+
+    @Mock
+    private UserServiceClient userServiceClient;
+
+    @Mock
+    private TicketServiceClient ticketServiceClient;
+
+    @Mock
+    private EventEventPublisher eventEventPublisher;
+
     private EventService eventService;
 
     @BeforeEach
     void setUp() {
-        eventService = new EventService(eventRepository, eventSessionRepository, eventFullTextSearchService);
+        eventService = new EventService(
+                eventRepository,
+                eventSessionRepository,
+                eventFullTextSearchService,
+                bookingServiceClient,
+                userServiceClient,
+                ticketServiceClient,
+                eventEventPublisher);
     }
 
     @Test
@@ -63,11 +92,8 @@ class EventServiceTest {
         event.setName("Spring Concert");
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findEventRevenueSummary(
-                10L,
-                LocalDate.of(2026, 3, 1).atStartOfDay(),
-                LocalDate.of(2026, 4, 1).atStartOfDay()
-        )).thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{10L, "Spring Concert", 5L, 3500.0, 700.0}));
+        when(bookingServiceClient.getEventRevenue(10L, "2026-03-01", "2026-03-31"))
+                .thenReturn(new EventBookingRevenueDTO(5L, 3500.0, 700.0));
 
         EventRevenueDTO dto = eventService.getEventRevenueSummary(
                 10L,
@@ -89,11 +115,8 @@ class EventServiceTest {
         event.setName("Spring Concert");
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findEventRevenueSummary(
-                10L,
-                LocalDate.of(2026, 3, 1).atStartOfDay(),
-                LocalDate.of(2026, 4, 1).atStartOfDay()
-        )).thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{10L, "Spring Concert", 0L, 0.0, 0.0}));
+        when(bookingServiceClient.getEventRevenue(10L, "2026-03-01", "2026-03-31"))
+                .thenReturn(new EventBookingRevenueDTO(0L, 0.0, 0.0));
 
         EventRevenueDTO dto = eventService.getEventRevenueSummary(
                 10L,
@@ -124,8 +147,10 @@ class EventServiceTest {
         event.setRating(4.5);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findEventDashboardMetrics(10L))
-                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{4L, 1400.0, 10L, 7L}));
+        when(bookingServiceClient.getEventRevenue(10L, "1970-01-01", "2999-12-31"))
+                .thenReturn(new EventBookingRevenueDTO(4L, 1400.0, 350.0));
+        when(ticketServiceClient.getEventTicketSummary(10L))
+                .thenReturn(new EventTicketSummaryDTO(10L, 7L));
 
         EventDashboardDTO dto = eventService.getEventDashboard(10L);
 
@@ -146,8 +171,10 @@ class EventServiceTest {
         event.setRating(0.0);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findEventDashboardMetrics(10L))
-                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{0L, 0.0, 0L, 0L}));
+        when(bookingServiceClient.getEventRevenue(10L, "1970-01-01", "2999-12-31"))
+                .thenReturn(new EventBookingRevenueDTO(0L, 0.0, 0.0));
+        when(ticketServiceClient.getEventTicketSummary(10L))
+                .thenReturn(new EventTicketSummaryDTO(0L, 0L));
 
         EventDashboardDTO dto = eventService.getEventDashboard(10L);
 
@@ -166,7 +193,7 @@ class EventServiceTest {
                 () -> eventService.getEventDashboard(404L));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
-        verify(eventRepository, never()).findEventDashboardMetrics(404L);
+        verify(bookingServiceClient, never()).getEventRevenue(404L, "1970-01-01", "2999-12-31");
     }
 
     @Test
@@ -194,14 +221,14 @@ class EventServiceTest {
         request.setRating(3);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findBookingById(20L))
-                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 10L, "COMPLETED"}));
+        when(bookingServiceClient.getBooking(20L)).thenReturn(new BookingDTO(20L, 1L, 10L, "COMPLETED", 300.0));
 
         eventService.rateEvent(10L, request);
 
         assertEquals(4.0, event.getRating());
         assertEquals(2, event.getTotalRatings());
         verify(eventRepository).save(event);
+        verify(eventEventPublisher).publishRated(org.mockito.ArgumentMatchers.any(EventRatedEvent.class));
     }
 
     @Test
@@ -214,7 +241,7 @@ class EventServiceTest {
         request.setRating(4);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findBookingById(20L)).thenReturn(List.of());
+        when(bookingServiceClient.getBooking(20L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> eventService.rateEvent(10L, request));
@@ -232,8 +259,7 @@ class EventServiceTest {
         request.setRating(4);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findBookingById(20L))
-                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 99L, "COMPLETED"}));
+        when(bookingServiceClient.getBooking(20L)).thenReturn(new BookingDTO(20L, 1L, 99L, "COMPLETED", 300.0));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> eventService.rateEvent(10L, request));
@@ -252,8 +278,7 @@ class EventServiceTest {
         request.setRating(4);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findBookingById(20L))
-                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 10L, "PENDING"}));
+        when(bookingServiceClient.getBooking(20L)).thenReturn(new BookingDTO(20L, 1L, 10L, "PENDING", 300.0));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> eventService.rateEvent(10L, request));
@@ -272,8 +297,7 @@ class EventServiceTest {
         request.setRating(6);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.findBookingById(20L))
-                .thenReturn(java.util.Collections.<Object[]>singletonList(new Object[]{20L, 10L, "COMPLETED"}));
+        when(bookingServiceClient.getBooking(20L)).thenReturn(new BookingDTO(20L, 1L, 10L, "COMPLETED", 300.0));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> eventService.rateEvent(10L, request));
@@ -294,7 +318,7 @@ class EventServiceTest {
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
         when(eventSessionRepository.findByIdWithEvent(20L)).thenReturn(Optional.of(session));
-        when(eventRepository.existsAdminUserById(3L)).thenReturn(true);
+        when(userServiceClient.getUser(3L)).thenReturn(new UserDTO(3L, "admin@example.com", "ADMIN"));
         when(eventRepository.findByIdWithEventSessions(10L)).thenReturn(Optional.of(loadedEvent));
 
         VerifyEventSessionRequest request = new VerifyEventSessionRequest();
@@ -325,7 +349,7 @@ class EventServiceTest {
                 () -> eventService.verifyEventSession(10L, 20L, request));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(eventRepository, never()).existsAdminUserById(3L);
+        verify(userServiceClient, never()).getUser(3L);
     }
 
     @Test
@@ -336,7 +360,7 @@ class EventServiceTest {
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
         when(eventSessionRepository.findByIdWithEvent(20L)).thenReturn(Optional.of(session));
-        when(eventRepository.existsAdminUserById(7L)).thenReturn(false);
+        when(userServiceClient.getUser(7L)).thenReturn(new UserDTO(7L, "attendee@example.com", "ATTENDEE"));
 
         VerifyEventSessionRequest request = new VerifyEventSessionRequest();
         request.setVerifiedBy(7L);
@@ -366,7 +390,7 @@ class EventServiceTest {
                 () -> eventService.verifyEventSession(10L, 20L, request));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(eventRepository, never()).existsAdminUserById(3L);
+        verify(userServiceClient, never()).getUser(3L);
     }
 
     @Test
@@ -379,12 +403,13 @@ class EventServiceTest {
         request.setStatus(EventStatus.CANCELLED);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.existsActiveBookingsForEvent(10L)).thenReturn(false);
+        when(bookingServiceClient.getEventActiveBookingCount(10L)).thenReturn(0);
 
         eventService.updateEventStatus(10L, request);
 
         assertEquals(EventStatus.CANCELLED, event.getStatus());
         verify(eventRepository).save(event);
+        verify(eventEventPublisher).publishStatusChanged(org.mockito.ArgumentMatchers.any(EventStatusChangedEvent.class));
     }
 
     @Test
@@ -397,7 +422,7 @@ class EventServiceTest {
         request.setStatus(EventStatus.CANCELLED);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(eventRepository.existsActiveBookingsForEvent(10L)).thenReturn(true);
+        when(bookingServiceClient.getEventActiveBookingCount(10L)).thenReturn(1);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> eventService.updateEventStatus(10L, request));

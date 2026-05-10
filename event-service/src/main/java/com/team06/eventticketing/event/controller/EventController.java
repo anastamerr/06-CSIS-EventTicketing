@@ -6,9 +6,11 @@ import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.event.dto.EventDashboardDTO;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
+import com.team06.eventticketing.event.dto.AvgCapacityDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.TopEventDTO;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
+import com.team06.eventticketing.event.dto.VenueCoordsDTO;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventCategory;
@@ -65,6 +67,18 @@ public class EventController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
         return eventService.getEventRevenueSummary(id, startDate, endDate);
+    }
+
+    @GetMapping("/{id}/sessions/avg-capacity")
+    @CachedFeature(service = "event-service", featureId = "S2-AVG-CAPACITY", ttlSeconds = 600)
+    public AvgCapacityDTO getEventAverageSessionCapacity(@PathVariable Long id) {
+        return eventService.getEventAverageSessionCapacity(id);
+    }
+
+    @GetMapping("/{id}/venue-coords")
+    @CachedFeature(service = "event-service", featureId = "S2-VENUE-COORDS", ttlSeconds = 600)
+    public VenueCoordsDTO getEventVenueCoords(@PathVariable Long id) {
+        return eventService.getEventVenueCoords(id);
     }
 
     @GetMapping("/{id}/dashboard")
