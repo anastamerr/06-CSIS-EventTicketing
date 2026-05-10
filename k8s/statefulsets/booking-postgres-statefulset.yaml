@@ -1,2 +1,37 @@
-# Placeholder for the M3 booking PostgreSQL StatefulSet manifest.
-# Populate according to M3.md when the booking-service slice is implemented.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: booking-postgres
+  namespace: eventticketing
+spec:
+  serviceName: booking-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: booking-postgres
+  template:
+    metadata:
+      labels:
+        app: booking-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: booking-postgres-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

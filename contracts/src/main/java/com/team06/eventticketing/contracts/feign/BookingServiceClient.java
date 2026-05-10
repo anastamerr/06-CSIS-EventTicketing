@@ -1,7 +1,9 @@
 package com.team06.eventticketing.contracts.feign;
 
 import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
 import com.team06.eventticketing.contracts.dto.EventBookingRevenueDTO;
+import java.math.BigDecimal;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,4 +24,20 @@ public interface BookingServiceClient {
 
     @GetMapping("/api/bookings/{bookingId}")
     BookingDTO getBooking(@PathVariable Long bookingId);
+
+    @GetMapping("/api/bookings/user/{userId}/summary")
+    BookingSummaryDTO getUserBookingSummary(@PathVariable Long userId);
+
+    @GetMapping("/api/bookings/user/{userId}/active-count")
+    int getUserActiveBookingCount(@PathVariable Long userId);
+
+    @GetMapping("/api/bookings/user/{userId}/count")
+    long getUserBookingCount(@PathVariable Long userId);
+
+    @GetMapping("/api/bookings/user/{userId}/total")
+    BigDecimal getUserCompletedBookingTotal(
+            @PathVariable Long userId,
+            @RequestParam String startDate,
+            @RequestParam String endDate
+    );
 }
