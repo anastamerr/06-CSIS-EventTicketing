@@ -7,16 +7,26 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
-import com.team06.eventticketing.event.adapter.EventDashboardAdapter;
-import com.team06.eventticketing.event.adapter.EventRevenueAdapter;
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.EventBookingRevenueDTO;
+import com.team06.eventticketing.contracts.dto.EventTicketSummaryDTO;
+import com.team06.eventticketing.contracts.dto.UserDTO;
+import com.team06.eventticketing.contracts.events.EventRatedEvent;
+import com.team06.eventticketing.contracts.events.EventStatusChangedEvent;
+import com.team06.eventticketing.contracts.feign.BookingServiceClient;
+import com.team06.eventticketing.contracts.feign.TicketServiceClient;
+import com.team06.eventticketing.contracts.feign.UserServiceClient;
 import com.team06.eventticketing.event.adapter.TopEventAdapter;
+import com.team06.eventticketing.event.dto.AvgCapacityDTO;
 import com.team06.eventticketing.event.dto.EventDashboardDTO;
 import com.team06.eventticketing.event.dto.EventRevenueDTO;
 import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
 import com.team06.eventticketing.event.dto.RateEventRequest;
 import com.team06.eventticketing.event.dto.TopEventDTO;
 import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
+import com.team06.eventticketing.event.dto.VenueCoordsDTO;
 import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
+import com.team06.eventticketing.event.messaging.EventEventPublisher;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventSession;
@@ -32,16 +42,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
+import feign.FeignException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.lang.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class EventService {
+
+    private static final Logger log = LoggerFactory.getLogger(EventService.class);
 
     private static final List<String> INDEXED_FIELDS = List.of(
             "id",
@@ -56,12 +72,14 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final EventSessionRepository eventSessionRepository;
-    private final EventDashboardAdapter eventDashboardAdapter;
-    private final EventRevenueAdapter eventRevenueAdapter;
     private final TopEventAdapter topEventAdapter;
     private final EventSearchSyncService eventSearchSyncService;
     private final EventFullTextSearchService eventFullTextSearchService;
     private final RedisCacheService redisCacheService;
+    private final BookingServiceClient bookingServiceClient;
+    private final UserServiceClient userServiceClient;
+    private final TicketServiceClient ticketServiceClient;
+    private final EventEventPublisher eventEventPublisher;
     private final JavaType eventDashboardType;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
@@ -69,53 +87,51 @@ public class EventService {
     public EventService(
             EventRepository eventRepository,
             EventSessionRepository eventSessionRepository,
-            EventDashboardAdapter eventDashboardAdapter,
-            EventRevenueAdapter eventRevenueAdapter,
             TopEventAdapter topEventAdapter,
             EventSearchSyncService eventSearchSyncService,
             EventFullTextSearchService eventFullTextSearchService,
             RedisCacheService redisCacheService,
+            BookingServiceClient bookingServiceClient,
+            UserServiceClient userServiceClient,
+            TicketServiceClient ticketServiceClient,
+            EventEventPublisher eventEventPublisher,
             ObjectMapper objectMapper,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory
     ) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
-        this.eventDashboardAdapter = eventDashboardAdapter;
-        this.eventRevenueAdapter = eventRevenueAdapter;
         this.topEventAdapter = topEventAdapter;
         this.eventSearchSyncService = eventSearchSyncService;
         this.eventFullTextSearchService = eventFullTextSearchService;
         this.redisCacheService = redisCacheService;
+        this.bookingServiceClient = bookingServiceClient;
+        this.userServiceClient = userServiceClient;
+        this.ticketServiceClient = ticketServiceClient;
+        this.eventEventPublisher = eventEventPublisher;
         this.eventDashboardType = objectMapper.getTypeFactory().constructType(EventDashboardDTO.class);
         registerObserverIfAvailable(mongoTemplate, eventFactory);
-    }
-
-    public EventService(EventRepository eventRepository, EventSessionRepository eventSessionRepository) {
-        this.eventRepository = eventRepository;
-        this.eventSessionRepository = eventSessionRepository;
-        this.eventDashboardAdapter = new EventDashboardAdapter();
-        this.eventRevenueAdapter = new EventRevenueAdapter();
-        this.topEventAdapter = new TopEventAdapter();
-        this.eventSearchSyncService = null;
-        this.eventFullTextSearchService = null;
-        this.redisCacheService = null;
-        this.eventDashboardType = null;
     }
 
     public EventService(
             EventRepository eventRepository,
             EventSessionRepository eventSessionRepository,
-            EventFullTextSearchService eventFullTextSearchService
+            EventFullTextSearchService eventFullTextSearchService,
+            BookingServiceClient bookingServiceClient,
+            UserServiceClient userServiceClient,
+            TicketServiceClient ticketServiceClient,
+            EventEventPublisher eventEventPublisher
     ) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
-        this.eventDashboardAdapter = new EventDashboardAdapter();
-        this.eventRevenueAdapter = new EventRevenueAdapter();
         this.topEventAdapter = new TopEventAdapter();
         this.eventSearchSyncService = null;
         this.eventFullTextSearchService = eventFullTextSearchService;
         this.redisCacheService = null;
+        this.bookingServiceClient = bookingServiceClient;
+        this.userServiceClient = userServiceClient;
+        this.ticketServiceClient = ticketServiceClient;
+        this.eventEventPublisher = eventEventPublisher;
         this.eventDashboardType = null;
     }
 
@@ -127,12 +143,14 @@ public class EventService {
     ) {
         this.eventRepository = eventRepository;
         this.eventSessionRepository = eventSessionRepository;
-        this.eventDashboardAdapter = new EventDashboardAdapter();
-        this.eventRevenueAdapter = new EventRevenueAdapter();
         this.topEventAdapter = new TopEventAdapter();
         this.eventSearchSyncService = eventSearchSyncService;
         this.eventFullTextSearchService = eventFullTextSearchService;
         this.redisCacheService = null;
+        this.bookingServiceClient = null;
+        this.userServiceClient = null;
+        this.ticketServiceClient = null;
+        this.eventEventPublisher = null;
         this.eventDashboardType = null;
     }
 
@@ -204,19 +222,20 @@ public class EventService {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
 
-        LocalDateTime startDateTime = startDate.atStartOfDay();
-        LocalDateTime endDateTime = endDate.plusDays(1).atStartOfDay();
-        List<Object[]> results = eventRepository.findEventRevenueSummary(eventId, startDateTime, endDateTime);
-        if (results.isEmpty()) {
+        withEventMdc(eventId);
+        try {
+            EventBookingRevenueDTO revenue = getEventRevenueOrZero(eventId, startDate.toString(), endDate.toString());
+            log.info("Feign booking-service revenue lookup succeeded");
             return EventRevenueDTO.builder()
                     .eventId(event.getId())
                     .name(event.getName())
-                    .totalBookings(0L)
-                    .totalRevenue(0.0)
-                    .averageBookingAmount(0.0)
+                    .totalBookings(revenue.totalBookings())
+                    .totalRevenue(revenue.totalRevenue())
+                    .averageBookingAmount(revenue.averageBookingAmount())
                     .build();
+        } finally {
+            clearEventMdc();
         }
-        return eventRevenueAdapter.adapt(results.get(0));
     }
 
     @Transactional(readOnly = true)
@@ -233,11 +252,56 @@ public class EventService {
             return cached;
         }
 
-        List<Object[]> results = eventRepository.findEventDashboardMetrics(eventId);
-        Object[] row = results.isEmpty() ? new Object[]{0L, 0.0, 0L, 0L} : results.get(0);
-        EventDashboardDTO dashboard = eventDashboardAdapter.adapt(event, row);
-        putCachedEventDashboard(eventId, dashboard);
-        return dashboard;
+        withEventMdc(eventId);
+        try {
+            EventBookingRevenueDTO revenue = getEventRevenueOrZero(eventId, "1970-01-01", "2999-12-31");
+            EventTicketSummaryDTO ticketSummary = getEventTicketSummaryOrZero(eventId);
+            long totalTicketsSold = ticketSummary.totalTicketsSold();
+            double averageAttendanceRate = totalTicketsSold == 0
+                    ? 0.0
+                    : (double) ticketSummary.usedCount() / totalTicketsSold;
+            log.info("Feign dashboard aggregation lookups succeeded");
+            EventDashboardDTO dashboard = EventDashboardDTO.builder()
+                    .eventId(event.getId())
+                    .name(event.getName())
+                    .totalBookings(revenue.totalBookings())
+                    .totalTicketsSold(totalTicketsSold)
+                    .totalRevenue(revenue.totalRevenue())
+                    .averageAttendanceRate(averageAttendanceRate)
+                    .averageRating(event.getRating() == null ? 0.0 : event.getRating())
+                    .build();
+            putCachedEventDashboard(eventId, dashboard);
+            return dashboard;
+        } finally {
+            clearEventMdc();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public AvgCapacityDTO getEventAverageSessionCapacity(Long eventId) {
+        eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+        withEventMdc(eventId);
+        try {
+            return new AvgCapacityDTO(eventSessionRepository.findAverageCapacityByEventId(eventId));
+        } finally {
+            clearEventMdc();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public VenueCoordsDTO getEventVenueCoords(Long eventId) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+        withEventMdc(eventId);
+        try {
+            Map<String, Object> details = event.getDetails();
+            return new VenueCoordsDTO(
+                    asDouble(details == null ? null : details.get("venueLat")),
+                    asDouble(details == null ? null : details.get("venueLon")));
+        } finally {
+            clearEventMdc();
+        }
     }
 
     public List<Event> findByDetailAttribute(String key, String value, EventStatus status) {
@@ -265,40 +329,46 @@ public class EventService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required");
         }
 
-        List<Object[]> bookings = eventRepository.findBookingById(request.getBookingId());
-        if (bookings.isEmpty()) {
+        withEventMdc(eventId);
+        try {
+            BookingDTO booking;
+            booking = bookingServiceClient.getBooking(request.getBookingId());
+            log.info("Feign booking-service booking lookup succeeded");
+            if (booking == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+            }
+
+            if (!eventId.equals(booking.eventId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking does not belong to the specified event");
+            }
+
+            if (!"COMPLETED".equals(booking.status())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed");
+            }
+
+            if (request.getRating() < 1 || request.getRating() > 5) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
+            }
+
+            double oldRating = event.getRating() == null ? 0.0 : event.getRating();
+            int totalRatings = event.getTotalRatings() == null ? 0 : event.getTotalRatings();
+            double newRating = ((oldRating * totalRatings) + request.getRating()) / (totalRatings + 1);
+
+            event.setRating(newRating);
+            event.setTotalRatings(totalRatings + 1);
+            eventRepository.save(event);
+            eventSearchSync(event, "auto_crud_update");
+            publishRated(event, request, booking);
+            notifyObservers("RATED", Map.of(
+                    "eventId", event.getId(),
+                    "details", Map.of(
+                            "rating", request.getRating(),
+                            "bookingId", request.getBookingId())));
+        } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        } finally {
+            clearEventMdc();
         }
-        Object[] booking = bookings.get(0);
-
-        Long bookingEventId = booking[1] == null ? null : ((Number) booking[1]).longValue();
-        String bookingStatus = booking[2] == null ? null : booking[2].toString();
-
-        if (!eventId.equals(bookingEventId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking does not belong to the specified event");
-        }
-
-        if (!"COMPLETED".equals(bookingStatus)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed");
-        }
-
-        if (request.getRating() < 1 || request.getRating() > 5) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
-        }
-
-        double oldRating = event.getRating() == null ? 0.0 : event.getRating();
-        int totalRatings = event.getTotalRatings() == null ? 0 : event.getTotalRatings();
-        double newRating = ((oldRating * totalRatings) + request.getRating()) / (totalRatings + 1);
-
-        event.setRating(newRating);
-        event.setTotalRatings(totalRatings + 1);
-        eventRepository.save(event);
-        eventSearchSync(event, "auto_crud_update");
-        notifyObservers("RATED", Map.of(
-                "eventId", event.getId(),
-                "details", Map.of(
-                        "rating", request.getRating(),
-                        "bookingId", request.getBookingId())));
     }
 
     @Transactional
@@ -322,26 +392,37 @@ public class EventService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot verify a session that already happened");
         }
 
-        if (!eventRepository.existsAdminUserById(request.getVerifiedBy())) {
+        withEventMdc(eventId);
+        try {
+            UserDTO verifier;
+            verifier = userServiceClient.getUser(request.getVerifiedBy());
+            log.info("Feign user-service verifier lookup succeeded");
+
+            if (verifier == null || !"ADMIN".equals(verifier.role())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Verifier must be an admin user");
+            }
+
+            session.setVerified(Boolean.TRUE);
+            Map<String, Object> metadata = session.getMetadata() == null
+                    ? new LinkedHashMap<>()
+                    : new LinkedHashMap<>(session.getMetadata());
+            metadata.put("verifiedAt", now.toString());
+            metadata.put("verifiedBy", request.getVerifiedBy());
+            session.setMetadata(metadata);
+            eventSessionRepository.save(session);
+            notifyObservers("SESSION_VERIFIED", Map.of(
+                    "eventId", eventId,
+                    "details", Map.of(
+                            "sessionId", sessionId,
+                            "verifiedBy", request.getVerifiedBy())));
+
+            return eventRepository.findByIdWithEventSessions(eventId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+        } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Verifier must be an admin user");
+        } finally {
+            clearEventMdc();
         }
-
-        session.setVerified(Boolean.TRUE);
-        Map<String, Object> metadata = session.getMetadata() == null
-                ? new LinkedHashMap<>()
-                : new LinkedHashMap<>(session.getMetadata());
-        metadata.put("verifiedAt", now.toString());
-        metadata.put("verifiedBy", request.getVerifiedBy());
-        session.setMetadata(metadata);
-        eventSessionRepository.save(session);
-        notifyObservers("SESSION_VERIFIED", Map.of(
-                "eventId", eventId,
-                "details", Map.of(
-                        "sessionId", sessionId,
-                        "verifiedBy", request.getVerifiedBy())));
-
-        return eventRepository.findByIdWithEventSessions(eventId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
     }
     @Transactional
     public void updateEventStatus(Long eventId, UpdateEventStatusRequest request) {
@@ -351,20 +432,28 @@ public class EventService {
 
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
+        EventStatus oldStatus = event.getStatus();
 
-        if (request.getStatus() == EventStatus.CANCELLED
-                && eventRepository.existsActiveBookingsForEvent(eventId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Cannot cancel event with active bookings"
-            );
+        withEventMdc(eventId);
+        try {
+            if (request.getStatus() == EventStatus.CANCELLED
+                    && bookingServiceClient.getEventActiveBookingCount(eventId) > 0) {
+                log.info("Feign booking-service active booking count blocked cancellation");
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Cannot cancel event with active bookings"
+                );
+            }
+            event.setStatus(request.getStatus());
+            eventRepository.save(event);
+            eventSearchSync(event, "auto_crud_update");
+            publishStatusChanged(event, oldStatus);
+            notifyObservers("STATUS_CHANGED", Map.of(
+                    "eventId", eventId,
+                    "details", Map.of("status", request.getStatus().name())));
+        } finally {
+            clearEventMdc();
         }
-        event.setStatus(request.getStatus());
-        eventRepository.save(event);
-        eventSearchSync(event, "auto_crud_update");
-        notifyObservers("STATUS_CHANGED", Map.of(
-                "eventId", eventId,
-                "details", Map.of("status", request.getStatus().name())));
     }
     @Transactional(readOnly = true)
     public List<EventSessionAlertDTO> getEventsWithUnverifiedSessions() {
@@ -501,6 +590,61 @@ public class EventService {
 
     private String eventDashboardCacheKey(Long eventId) {
         return "event-service::S2-F12::" + eventId;
+    }
+
+    private void publishStatusChanged(Event event, EventStatus oldStatus) {
+        if (eventEventPublisher != null) {
+            eventEventPublisher.publishStatusChanged(new EventStatusChangedEvent(
+                    event.getId(),
+                    oldStatus == null ? null : oldStatus.name(),
+                    event.getStatus() == null ? null : event.getStatus().name()));
+        }
+    }
+
+    private EventBookingRevenueDTO getEventRevenueOrZero(Long eventId, String startDate, String endDate) {
+        try {
+            return bookingServiceClient.getEventRevenue(eventId, startDate, endDate);
+        } catch (FeignException.NotFound exception) {
+            return new EventBookingRevenueDTO(0L, 0.0, 0.0);
+        }
+    }
+
+    private EventTicketSummaryDTO getEventTicketSummaryOrZero(Long eventId) {
+        try {
+            return ticketServiceClient.getEventTicketSummary(eventId);
+        } catch (FeignException.NotFound exception) {
+            return new EventTicketSummaryDTO(0L, 0L);
+        }
+    }
+
+    private void publishRated(Event event, RateEventRequest request, BookingDTO booking) {
+        if (eventEventPublisher != null) {
+            eventEventPublisher.publishRated(new EventRatedEvent(
+                    event.getId(),
+                    request.getBookingId(),
+                    (double) request.getRating(),
+                    booking.userId()));
+        }
+    }
+
+    private Double asDouble(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        return Double.valueOf(value.toString());
+    }
+
+    private void withEventMdc(Long eventId) {
+        if (eventId != null) {
+            MDC.put("eventId", eventId.toString());
+        }
+    }
+
+    private void clearEventMdc() {
+        MDC.remove("eventId");
     }
 
     private Map<String, Object> buildIndexedDetails(Long eventId, String source) {
