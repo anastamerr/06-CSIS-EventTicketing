@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import com.team06.eventticketing.event.dto.AvgCapacityDTO;
 
 @RestController
 @RequestMapping("/api/events/{eventId}/sessions")
@@ -36,7 +37,10 @@ public class EventSessionController {
     public List<EventSession> getSessions(@PathVariable Long eventId) {
         return eventSessionService.getSessions(eventId);
     }
-
+    @GetMapping("/avg-capacity")
+    public AvgCapacityDTO getAverageCapacity(@PathVariable Long eventId) {
+        return eventSessionService.getAverageCapacity(eventId);
+    }
     @GetMapping("/{sessionId}")
     @CachedDetail(service = "event-service", entity = "event-session", key = "#sessionId", ttlSeconds = 900)
     public EventSession getSession(@PathVariable Long eventId, @PathVariable Long sessionId) {
