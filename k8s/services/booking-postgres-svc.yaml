@@ -1,2 +1,13 @@
-# Placeholder for the M3 booking PostgreSQL Service manifest.
-# Populate according to M3.md when the booking-service slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-postgres
+  namespace: eventticketing
+spec:
+  clusterIP: None
+  selector:
+    app: booking-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

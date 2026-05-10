@@ -2,7 +2,7 @@ spring:
   application:
     name: booking-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/eventticketingdb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://booking-postgres:5432/etdb-bookings}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   sql:
@@ -30,6 +30,19 @@ spring:
       password: ${SPRING_NEO4J_AUTHENTICATION_PASSWORD:neo4jpass}
   mongodb:
     uri: ${SPRING_MONGODB_URI:mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin}
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:rabbitmq}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 1000
+          max-attempts: 3
 
 jwt:
   secret: ${JWT_SECRET:bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h}
@@ -37,3 +50,26 @@ jwt:
 
 server:
   port: 8080
+
+feign:
+  user-service:
+    url: ${FEIGN_USER_SERVICE_URL:http://user-service:8080}
+  event-service:
+    url: ${FEIGN_EVENT_SERVICE_URL:http://event-service:8080}
+  ticket-service:
+    url: ${FEIGN_TICKET_SERVICE_URL:http://ticket-service:8080}
+  sales-service:
+    url: ${FEIGN_SALES_SERVICE_URL:http://sales-service:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+loki:
+  url: ${LOKI_URL:http://loki:3100/loki/api/v1/push}
