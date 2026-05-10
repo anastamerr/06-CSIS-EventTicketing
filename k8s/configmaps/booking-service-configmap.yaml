@@ -1,2 +1,16 @@
-# Placeholder for the M3 booking-service ConfigMap manifest.
-# Populate according to M3.md when the booking-service slice is implemented.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: booking-service-config
+  namespace: eventticketing
+data:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://booking-postgres:5432/etdb-bookings
+  SPRING_RABBITMQ_HOST: rabbitmq
+  SPRING_RABBITMQ_PORT: "5672"
+  SPRING_RABBITMQ_USERNAME: guest
+  SPRING_RABBITMQ_PASSWORD: guest
+  FEIGN_USER_SERVICE_URL: http://user-service:8080
+  FEIGN_EVENT_SERVICE_URL: http://event-service:8080
+  FEIGN_TICKET_SERVICE_URL: http://ticket-service:8080
+  FEIGN_SALES_SERVICE_URL: http://sales-service:8080
+  LOKI_URL: http://loki.monitoring:3100/loki/api/v1/push
