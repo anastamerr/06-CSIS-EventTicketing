@@ -54,6 +54,7 @@ public class BookingService {
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
     private final EventServiceClient eventServiceClient;
     private final UserServiceClient userServiceClient;
+    private final BookingEventPublisher bookingEventPublisher;
 
     @Autowired
     public BookingService(
@@ -65,7 +66,8 @@ public class BookingService {
             EventFactory eventFactory,
             ObjectProvider<BookingService> selfProvider,
             EventServiceClient eventServiceClient,
-            UserServiceClient userServiceClient
+            UserServiceClient userServiceClient,
+            BookingEventPublisher bookingEventPublisher
 
     ) {
         this.bookingRepository = bookingRepository;
@@ -76,6 +78,7 @@ public class BookingService {
         registerObserverIfAvailable(mongoTemplate, eventFactory);
         this.eventServiceClient = eventServiceClient;
         this.userServiceClient = userServiceClient;
+        this.bookingEventPublisher = bookingEventPublisher;
     }
 
     public BookingService(
@@ -83,7 +86,8 @@ public class BookingService {
             TicketJdbcRepository ticketJdbcRepository,
             TicketSaleJdbcRepository ticketSaleJdbcRepository,
             EventServiceClient eventServiceClient,
-            UserServiceClient userServiceClient
+            UserServiceClient userServiceClient,
+            BookingEventPublisher bookingEventPublisher
     ) {
         this.bookingRepository = bookingRepository;
         this.ticketJdbcRepository = ticketJdbcRepository;
@@ -92,6 +96,7 @@ public class BookingService {
         this.selfProvider = null;
         this.eventServiceClient = eventServiceClient;
         this.userServiceClient = userServiceClient;
+        this.bookingEventPublisher = null;
     }
 
     public List<Booking> getAllBookings() {
@@ -327,7 +332,12 @@ public class BookingService {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setConfirmedAt(LocalDateTime.now());
 
-        return bookingRepository.save(booking);
+        Booking savedBooking = bookingRepository.save(booking);
+        if (bookingEventPublisher != null) {
+            bookingEventPublisher.publishBookingPlaced(savedBooking);
+        }
+
+        return savedBooking;
     }
 
     @Transactional

@@ -60,6 +60,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import com.team06.eventticketing.booking.client.EventServiceClient;
 import com.team06.eventticketing.booking.client.UserServiceClient;
+import com.team06.eventticketing.booking.service.BookingEventPublisher;
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
 
@@ -78,6 +79,9 @@ class BookingServiceTest {
     @Mock
     private UserServiceClient userServiceClient;
 
+    @Mock
+    private BookingEventPublisher bookingEventPublisher;
+
     @Captor
     private ArgumentCaptor<Map<String, Object>> transactionDetailsCaptor;
 
@@ -85,7 +89,7 @@ class BookingServiceTest {
 
     @BeforeEach
     void setUp() {
-        bookingService = new BookingService(bookingRepository, ticketJdbcRepository, ticketSaleJdbcRepository , eventServiceClient , userServiceClient);
+        bookingService = new BookingService(bookingRepository, ticketJdbcRepository, ticketSaleJdbcRepository , eventServiceClient , userServiceClient , bookingEventPublisher);
     }
 
     @Test
@@ -513,7 +517,8 @@ class BookingServiceTest {
                 null,
                 selfProvider,
                 eventServiceClient,
-                userServiceClient);
+                userServiceClient,
+                bookingEventPublisher);
         RedisCacheService redisCacheService = mock(RedisCacheService.class);
         BookingAnalyticsDashboardDTO cachedDashboard = BookingAnalyticsDashboardDTO.builder()
                 .totalBookings(3L)
