@@ -2,6 +2,7 @@ package com.team06.eventticketing.booking.service;
 
 import com.team06.eventticketing.booking.adapter.BookingAnalyticsAdapter;
 import com.team06.eventticketing.booking.client.EventServiceClient;
+import com.team06.eventticketing.booking.client.UserServiceClient;
 import com.team06.eventticketing.booking.dto.*;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
@@ -52,6 +53,7 @@ public class BookingService {
     private final ObjectProvider<BookingService> selfProvider;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
     private final EventServiceClient eventServiceClient;
+    private final UserServiceClient userServiceClient;
 
     @Autowired
     public BookingService(
@@ -62,7 +64,9 @@ public class BookingService {
             MongoTemplate mongoTemplate,
             EventFactory eventFactory,
             ObjectProvider<BookingService> selfProvider,
-            EventServiceClient eventServiceClient
+            EventServiceClient eventServiceClient,
+            UserServiceClient userServiceClient
+
     ) {
         this.bookingRepository = bookingRepository;
         this.ticketJdbcRepository = ticketJdbcRepository;
@@ -71,13 +75,15 @@ public class BookingService {
         this.selfProvider = selfProvider;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
         this.eventServiceClient = eventServiceClient;
+        this.userServiceClient = userServiceClient;
     }
 
     public BookingService(
             BookingRepository bookingRepository,
             TicketJdbcRepository ticketJdbcRepository,
             TicketSaleJdbcRepository ticketSaleJdbcRepository,
-            EventServiceClient eventServiceClient
+            EventServiceClient eventServiceClient,
+            UserServiceClient userServiceClient
     ) {
         this.bookingRepository = bookingRepository;
         this.ticketJdbcRepository = ticketJdbcRepository;
@@ -85,6 +91,7 @@ public class BookingService {
         this.bookingAnalyticsAdapter = new BookingAnalyticsAdapter();
         this.selfProvider = null;
         this.eventServiceClient = eventServiceClient;
+        this.userServiceClient = userServiceClient;
     }
 
     public List<Booking> getAllBookings() {

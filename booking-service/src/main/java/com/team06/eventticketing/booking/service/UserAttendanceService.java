@@ -1,7 +1,11 @@
 package com.team06.eventticketing.booking.service;
 
+import com.team06.eventticketing.booking.client.EventServiceClient;
+import com.team06.eventticketing.booking.client.UserServiceClient;
 import com.team06.eventticketing.booking.dto.AttendanceResponse;
 import com.team06.eventticketing.booking.dto.BookingAttendanceData;
+import com.team06.eventticketing.booking.dto.EventDTO;
+import com.team06.eventticketing.booking.dto.UserDTO;
 import com.team06.eventticketing.booking.repository.AttendanceGraphRepository;
 import com.team06.eventticketing.booking.repository.BookingAttendanceLookupRepository;
 import com.team06.eventticketing.common.cache.RedisCacheService;
@@ -19,23 +23,32 @@ public class UserAttendanceService {
     private final AttendanceGraphRepository attendanceGraphRepository;
     private final BookingService bookingService;
     private final RedisCacheService redisCacheService;
+    private final UserServiceClient userServiceClient;
+    private final EventServiceClient eventServiceClient;
 
     public UserAttendanceService(
             BookingAttendanceLookupRepository lookupRepository,
             AttendanceGraphRepository attendanceGraphRepository,
             BookingService bookingService,
-            RedisCacheService redisCacheService) {
+            RedisCacheService redisCacheService,
+            UserServiceClient userServiceClient,
+            EventServiceClient eventServiceClient
+            )
+    {
         this.lookupRepository = lookupRepository;
         this.attendanceGraphRepository = attendanceGraphRepository;
         this.bookingService = bookingService;
         this.redisCacheService = redisCacheService;
+        this.userServiceClient = userServiceClient;
+        this.eventServiceClient = eventServiceClient;
     }
 
     @Transactional
     public AttendanceResponse recordAttendance(Long bookingId) {
         BookingAttendanceData data = lookupRepository.findAttendanceDataByBookingId(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
-
+        UserDTO user = userServiceClient.getUser(data.userId());
+        EventDTO event = eventServiceClient.getEvent(data.eventId());
         if (!"COMPLETED".equalsIgnoreCase(data.bookingStatus())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -59,10 +72,10 @@ public class UserAttendanceService {
 
         attendanceGraphRepository.recordAttendance(
                 data.userId(),
-                data.userName(),
+                user.getName(),
                 data.eventId(),
-                data.eventName(),
-                data.eventCategory(),
+                event.getName(),
+                event.getCategory(),
                 data.bookingId());
 
         Map<String, Object> details = new HashMap<>();
