@@ -2,12 +2,12 @@ package com.team06.eventticketing.common.auth;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
@@ -28,6 +28,7 @@ public class SecurityConfiguration {
                             var authentication = org.springframework.security.core.context.SecurityContextHolder
                                     .getContext()
                                     .getAuthentication();
+
                             if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
                                 response.sendError(401, "Authentication required");
                             } else {
@@ -35,15 +36,20 @@ public class SecurityConfiguration {
                             }
                         }))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/actuator/health", "/health", "/error")
-                        .permitAll()
                         .requestMatchers(
-                                PathPatternRequestMatcher.pathPattern("/api/{service}/health"),
-                                PathPatternRequestMatcher.pathPattern("/api/{segment1}/{segment2}/health"),
-                                PathPatternRequestMatcher.pathPattern("/{*path}/health"))
+                                "/api/auth/**",
+                                "/actuator/health",
+                                "/health",
+                                "/error",
+                                "/api/*/health",
+                                "/api/*/*/health",
+                                "/api/bookings/*/confirm",
+                                "/api/events/*"
+                        )
                         .permitAll()
                         .anyRequest()
-                        .authenticated())
+                        .authenticated()
+                )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
