@@ -5,6 +5,7 @@ target/
 .kotlin
 .idea/
 .env
+outputs/
 *.class
 
 ### IntelliJ IDEA ###
