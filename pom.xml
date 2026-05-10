@@ -17,6 +17,7 @@
     </properties>
 
     <modules>
+        <module>contracts</module>
         <module>common</module>
         <module>user-service</module>
         <module>event-service</module>
