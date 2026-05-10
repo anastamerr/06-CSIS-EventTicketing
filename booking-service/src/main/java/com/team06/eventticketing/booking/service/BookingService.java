@@ -38,6 +38,7 @@ import feign.FeignException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
+import com.team06.eventticketing.booking.dto.AvgCapacityDTO;
 
 @Service
 public class BookingService {
@@ -93,18 +94,27 @@ public class BookingService {
     @Transactional(readOnly = true)
     public BookingCostEstimateDTO estimateBookingCost(BookingEstimateRequest request) {
         validateEstimateRequest(request);
-        Double averageSessionCapacity = bookingRepository.findAverageSessionCapacityByEventId(request.eventId());
-        if (averageSessionCapacity == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event sessions not found");
+
+        AvgCapacityDTO capacityDto;
+        try {
+            capacityDto = eventServiceClient.getEventAvgCapacity(request.eventId());
+        } catch (FeignException.NotFound ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
         }
+
+        double averageSessionCapacity = capacityDto.getAvgCapacity() == null
+                ? 0.0
+                : capacityDto.getAvgCapacity();
 
         double basePrice = averageSessionCapacity / 10.0;
         double tierMultiplier = "VIP".equalsIgnoreCase(request.ticketTier()) ? 2.5 : 1.0;
         double ticketCost = basePrice * tierMultiplier * request.ticketCount();
         double serviceFee = ticketCost * 0.15;
-        double demandMultiplier = resolveDemandMultiplier(bookingRepository.countActiveBookingsByEventId(
-                request.eventId()
-        ));
+
+        double demandMultiplier = resolveDemandMultiplier(
+                bookingRepository.countActiveBookingsByEventId(request.eventId())
+        );
+
         double estimatedTotal = (ticketCost + serviceFee) * demandMultiplier;
 
         return BookingCostEstimateDTO.builder()

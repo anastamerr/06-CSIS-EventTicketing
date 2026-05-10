@@ -4,6 +4,7 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.event.dto.AvgCapacityDTO;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventSession;
 import com.team06.eventticketing.event.repository.EventRepository;
@@ -120,5 +121,23 @@ public class EventSessionService {
         if (mongoTemplate != null && eventFactory != null) {
             register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.EVENT_ACTIVITY, "event_events"));
         }
+    }
+    public AvgCapacityDTO getAverageCapacity(Long eventId) {
+        List<EventSession> sessions = getSessions(eventId);
+
+        if (sessions == null || sessions.isEmpty()) {
+            AvgCapacityDTO dto = new AvgCapacityDTO();
+            dto.setAvgCapacity(0.0);
+            return dto;
+        }
+
+        double avg = sessions.stream()
+                .mapToDouble(EventSession::getCapacity)
+                .average()
+                .orElse(0.0);
+
+        AvgCapacityDTO dto = new AvgCapacityDTO();
+        dto.setAvgCapacity(avg);
+        return dto;
     }
 }
