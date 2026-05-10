@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -161,10 +162,11 @@ public class BookingController {
             service = "booking-service",
             featurePrefix = "S3-",
             detailKeys = {"'booking-service::booking::' + #bookingId"})
-    public Booking confirmBooking(
+    public ResponseEntity<Booking> confirmBooking(
             @PathVariable Long bookingId,
-            @RequestParam Long eventId) {
-        return bookingService.confirmBooking(bookingId, eventId);
+            @RequestParam Long eventId
+    ) {
+        return ResponseEntity.ok(bookingService.confirmBooking(bookingId, eventId));
     }
 
 

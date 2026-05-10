@@ -58,6 +58,7 @@ import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.booking.client.EventServiceClient;
 
 @ExtendWith(MockitoExtension.class)
 class BookingServiceTest {
@@ -71,6 +72,9 @@ class BookingServiceTest {
     @Mock
     private TicketJdbcRepository ticketJdbcRepository;
 
+    @Mock
+    private EventServiceClient eventServiceClient;
+
     @Captor
     private ArgumentCaptor<Map<String, Object>> transactionDetailsCaptor;
 
@@ -78,7 +82,7 @@ class BookingServiceTest {
 
     @BeforeEach
     void setUp() {
-        bookingService = new BookingService(bookingRepository, ticketJdbcRepository, ticketSaleJdbcRepository);
+        bookingService = new BookingService(bookingRepository, ticketJdbcRepository, ticketSaleJdbcRepository , eventServiceClient);
     }
 
     @Test
@@ -504,7 +508,8 @@ class BookingServiceTest {
                 new com.team06.eventticketing.booking.adapter.BookingAnalyticsAdapter(),
                 null,
                 null,
-                selfProvider);
+                selfProvider,
+                eventServiceClient);
         RedisCacheService redisCacheService = mock(RedisCacheService.class);
         BookingAnalyticsDashboardDTO cachedDashboard = BookingAnalyticsDashboardDTO.builder()
                 .totalBookings(3L)

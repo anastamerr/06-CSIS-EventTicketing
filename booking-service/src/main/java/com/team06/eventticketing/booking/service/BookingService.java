@@ -1,14 +1,8 @@
 package com.team06.eventticketing.booking.service;
 
 import com.team06.eventticketing.booking.adapter.BookingAnalyticsAdapter;
-import com.team06.eventticketing.booking.dto.BookingAnalyticsDTO;
-import com.team06.eventticketing.booking.dto.BookingAnalyticsDashboardDTO;
-import com.team06.eventticketing.booking.dto.BookingCostEstimateDTO;
-import com.team06.eventticketing.booking.dto.BookingDetailsDTO;
-import com.team06.eventticketing.booking.dto.BookingDetailsItemDTO;
-import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
-import com.team06.eventticketing.booking.dto.BookingItemRequest;
-import com.team06.eventticketing.booking.dto.BookingRequest;
+import com.team06.eventticketing.booking.client.EventServiceClient;
+import com.team06.eventticketing.booking.dto.*;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
@@ -40,6 +34,10 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import feign.FeignException;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import java.time.LocalDateTime;
 
 @Service
 public class BookingService {
@@ -52,6 +50,7 @@ public class BookingService {
     private final BookingAnalyticsAdapter bookingAnalyticsAdapter;
     private final ObjectProvider<BookingService> selfProvider;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
+    private final EventServiceClient eventServiceClient;
 
     @Autowired
     public BookingService(
@@ -61,7 +60,8 @@ public class BookingService {
             BookingAnalyticsAdapter bookingAnalyticsAdapter,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory,
-            ObjectProvider<BookingService> selfProvider
+            ObjectProvider<BookingService> selfProvider,
+            EventServiceClient eventServiceClient
     ) {
         this.bookingRepository = bookingRepository;
         this.ticketJdbcRepository = ticketJdbcRepository;
@@ -69,18 +69,21 @@ public class BookingService {
         this.bookingAnalyticsAdapter = bookingAnalyticsAdapter;
         this.selfProvider = selfProvider;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
+        this.eventServiceClient = eventServiceClient;
     }
 
     public BookingService(
             BookingRepository bookingRepository,
             TicketJdbcRepository ticketJdbcRepository,
-            TicketSaleJdbcRepository ticketSaleJdbcRepository
+            TicketSaleJdbcRepository ticketSaleJdbcRepository,
+            EventServiceClient eventServiceClient
     ) {
         this.bookingRepository = bookingRepository;
         this.ticketJdbcRepository = ticketJdbcRepository;
         this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
         this.bookingAnalyticsAdapter = new BookingAnalyticsAdapter();
         this.selfProvider = null;
+        this.eventServiceClient = eventServiceClient;
     }
 
     public List<Booking> getAllBookings() {
@@ -275,34 +278,39 @@ public class BookingService {
         return saved;
     }
 
-    @Transactional
     public Booking confirmBooking(Long bookingId, Long eventId) {
-        Booking booking = getBookingByIdForUpdate(bookingId);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Booking not found"
+                ));
 
-        if (!isRequested(booking) && booking.getStatus() != BookingStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only requested bookings can be confirmed");
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Only PENDING bookings can be confirmed"
+            );
         }
 
-        List<Object[]> eventRows = bookingRepository.findEventById(eventId);
-        if (eventRows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
+        EventDTO event;
+
+        try {
+            event = eventServiceClient.getEvent(eventId);
+        } catch (FeignException.NotFound ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Event not found"
+            );
         }
 
-        Object[] eventRow = eventRows.get(0);
-        String eventStatus = eventRow[1] == null ? null : eventRow[1].toString();
-        if (!"UPCOMING".equals(eventStatus)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Event must be UPCOMING to confirm a booking");
+        if (!"UPCOMING".equalsIgnoreCase(event.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Event is not upcoming"
+            );
         }
 
         booking.setEventId(eventId);
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setConfirmedAt(LocalDateTime.now());
 
-        Booking saved = bookingRepository.save(booking);
-        notifyObservers("BOOKING_CONFIRMED", Map.of(
-                "bookingId", saved.getId(),
-                "details", buildBookingDetails(saved)));
-        return saved;
+        return bookingRepository.save(booking);
     }
 
     @Transactional
@@ -638,4 +646,5 @@ public class BookingService {
             register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.BOOKING, "booking_events"));
         }
     }
+
 }
