@@ -3,13 +3,7 @@ package com.team06.eventticketing.event.controller;
 import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
-import com.team06.eventticketing.event.dto.EventDashboardDTO;
-import com.team06.eventticketing.event.dto.EventRevenueDTO;
-import com.team06.eventticketing.event.dto.EventSessionAlertDTO;
-import com.team06.eventticketing.event.dto.RateEventRequest;
-import com.team06.eventticketing.event.dto.TopEventDTO;
-import com.team06.eventticketing.event.dto.UpdateEventStatusRequest;
-import com.team06.eventticketing.event.dto.VerifyEventSessionRequest;
+import com.team06.eventticketing.event.dto.*;
 import com.team06.eventticketing.event.model.Event;
 import com.team06.eventticketing.event.model.EventCategory;
 import com.team06.eventticketing.event.model.EventStatus;
@@ -186,5 +180,17 @@ public class EventController {
     ) {
         return eventService.searchEventsFullText(query, category, venue, status, startDate, endDate, minRating, maxRating);
     }
+    @GetMapping("/{eventId}/booking-summary")
+    public EventBookingSummaryDTO getEventBookingSummary(@PathVariable Long eventId) {
+        Event event = eventService.getEventById(eventId);
+        return new EventBookingSummaryDTO(
+                event.getId(),
+                event.getName(),
+                event.getCategory().name(),
+                event.getStatus().name(),
+                event.getEventDate()
+        );
+    }
+
 
 }
