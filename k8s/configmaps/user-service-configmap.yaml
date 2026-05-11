@@ -1,2 +1,12 @@
-# Placeholder for the M3 user-service ConfigMap manifest.
-# Populate according to M3.md when the user-service slice is implemented.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: eventticketing
+data:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/etdb-users
+  SPRING_RABBITMQ_HOST: rabbitmq
+  SPRING_RABBITMQ_PORT: "5672"
+  SPRING_RABBITMQ_USERNAME: guest
+  SPRING_RABBITMQ_PASSWORD: guest
+  LOKI_URL: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
