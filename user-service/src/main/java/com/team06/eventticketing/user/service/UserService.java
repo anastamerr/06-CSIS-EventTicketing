@@ -5,8 +5,10 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
-import com.team06.eventticketing.user.adapter.TopAttendeeAdapter;
-import com.team06.eventticketing.user.adapter.UserBookingSummaryAdapter;
+import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
+import com.team06.eventticketing.contracts.events.UserDeactivatedEvent;
+import com.team06.eventticketing.contracts.events.UserRegisteredEvent;
+import com.team06.eventticketing.contracts.feign.BookingServiceClient;
 import com.team06.eventticketing.user.dto.AuthResponse;
 import com.team06.eventticketing.user.dto.LoginRequest;
 import com.team06.eventticketing.user.dto.RegisterRequest;
@@ -20,10 +22,11 @@ import com.team06.eventticketing.user.model.UserRole;
 import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
+import com.team06.eventticketing.user.messaging.UserEventPublisher;
+import feign.FeignException;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,10 +35,11 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.mongodb.core.MongoTemplate;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.lang.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -45,13 +49,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class UserService {
 
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
+
     private final UserRepository userRepository;
     private final FavoriteVenueRepository favoriteVenueRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final UserBookingSummaryAdapter userBookingSummaryAdapter;
-    private final TopAttendeeAdapter topAttendeeAdapter;
     private final JdbcTemplate jdbcTemplate;
+    private final BookingServiceClient bookingServiceClient;
+    private final UserEventPublisher userEventPublisher;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
@@ -60,9 +66,9 @@ public class UserService {
             FavoriteVenueRepository favoriteVenueRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            UserBookingSummaryAdapter userBookingSummaryAdapter,
-            TopAttendeeAdapter topAttendeeAdapter,
             JdbcTemplate jdbcTemplate,
+            BookingServiceClient bookingServiceClient,
+            UserEventPublisher userEventPublisher,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory
     ) {
@@ -70,21 +76,34 @@ public class UserService {
         this.favoriteVenueRepository = favoriteVenueRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
-        this.userBookingSummaryAdapter = userBookingSummaryAdapter;
-        this.topAttendeeAdapter = topAttendeeAdapter;
         this.jdbcTemplate = jdbcTemplate;
+        this.bookingServiceClient = bookingServiceClient;
+        this.userEventPublisher = userEventPublisher;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
-    public UserService(UserRepository userRepository, FavoriteVenueRepository favoriteVenueRepository) {
+    public UserService(
+            UserRepository userRepository,
+            FavoriteVenueRepository favoriteVenueRepository,
+            BookingServiceClient bookingServiceClient
+    ) {
+        this(userRepository, favoriteVenueRepository, bookingServiceClient, null);
+    }
+
+    public UserService(
+            UserRepository userRepository,
+            FavoriteVenueRepository favoriteVenueRepository,
+            BookingServiceClient bookingServiceClient,
+            UserEventPublisher userEventPublisher
+    ) {
         this(
                 userRepository,
                 favoriteVenueRepository,
                 new BCryptPasswordEncoder(),
                 new JwtService(),
-                new UserBookingSummaryAdapter(),
-                new TopAttendeeAdapter(),
                 null,
+                bookingServiceClient,
+                userEventPublisher,
                 null,
                 null);
     }
@@ -140,11 +159,12 @@ public class UserService {
         if (user.getStatus() == UserStatus.DEACTIVATED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is already deactivated");
         }
-        if (userRepository.existsActiveBookingsByUserId(id)) {
+        if (getActiveBookingCount(id) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User has active bookings");
         }
         user.setStatus(UserStatus.DEACTIVATED);
         User saved = userRepository.save(user);
+        publishUserDeactivated(saved);
         notifyObservers("USER_DEACTIVATED", Map.of(
                 "userId", saved.getId(),
                 "details", buildUserDetails(saved)));
@@ -205,13 +225,16 @@ public class UserService {
     @Transactional(readOnly = true)
     public UserBookingSummaryDTO getUserBookingSummary(Long id) {
         User user = getUserById(id);
-        List<Object[]> summaryRows = userRepository.findBookingSummaryByUserId(id);
-
-        if (summaryRows.isEmpty()) {
-            return userBookingSummaryAdapter.empty(user);
-        }
-
-        return userBookingSummaryAdapter.adapt(user, summaryRows.getFirst());
+        BookingSummaryDTO summary = getBookingSummary(id);
+        return UserBookingSummaryDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .totalBookings(summary.totalBookings())
+                .completedBookings(summary.completedBookings())
+                .cancelledBookings(summary.cancelledBookings())
+                .totalSpent(summary.totalSpent())
+                .averageBookingAmount(summary.averageBookingAmount())
+                .build();
     }
 
     public List<User> getUsersByFavoriteCategoryAndMinBookings(String category, int minBookings) {
@@ -221,7 +244,9 @@ public class UserService {
         if (minBookings < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minBookings must not be negative");
         }
-        return userRepository.findByCategoryAndMinCompletedBookings(category, minBookings);
+        return userRepository.findByFavoriteCategory(category.trim()).stream()
+                .filter(user -> getCompletedBookingCount(user.getId()) >= minBookings)
+                .toList();
     }
 
     public List<User> filterByPreference(String key, String value) {
@@ -240,12 +265,22 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must not be after endDate");
         }
 
-        LocalDateTime startInclusive = startDate.atStartOfDay();
-        LocalDateTime endExclusive = endDate.plusDays(1).atStartOfDay();
+        String start = startDate.toString();
+        String end = endDate.toString();
 
-        return userRepository.findTopAttendeesBySpending(startInclusive, endExclusive, PageRequest.of(0, limit))
-                .stream()
-                .map(topAttendeeAdapter::adapt)
+        return userRepository.findAll().stream()
+                .filter(user -> user.getRole() == null || user.getRole() == UserRole.ATTENDEE)
+                .map(user -> TopAttendeeDTO.builder()
+                        .userId(user.getId())
+                        .name(user.getName())
+                        .totalSpent(getCompletedBookingTotal(user.getId(), start, end))
+                        .bookingCount(getCompletedBookingCount(user.getId()))
+                        .build())
+                .filter(attendee -> attendee.getTotalSpent().compareTo(BigDecimal.ZERO) > 0)
+                .sorted(Comparator.comparing(TopAttendeeDTO::getTotalSpent).reversed()
+                        .thenComparing(TopAttendeeDTO::getBookingCount, Comparator.reverseOrder())
+                        .thenComparing(TopAttendeeDTO::getUserId))
+                .limit(limit)
                 .toList();
     }
 
@@ -357,6 +392,7 @@ public class UserService {
         notifyObservers("REGISTERED", Map.of(
                 "userId", saved.getId(),
                 "details", buildUserDetails(saved)));
+        publishUserRegistered(saved);
         return new AuthResponse(
                 jwtService.generateToken(saved.getId(), saved.getEmail(), saved.getRole().name()),
                 saved.getId(),
@@ -530,6 +566,89 @@ public class UserService {
         details.put("name", user.getName());
         details.put("role", user.getRole() == null ? null : user.getRole().name());
         return details;
+    }
+
+    private BookingSummaryDTO getBookingSummary(Long userId) {
+        try {
+            BookingSummaryDTO summary = bookingClient().getUserBookingSummary(userId);
+            log.info("Booking service summary Feign call succeeded for userId={}", userId);
+            return summary == null
+                    ? new BookingSummaryDTO(0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO)
+                    : summary;
+        } catch (FeignException.NotFound exception) {
+            log.info("Booking service summary Feign call returned 404 for userId={}", userId);
+            return new BookingSummaryDTO(0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO);
+        } catch (FeignException exception) {
+            log.warn("Booking service summary Feign call failed for userId={}: {}", userId, exception.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Booking service temporarily unavailable",
+                    exception);
+        }
+    }
+
+    private int getActiveBookingCount(Long userId) {
+        try {
+            int activeCount = bookingClient().getUserActiveBookingCount(userId);
+            log.info("Booking service active-count Feign call succeeded for userId={}", userId);
+            return activeCount;
+        } catch (FeignException exception) {
+            log.warn("Booking service active-count Feign call failed for userId={}: {}", userId, exception.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Booking service temporarily unavailable",
+                    exception);
+        }
+    }
+
+    private long getCompletedBookingCount(Long userId) {
+        try {
+            long completedCount = bookingClient().getUserBookingCount(userId, "COMPLETED");
+            log.info("Booking service completed-count Feign call succeeded for userId={}", userId);
+            return completedCount;
+        } catch (FeignException exception) {
+            log.warn("Booking service completed-count Feign call failed for userId={}: {}", userId, exception.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Booking service temporarily unavailable",
+                    exception);
+        }
+    }
+
+    private BigDecimal getCompletedBookingTotal(Long userId, String startDate, String endDate) {
+        try {
+            BigDecimal total = bookingClient().getUserCompletedBookingTotal(userId, startDate, endDate);
+            log.info("Booking service completed-total Feign call succeeded for userId={}", userId);
+            return total == null ? BigDecimal.ZERO : total;
+        } catch (FeignException exception) {
+            log.warn("Booking service completed-total Feign call failed for userId={}: {}", userId, exception.getMessage());
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Booking service temporarily unavailable",
+                    exception);
+        }
+    }
+
+    private BookingServiceClient bookingClient() {
+        if (bookingServiceClient == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service client is not configured");
+        }
+        return bookingServiceClient;
+    }
+
+    private void publishUserRegistered(User user) {
+        if (userEventPublisher != null) {
+            userEventPublisher.publishUserRegistered(new UserRegisteredEvent(
+                    user.getId(),
+                    user.getEmail(),
+                    user.getRole() == null ? null : user.getRole().name()));
+        }
+    }
+
+    private void publishUserDeactivated(User user) {
+        if (userEventPublisher != null) {
+            userEventPublisher.publishUserDeactivated(new UserDeactivatedEvent(user.getId()));
+        }
     }
 
     private void registerObserverIfAvailable(@Nullable MongoTemplate mongoTemplate, @Nullable EventFactory eventFactory) {

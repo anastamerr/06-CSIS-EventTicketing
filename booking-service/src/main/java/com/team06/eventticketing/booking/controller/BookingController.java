@@ -69,8 +69,11 @@ public class BookingController {
     }
 
     @GetMapping("/user/{userId}/count")
-    public long getUserBookingCount(@PathVariable Long userId) {
-        return bookingService.getUserBookingCount(userId);
+    public long getUserBookingCount(
+            @PathVariable Long userId,
+            @RequestParam(required = false) BookingStatus status
+    ) {
+        return bookingService.getUserBookingCount(userId, status);
     }
 
     @GetMapping("/user/{userId}/total")
