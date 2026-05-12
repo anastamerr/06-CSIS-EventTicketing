@@ -17,6 +17,24 @@ services:
       retries: 10
       start_period: 10s
 
+  sales-postgres:
+    image: postgres:17
+    container_name: eventticketing-sales-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: etdb-sales
+    ports:
+      - "${SALES_POSTGRES_HOST_PORT:-5436}:5432"
+    volumes:
+      - sales-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d etdb-sales"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   mongo:
     image: mongo:latest
     container_name: eventticketing-mongo
@@ -247,15 +265,17 @@ services:
     build: ./sales-service
     container_name: eventticketing-sales-service
     depends_on:
-      postgres:
+      sales-postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
+      SPRING_DATASOURCE_URL: jdbc:postgresql://sales-postgres:5432/etdb-sales
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin
@@ -263,6 +283,14 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: 5672
+      SPRING_RABBITMQ_USERNAME: guest
+      SPRING_RABBITMQ_PASSWORD: guest
+      FEIGN_USER_SERVICE_URL: http://user-service:8080
+      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
+      FEIGN_EVENT_SERVICE_URL: http://event-service:8080
+      LOKI_URL: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
       JWT_SECRET: bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h
       JWT_EXPIRATION_MS: 86400000
     ports:
@@ -270,6 +298,7 @@ services:
 
 volumes:
   pgdata:
+  sales-pgdata:
   mongo-data:
   rabbitmq-data:
   es-data:
