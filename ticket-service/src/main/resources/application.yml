@@ -26,7 +26,11 @@ spring:
     schema-action: ${SPRING_CASSANDRA_SCHEMA_ACTION:CREATE_IF_NOT_EXISTS}
   mongodb:
     uri: ${SPRING_MONGODB_URI:mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin}
-
+  rabbitmq:
+      host: ${SPRING_RABBITMQ_HOST:rabbitmq}
+      port: ${SPRING_RABBITMQ_PORT:5672}
+      username: ${SPRING_RABBITMQ_USERNAME:guest}
+      password: ${SPRING_RABBITMQ_PASSWORD:guest}
 jwt:
   secret: ${JWT_SECRET:bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h}
   expiration: ${JWT_EXPIRATION_MS:86400000}
