@@ -1,2 +1,17 @@
-# Placeholder for the M3 Grafana dashboards manifest.
-# Populate according to M3.md when the monitoring slice is implemented.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: Event Ticketing
+        orgId: 1
+        folder: Event Ticketing
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
