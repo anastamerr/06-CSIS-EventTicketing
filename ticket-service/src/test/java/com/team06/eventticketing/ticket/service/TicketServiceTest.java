@@ -12,11 +12,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.ticket.adapter.CassandraRowAdapter;
+import com.team06.eventticketing.ticket.adapter.EventAttendanceSummaryAdapter;
+import com.team06.eventticketing.ticket.client.BookingServiceClient;
+import com.team06.eventticketing.ticket.client.EventServiceClient;
+import com.team06.eventticketing.ticket.client.EventServiceClient.EventResponse;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.dto.TicketAnalyticsDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
+import com.team06.eventticketing.ticket.dto.VenueCoordsDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
 import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
@@ -51,6 +58,12 @@ class TicketServiceTest {
     @Mock
     private TicketRepository ticketRepository;
 
+    @Mock
+    private BookingServiceClient bookingServiceClient;
+
+    @Mock
+    private EventServiceClient eventServiceClient;
+
     @Captor
     private ArgumentCaptor<List<Ticket>> ticketsCaptor;
 
@@ -61,12 +74,23 @@ class TicketServiceTest {
 
     @BeforeEach
     void setUp() {
-        ticketService = new TicketService(ticketRepository, FIXED_CLOCK);
+        ticketService = new TicketService(
+                ticketRepository,
+                FIXED_CLOCK,
+                new EventAttendanceSummaryAdapter(),
+                new CassandraRowAdapter(),
+                null,
+                null,
+                null,
+                null,
+                bookingServiceClient,
+                eventServiceClient,
+                null);
     }
 
     @Test
     void batchIssueRejectsNonexistentBooking() {
-        when(ticketRepository.existsBookingById(55L)).thenReturn(false);
+        when(bookingServiceClient.getBookingContract(55L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.batchIssue(55L, List.of(ticket("A", "TIX-1"))));
@@ -78,7 +102,7 @@ class TicketServiceTest {
     @Test
     void batchIssueRejectsDuplicateCodesInsideBatch() {
         List<Ticket> tickets = List.of(ticket("A", "TIX-1"), ticket("B", "TIX-1"));
-        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.batchIssue(55L, tickets));
@@ -93,7 +117,7 @@ class TicketServiceTest {
         Ticket secondTicket = ticket("B", "TIX-2");
         List<Ticket> tickets = List.of(firstTicket, secondTicket);
 
-        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findByTicketCode("TIX-1")).thenReturn(Optional.empty());
         when(ticketRepository.findByTicketCode("TIX-2")).thenReturn(Optional.empty());
 
@@ -104,14 +128,16 @@ class TicketServiceTest {
         assertEquals(2, savedTickets.size());
         assertEquals(55L, firstTicket.getBookingId());
         assertEquals(TicketStatus.VALID, firstTicket.getStatus());
+        assertEquals(77L, firstTicket.getEventId());
         assertEquals(55L, secondTicket.getBookingId());
         assertEquals(TicketStatus.VALID, secondTicket.getStatus());
+        assertEquals(77L, secondTicket.getEventId());
         assertEquals(2, response.get("count"));
     }
 
     @Test
     void issueTicketWithMetadataRejectsMissingBooking() {
-        when(ticketRepository.existsBookingById(404L)).thenReturn(false);
+        when(bookingServiceClient.getBookingContract(404L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.issueTicketWithMetadata(404L, "Ahmed", "TIX-404", Map.of("seatNumber", "A12")));
@@ -122,7 +148,7 @@ class TicketServiceTest {
 
     @Test
     void issueTicketWithMetadataCreatesValidTicketWithNowAndMetadata() {
-        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findByTicketCode("TIX-2026-001")).thenReturn(Optional.empty());
         when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -135,6 +161,7 @@ class TicketServiceTest {
         verify(ticketRepository).save(ticketCaptor.capture());
         Ticket savedTicket = ticketCaptor.getValue();
         assertEquals(55L, savedTicket.getBookingId());
+        assertEquals(77L, savedTicket.getEventId());
         assertEquals("Ahmed", savedTicket.getAttendeeName());
         assertEquals("TIX-2026-001", savedTicket.getTicketCode());
         assertEquals(TicketStatus.VALID, savedTicket.getStatus());
@@ -307,7 +334,7 @@ class TicketServiceTest {
 
     @Test
     void getLatestTicketThrowsNotFoundForNonexistentBooking() {
-        when(ticketRepository.existsBookingById(99L)).thenReturn(false);
+        when(bookingServiceClient.getBookingContract(99L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.getLatestTicketForBooking(99L));
@@ -317,7 +344,7 @@ class TicketServiceTest {
 
     @Test
     void getLatestTicketThrowsNotFoundWhenNoTicketsExist() {
-        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.empty());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -330,7 +357,7 @@ class TicketServiceTest {
     void getLatestTicketReturnsLatestByIssuedAt() {
         Ticket latest = ticket("Ahmed", "TIX-3");
 
-        when(ticketRepository.existsBookingById(55L)).thenReturn(true);
+        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.of(latest));
 
         Ticket result = ticketService.getLatestTicketForBooking(55L);
@@ -341,12 +368,15 @@ class TicketServiceTest {
     @Test
     void getEventAttendanceSummaryReturnsAggregatedMetricsFromRepositoryRow() {
         LocalDateTime lastCheckIn = LocalDateTime.of(2026, 3, 15, 19, 55);
-        when(ticketRepository.findAttendanceSummaryByEventId(77L)).thenReturn(List.<Object[]>of(new Object[]{
-                10L,
-                6L,
-                3L,
-                Timestamp.valueOf(lastCheckIn)
-        }));
+        List<Ticket> tickets = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            tickets.add(ticketForEvent(77L, TicketStatus.USED, lastCheckIn.minusMinutes(i)));
+        }
+        for (int i = 0; i < 3; i++) {
+            tickets.add(ticketForEvent(77L, TicketStatus.VALID, lastCheckIn.minusHours(i + 1)));
+        }
+        tickets.add(ticketForEvent(77L, TicketStatus.CANCELLED, lastCheckIn.minusDays(1)));
+        when(ticketRepository.findByEventId(77L)).thenReturn(tickets);
 
         EventAttendanceSummaryDTO result = ticketService.getEventAttendanceSummary(77L);
 
@@ -360,55 +390,28 @@ class TicketServiceTest {
 
     @Test
     void getEventAttendanceSummaryThrowsNotFoundWhenNoTicketsExist() {
-        when(ticketRepository.findAttendanceSummaryByEventId(77L)).thenReturn(List.<Object[]>of(new Object[]{
-                0L,
-                0L,
-                0L,
-                null
-        }));
+        when(ticketRepository.findByEventId(77L)).thenReturn(List.of());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.getEventAttendanceSummary(77L));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
-        verify(ticketRepository).findAttendanceSummaryByEventId(77L);
+        verify(ticketRepository).findByEventId(77L);
     }
 
     @Test
     void getUnusedUpcomingTicketsMapsRepositoryResults() {
-        UnusedTicketProjection projection = new UnusedTicketProjection() {
-            @Override
-            public Long getTicketId() {
-                return 7L;
-            }
-
-            @Override
-            public String getAttendeeName() {
-                return "Mariam";
-            }
-
-            @Override
-            public String getTicketCode() {
-                return "TIX-UPCOMING-1";
-            }
-
-            @Override
-            public Long getBookingId() {
-                return 55L;
-            }
-
-            @Override
-            public String getEventName() {
-                return "Jazz Night";
-            }
-
-            @Override
-            public LocalDateTime getEventDate() {
-                return LocalDateTime.of(2026, 4, 10, 20, 0);
-            }
-        };
-
-        when(ticketRepository.findUnusedTicketsForUpcomingEvents()).thenReturn(List.of(projection));
+        Ticket ticket = ticket("Mariam", "TIX-UPCOMING-1");
+        ticket.setId(7L);
+        ticket.setBookingId(55L);
+        ticket.setEventId(77L);
+        ticket.setStatus(TicketStatus.VALID);
+        when(ticketRepository.findByStatusAndEventIdIsNotNull(TicketStatus.VALID)).thenReturn(List.of(ticket));
+        when(eventServiceClient.getEvent(77L)).thenReturn(new EventResponse(
+                77L,
+                "Jazz Night",
+                "UPCOMING",
+                LocalDateTime.of(2026, 4, 10, 20, 0)));
 
         List<UnusedTicketDTO> result = ticketService.getUnusedUpcomingTickets();
 
@@ -423,7 +426,7 @@ class TicketServiceTest {
 
     @Test
     void getUnusedUpcomingTicketsReturnsEmptyListWhenRepositoryHasNoMatches() {
-        when(ticketRepository.findUnusedTicketsForUpcomingEvents()).thenReturn(List.of());
+        when(ticketRepository.findByStatusAndEventIdIsNotNull(TicketStatus.VALID)).thenReturn(List.of());
 
         List<UnusedTicketDTO> result = ticketService.getUnusedUpcomingTickets();
 
@@ -459,49 +462,18 @@ class TicketServiceTest {
 
     @Test
     void findTicketsNearVenueMapsRepositoryResults() {
-        NearbyTicketProjection projection = new NearbyTicketProjection() {
-            @Override
-            public Long getTicketId() {
-                return 7L;
-            }
-
-            @Override
-            public String getAttendeeName() {
-                return "Mariam";
-            }
-
-            @Override
-            public String getTicketCode() {
-                return "TIX-NEARBY-1";
-            }
-
-            @Override
-            public Long getBookingId() {
-                return 55L;
-            }
-
-            @Override
-            public String getEventName() {
-                return "Jazz Night";
-            }
-
-            @Override
-            public Double getEventLat() {
-                return 30.0444;
-            }
-
-            @Override
-            public Double getEventLon() {
-                return 31.2357;
-            }
-
-            @Override
-            public Double getDistanceKm() {
-                return 1.25;
-            }
-        };
-
-        when(ticketRepository.findTicketsNearVenue(30.0444, 31.2357, 5.0)).thenReturn(List.of(projection));
+        Ticket ticket = ticket("Mariam", "TIX-NEARBY-1");
+        ticket.setId(7L);
+        ticket.setBookingId(55L);
+        ticket.setEventId(77L);
+        ticket.setStatus(TicketStatus.VALID);
+        when(ticketRepository.findByStatusAndEventIdIsNotNull(TicketStatus.VALID)).thenReturn(List.of(ticket));
+        when(eventServiceClient.getEvent(77L)).thenReturn(new EventResponse(
+                77L,
+                "Jazz Night",
+                "UPCOMING",
+                LocalDateTime.of(2026, 4, 10, 20, 0)));
+        when(eventServiceClient.getVenueCoords(77L)).thenReturn(new VenueCoordsDTO(30.0444, 31.2357));
 
         List<NearbyTicketResponseDTO> result = ticketService.findTicketsNearVenue(30.0444, 31.2357, 5.0);
 
@@ -513,7 +485,7 @@ class TicketServiceTest {
         assertEquals("Jazz Night", result.get(0).getEventName());
         assertEquals(30.0444, result.get(0).getEventLat());
         assertEquals(31.2357, result.get(0).getEventLon());
-        assertEquals(1.25, result.get(0).getDistanceKm());
+        assertEquals(0.0, result.get(0).getDistanceKm());
     }
 
     private Ticket ticket(String attendeeName, String ticketCode) {
@@ -522,6 +494,21 @@ class TicketServiceTest {
         ticket.setTicketCode(ticketCode);
         ticket.setMetadata(Map.of());
         return ticket;
+    }
+
+    private Ticket ticketForEvent(Long eventId, TicketStatus status, LocalDateTime issuedAt) {
+        Ticket ticket = ticket("Attendee", "TIX-" + eventId + "-" + status + "-" + issuedAt);
+        ticket.setEventId(eventId);
+        ticket.setStatus(status);
+        ticket.setIssuedAt(issuedAt);
+        if (status == TicketStatus.USED) {
+            ticket.setMetadata(Map.of("checkInTime", issuedAt.toString()));
+        }
+        return ticket;
+    }
+
+    private BookingDTO booking(Long bookingId, Long eventId) {
+        return new BookingDTO(bookingId, 9L, eventId, "COMPLETED", 100.0);
     }
 
 }

@@ -539,7 +539,11 @@ public class TicketSaleService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service client is not configured");
         }
         try {
-            return bookingServiceClient.getBooking(bookingId);
+            BookingDTO booking = bookingServiceClient.getBooking(bookingId);
+            if (booking == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+            }
+            return booking;
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found", exception);
         } catch (FeignException exception) {
@@ -552,7 +556,11 @@ public class TicketSaleService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service client is not configured");
         }
         try {
-            return eventServiceClient.getEvent(eventId);
+            EventDTO event = eventServiceClient.getEvent(eventId);
+            if (event == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
+            }
+            return event;
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found", exception);
         } catch (FeignException exception) {
@@ -565,7 +573,9 @@ public class TicketSaleService {
             return;
         }
         try {
-            userServiceClient.getUser(userId);
+            if (userServiceClient.getUser(userId) == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+            }
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", exception);
         }

@@ -296,8 +296,15 @@ public class TicketService {
         if (bookingId == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
         }
+        if (bookingServiceClient == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service client is not configured");
+        }
         try {
-            return bookingServiceClient.getBookingContract(bookingId);
+            BookingDTO booking = bookingServiceClient.getBookingContract(bookingId);
+            if (booking == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+            }
+            return booking;
         } catch (FeignException.NotFound ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
         } catch (FeignException ex) {
