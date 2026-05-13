@@ -47,6 +47,10 @@ import feign.FeignException;
 import com.team06.eventticketing.contracts.dto.BookingDTO;
 import com.team06.eventticketing.ticket.messaging.TicketEventPublisher;
 import com.team06.eventticketing.ticket.dto.EventTicketSummaryDTO;
+import com.team06.eventticketing.ticket.client.EventServiceClient;
+import com.team06.eventticketing.ticket.model.Ticket;
+import java.util.HashMap;
+import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 
 @Service
 public class TicketService {
@@ -61,6 +65,7 @@ public class TicketService {
     private final AtomicLong lastScanEpochMillis = new AtomicLong();
     private final BookingServiceClient bookingServiceClient;
     private final TicketEventPublisher ticketEventPublisher;
+    private final EventServiceClient eventServiceClient;
 
     @Autowired
     public TicketService(
@@ -73,7 +78,8 @@ public class TicketService {
             TicketScanEventRepository ticketScanEventRepository,
             RedisCacheService redisCacheService,
             BookingServiceClient bookingServiceClient,
-            TicketEventPublisher ticketEventPublisher
+            TicketEventPublisher ticketEventPublisher,
+            EventServiceClient eventServiceClient
     ) {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
@@ -83,6 +89,7 @@ public class TicketService {
         this.redisCacheService = redisCacheService;
         this.bookingServiceClient = bookingServiceClient;
         this.ticketEventPublisher = ticketEventPublisher;
+        this.eventServiceClient = eventServiceClient;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -95,6 +102,7 @@ public class TicketService {
         this.redisCacheService = null;
         this.bookingServiceClient = null;
         this.ticketEventPublisher = null;
+        this.eventServiceClient = null;
     }
 
     public List<Ticket> getAllTickets() { return ticketRepository.findAll(); }
@@ -354,10 +362,48 @@ public class TicketService {
 
     @Transactional(readOnly = true)
     public List<UnusedTicketDTO> getUnusedUpcomingTickets() {
-        return ticketRepository.findUnusedTicketsForUpcomingEvents()
-                .stream()
-                .map(this::mapToUnusedTicketDTO)
+        List<Ticket> validTickets = ticketRepository.findValidTicketsWithEventId();
+        if (validTickets.isEmpty()) {
+            return List.of();
+        }
+
+        // Fetch event info once per unique eventId
+        Map<Long, EventServiceClient.EventResponse> eventCache = new HashMap<>();
+        for (Ticket t : validTickets) {
+            eventCache.computeIfAbsent(t.getEventId(), this::fetchEventSafely);
+        }
+
+        return validTickets.stream()
+                .map(t -> {
+                    EventServiceClient.EventResponse event = eventCache.get(t.getEventId());
+                    if (event == null || !"UPCOMING".equalsIgnoreCase(event.status())) {
+                        return null;  // event is missing or not upcoming → drop this ticket
+                    }
+                    return UnusedTicketDTO.builder()
+                            .ticketId(t.getId())
+                            .attendeeName(t.getAttendeeName())
+                            .ticketCode(t.getTicketCode())
+                            .bookingId(t.getBookingId())
+                            .eventName(event.name())
+                            .eventDate(event.eventDate())
+                            .build();
+                })
+                .filter(java.util.Objects::nonNull)
+                .sorted(java.util.Comparator
+                        .comparing(UnusedTicketDTO::getEventDate, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                        .thenComparing(UnusedTicketDTO::getTicketId))
                 .toList();
+    }
+
+    private EventServiceClient.EventResponse fetchEventSafely(Long eventId) {
+        try {
+            return eventServiceClient.getEvent(eventId);
+        } catch (feign.FeignException.NotFound ex) {
+            return null;  // event no longer exists; ticket gets filtered out
+        } catch (feign.FeignException ex) {
+            // event-service down or other error — treat as not-upcoming so we don't crash the entire endpoint
+            return null;
+        }
     }
 
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
@@ -545,16 +591,16 @@ public class TicketService {
         return LocalDateTime.parse(value.toString());
     }
 
-    private UnusedTicketDTO mapToUnusedTicketDTO(UnusedTicketProjection p) {
-        return UnusedTicketDTO.builder()
-                .ticketId(p.getTicketId())
-                .attendeeName(p.getAttendeeName())
-                .ticketCode(p.getTicketCode())
-                .bookingId(p.getBookingId())
-                .eventName(p.getEventName())
-                .eventDate(p.getEventDate())
-                .build();
-    }
+//    private UnusedTicketDTO mapToUnusedTicketDTO(UnusedTicketProjection p) {
+//        return UnusedTicketDTO.builder()
+//                .ticketId(p.getTicketId())
+//                .attendeeName(p.getAttendeeName())
+//                .ticketCode(p.getTicketCode())
+//                .bookingId(p.getBookingId())
+//                .eventName(p.getEventName())
+//                .eventDate(p.getEventDate())
+//                .build();
+//    }
 
     private NearbyTicketResponseDTO toNearbyTicketResponse(NearbyTicketProjection projection) {
         return NearbyTicketResponseDTO.builder()
