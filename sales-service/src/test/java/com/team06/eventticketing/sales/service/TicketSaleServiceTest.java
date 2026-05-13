@@ -11,12 +11,15 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team06.eventticketing.common.cache.RedisCacheService;
 import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.EventDTO;
+import com.team06.eventticketing.contracts.dto.UserDTO;
 import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
 import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
 import com.team06.eventticketing.contracts.events.PaymentCompletedEvent;
 import com.team06.eventticketing.contracts.events.PaymentInitiatedEvent;
 import com.team06.eventticketing.contracts.events.PaymentRefundedEvent;
 import com.team06.eventticketing.contracts.feign.BookingServiceClient;
+import com.team06.eventticketing.contracts.feign.EventServiceClient;
 import com.team06.eventticketing.contracts.feign.UserServiceClient;
 import com.team06.eventticketing.sales.adapter.MongoDocumentAdapter;
 import com.team06.eventticketing.sales.adapter.TierRevenueRowAdapter;
@@ -89,6 +92,9 @@ class TicketSaleServiceTest {
     private BookingServiceClient bookingServiceClient;
 
     @Mock
+    private EventServiceClient eventServiceClient;
+
+    @Mock
     private UserServiceClient userServiceClient;
 
     @Mock
@@ -101,13 +107,7 @@ class TicketSaleServiceTest {
 
     @BeforeEach
     void setUp() {
-        ticketSaleService = new TicketSaleService(
-                ticketSaleRepository,
-                bookingJdbcRepository,
-                userJdbcRepository,
-                mongoTemplate,
-                null
-        );
+        ticketSaleService = m3Service();
     }
 
     @Test
@@ -220,23 +220,22 @@ class TicketSaleServiceTest {
         LocalDate startDate = LocalDate.of(2026, 4, 1);
         LocalDate endDate = LocalDate.of(2026, 4, 30);
         LocalDateTime start = startDate.atStartOfDay();
-        LocalDateTime end = endDate.toString().equals("2026-04-30")
-                ? LocalDateTime.of(2026, 4, 30, 23, 59, 59, 999_999_999)
-                : endDate.atTime(java.time.LocalTime.MAX);
-        when(tierRevenueJdbcRepository.aggregateByTier(start, end)).thenReturn(List.of(
-                new Object[]{"VIP", 3500.0, 2L, 7L},
-                new Object[]{"standard", 600.0, 1L, 3L},
-                new Object[]{"early-bird", 100.0, 1L, 1L}));
+        LocalDateTime endExclusive = endDate.plusDays(1).atStartOfDay();
+        TicketSale first = sale(1L, 3500.0, TicketSaleStatus.COMPLETED);
+        TicketSale second = sale(2L, 600.0, TicketSaleStatus.COMPLETED);
+        TicketSale third = sale(3L, 100.0, TicketSaleStatus.COMPLETED);
+        when(ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(start, endExclusive))
+                .thenReturn(List.of(first, second, third));
 
         List<TierRevenueDTO> result = service.getTierRevenue(startDate, endDate);
 
-        assertEquals(3, result.size());
-        assertEquals("VIP", result.get(0).getTier());
-        assertEquals(3500.0, result.get(0).getTotalRevenue());
-        assertEquals(2L, result.get(0).getSaleCount());
-        assertEquals(7L, result.get(0).getTicketsSold());
-        assertEquals(1750.0, result.get(0).getAverageRevenuePerSale());
-        verify(redisCacheService).put("sales-service::S5-F10::2026-04-01T00:00::2026-04-30T23:59:59.999999999", result, 600L);
+        assertEquals(1, result.size());
+        assertEquals("UNSPECIFIED", result.get(0).getTier());
+        assertEquals(4200.0, result.get(0).getTotalRevenue());
+        assertEquals(3L, result.get(0).getSaleCount());
+        assertEquals(3L, result.get(0).getTicketsSold());
+        assertEquals(1400.0, result.get(0).getAverageRevenuePerSale());
+        verify(redisCacheService).put("sales-service::S5-F10::2026-04-01T00:00::2026-04-30T23:59:59.999999999", result, 600);
     }
 
     @Test
@@ -343,8 +342,7 @@ class TicketSaleServiceTest {
         request.setMethod(TicketSaleMethod.CREDIT_CARD);
         request.setCardLastFour("4242");
 
-        when(bookingJdbcRepository.findByIdForUpdate(44L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "COMPLETED", 650.0)));
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "COMPLETED", 650.0));
         when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(false);
         when(ticketSaleRepository.findByBookingIdForUpdate(44L)).thenReturn(List.of(ticketSale));
         when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -368,7 +366,7 @@ class TicketSaleServiceTest {
         ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
         request.setMethod(TicketSaleMethod.CREDIT_CARD);
 
-        when(bookingJdbcRepository.findByIdForUpdate(44L)).thenReturn(Optional.empty());
+        when(bookingServiceClient.getBooking(44L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketSaleService.processBookingSale(44L, request));
@@ -381,8 +379,7 @@ class TicketSaleServiceTest {
         ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
         request.setMethod(TicketSaleMethod.CREDIT_CARD);
 
-        when(bookingJdbcRepository.findByIdForUpdate(44L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "PENDING", 650.0)));
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "PENDING", 650.0));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketSaleService.processBookingSale(44L, request));
@@ -395,8 +392,7 @@ class TicketSaleServiceTest {
         ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
         request.setMethod(TicketSaleMethod.WALLET);
 
-        when(bookingJdbcRepository.findByIdForUpdate(44L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "COMPLETED", 650.0)));
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "COMPLETED", 650.0));
         when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(true);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -411,8 +407,7 @@ class TicketSaleServiceTest {
         ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
         request.setMethod(TicketSaleMethod.WALLET);
 
-        when(bookingJdbcRepository.findByIdForUpdate(44L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.BookingPaymentRow(44L, "COMPLETED", 650.0)));
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "COMPLETED", 650.0));
         when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(false);
         when(ticketSaleRepository.findByBookingIdForUpdate(44L)).thenReturn(List.of());
 
@@ -633,8 +628,8 @@ class TicketSaleServiceTest {
         });
 
         when(ticketSaleRepository.findById(91L)).thenReturn(Optional.of(sale));
-        when(bookingJdbcRepository.findEventDateByTicketSaleId(91L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(15L, LocalDateTime.now().plusDays(7))));
+        when(bookingServiceClient.getBooking(sale.getBookingId())).thenReturn(bookingForSale(sale, 15L));
+        when(eventServiceClient.getEvent(15L)).thenReturn(event(15L, LocalDateTime.now().plusDays(7)));
         when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
 
         TicketSaleResponse response = service.processRefundWithWindowPolicy(91L, request);
@@ -657,8 +652,8 @@ class TicketSaleServiceTest {
         RefundRequest request = refundRequest("unable_to_attend");
 
         when(ticketSaleRepository.findById(92L)).thenReturn(Optional.of(sale));
-        when(bookingJdbcRepository.findEventDateByTicketSaleId(92L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(16L, LocalDateTime.now().plusHours(36))));
+        when(bookingServiceClient.getBooking(sale.getBookingId())).thenReturn(bookingForSale(sale, 16L));
+        when(eventServiceClient.getEvent(16L)).thenReturn(event(16L, LocalDateTime.now().plusHours(36)));
         when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
 
         TicketSaleResponse response = service.processRefundWithWindowPolicy(92L, request);
@@ -681,8 +676,8 @@ class TicketSaleServiceTest {
         });
 
         when(ticketSaleRepository.findById(93L)).thenReturn(Optional.of(sale));
-        when(bookingJdbcRepository.findEventDateByTicketSaleId(93L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(17L, LocalDateTime.now().plusHours(6))));
+        when(bookingServiceClient.getBooking(sale.getBookingId())).thenReturn(bookingForSale(sale, 17L));
+        when(eventServiceClient.getEvent(17L)).thenReturn(event(17L, LocalDateTime.now().plusHours(6)));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> service.processRefundWithWindowPolicy(93L, request));
@@ -706,8 +701,7 @@ class TicketSaleServiceTest {
         when(ticketSaleRepository.findById(95L)).thenReturn(Optional.of(refunded));
         when(ticketSaleRepository.findById(96L)).thenReturn(Optional.of(noEvent));
         when(ticketSaleRepository.findById(999L)).thenReturn(Optional.empty());
-        when(bookingJdbcRepository.findEventDateByTicketSaleId(96L))
-                .thenReturn(Optional.of(new BookingJdbcRepository.SaleEventDateRow(null, null)));
+        when(bookingServiceClient.getBooking(noEvent.getBookingId())).thenReturn(bookingForSale(noEvent, null));
 
         assertEquals(HttpStatus.BAD_REQUEST, assertThrows(ResponseStatusException.class,
                 () -> service.processRefundWithWindowPolicy(94L, refundRequest("pending"))).getStatusCode());
@@ -785,7 +779,7 @@ class TicketSaleServiceTest {
 
     @Test
     void getUserSaleSummaryAggregatesCompletedSalesByMethod() {
-        when(userJdbcRepository.existsById(55L)).thenReturn(true);
+        when(userServiceClient.getUser(55L)).thenReturn(new UserDTO(55L, "User", "user@example.com", "ATTENDEE"));
         when(ticketSaleRepository.getCompletedSalesSummaryByMethod(55L)).thenReturn(List.of(
                 paymentMethodSummary("CREDIT_CARD", 2L, 800.0),
                 paymentMethodSummary("DEBIT_CARD", 1L, 200.0),
@@ -804,7 +798,7 @@ class TicketSaleServiceTest {
 
     @Test
     void getUserSaleSummaryReturnsZerosWhenUserHasNoCompletedSales() {
-        when(userJdbcRepository.existsById(77L)).thenReturn(true);
+        when(userServiceClient.getUser(77L)).thenReturn(new UserDTO(77L, "User", "user@example.com", "ATTENDEE"));
         when(ticketSaleRepository.getCompletedSalesSummaryByMethod(77L)).thenReturn(List.of());
 
         UserSaleSummaryDTO summary = ticketSaleService.getUserSaleSummary(77L);
@@ -817,7 +811,7 @@ class TicketSaleServiceTest {
 
     @Test
     void getUserSaleSummaryRejectsUnknownUser() {
-        when(userJdbcRepository.existsById(999L)).thenReturn(false);
+        when(userServiceClient.getUser(999L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketSaleService.getUserSaleSummary(999L));
@@ -913,21 +907,10 @@ class TicketSaleServiceTest {
     }
 
     private TicketSaleService m2Service() {
-        return new TicketSaleService(
-                ticketSaleRepository,
-                bookingJdbcRepository,
-                userJdbcRepository,
-                mongoTemplate,
-                null,
-                new MongoDocumentAdapter(),
-                tierRevenueJdbcRepository,
-                new TierRevenueRowAdapter(),
-                redisCacheService,
-                new ObjectMapper(),
-                new RefundStrategySelector());
+        return m3Service();
     }
 
-    private TicketSaleService sagaService() {
+    private TicketSaleService m3Service() {
         return new TicketSaleService(
                 ticketSaleRepository,
                 bookingJdbcRepository,
@@ -941,14 +924,27 @@ class TicketSaleServiceTest {
                 new ObjectMapper(),
                 new RefundStrategySelector(),
                 bookingServiceClient,
+                eventServiceClient,
                 userServiceClient,
                 paymentEventPublisher);
+    }
+
+    private TicketSaleService sagaService() {
+        return m3Service();
     }
 
     private RefundRequest refundRequest(String reason) {
         RefundRequest request = new RefundRequest();
         request.setReason(reason);
         return request;
+    }
+
+    private BookingDTO bookingForSale(TicketSale sale, Long eventId) {
+        return new BookingDTO(sale.getBookingId(), sale.getUserId(), eventId, "COMPLETED", sale.getAmount());
+    }
+
+    private EventDTO event(Long eventId, LocalDateTime eventDate) {
+        return new EventDTO(eventId, "Concert", "Cairo Arena", eventDate, "CONCERT", "UPCOMING", 0.0, Map.of());
     }
 
     private void verifyRefundWindowCacheInvalidation(Long saleId) {
