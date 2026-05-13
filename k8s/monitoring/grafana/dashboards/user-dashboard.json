@@ -4,6 +4,10 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
@@ -12,7 +16,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "sum(count_over_time({app=\"eventticketing\", service=\"user-service\", level=\"ERROR\"} | json [1m]))",
+          "expr": "{app=\"eventticketing\", service=\"user-service\", level=\"ERROR\"}",
           "refId": "A"
         }
       ]
@@ -20,7 +24,19 @@
     {
       "id": 2,
       "type": "logs",
-      "title": "RabbitMQ Event Audit (user.registered / user.deactivated)",
+      "title": "Booking Feign Calls",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{app=\"eventticketing\", service=\"user-service\"} |= \"Booking service\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "RabbitMQ User Events",
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
@@ -30,7 +46,7 @@
       ]
     },
     {
-      "id": 3,
+      "id": 4,
       "type": "logs",
       "title": "Booking Saga Consumer Logs",
       "datasource": { "type": "loki", "uid": "loki" },
@@ -42,9 +58,9 @@
       ]
     },
     {
-      "id": 4,
+      "id": 5,
       "type": "timeseries",
-      "title": "HTTP Request Rate (req/s)",
+      "title": "HTTP Request Rate",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -55,9 +71,9 @@
       ]
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "timeseries",
-      "title": "HTTP Latency P95 / P99 (seconds)",
+      "title": "HTTP Latency P95 / P99",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -73,9 +89,9 @@
       ]
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "timeseries",
-      "title": "JVM Heap Usage (bytes)",
+      "title": "JVM Heap Usage",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
