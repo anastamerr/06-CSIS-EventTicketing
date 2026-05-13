@@ -42,6 +42,8 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.ticket.client.BookingServiceClient;
+import feign.FeignException;
 
 @Service
 public class TicketService {
@@ -54,6 +56,7 @@ public class TicketService {
     private final RedisCacheService redisCacheService;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
     private final AtomicLong lastScanEpochMillis = new AtomicLong();
+    private final BookingServiceClient bookingServiceClient;
 
     @Autowired
     public TicketService(
@@ -64,7 +67,8 @@ public class TicketService {
             MongoTemplate mongoTemplate,
             EventFactory eventFactory,
             TicketScanEventRepository ticketScanEventRepository,
-            RedisCacheService redisCacheService
+            RedisCacheService redisCacheService,
+            BookingServiceClient bookingServiceClient
     ) {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
@@ -72,6 +76,7 @@ public class TicketService {
         this.cassandraRowAdapter = cassandraRowAdapter;
         this.ticketScanEventRepository = ticketScanEventRepository;
         this.redisCacheService = redisCacheService;
+        this.bookingServiceClient = bookingServiceClient;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -82,6 +87,7 @@ public class TicketService {
         this.cassandraRowAdapter = new CassandraRowAdapter();
         this.ticketScanEventRepository = null;
         this.redisCacheService = null;
+        this.bookingServiceClient = null;
     }
 
     public List<Ticket> getAllTickets() { return ticketRepository.findAll(); }
@@ -265,11 +271,23 @@ public class TicketService {
     }
 
     public Ticket getLatestTicketForBooking(Long bookingId) {
-        if (!ticketRepository.existsBookingById(bookingId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
-        }
+        verifyBookingExists(bookingId);
         return ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
+    }
+
+    private void verifyBookingExists(Long bookingId) {
+        if (bookingId == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        }
+        try {
+            bookingServiceClient.getBookingContract(bookingId);
+        } catch (FeignException.NotFound ex) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        } catch (FeignException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Unable to verify booking: " + ex.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
