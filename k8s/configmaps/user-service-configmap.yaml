@@ -9,4 +9,5 @@ data:
   SPRING_RABBITMQ_PORT: "5672"
   SPRING_RABBITMQ_USERNAME: guest
   SPRING_RABBITMQ_PASSWORD: guest
+  FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
   LOKI_URL: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push

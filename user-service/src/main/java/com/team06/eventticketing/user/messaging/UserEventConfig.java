@@ -15,6 +15,9 @@ import org.springframework.context.annotation.Configuration;
 public class UserEventConfig {
 
     public static final String USER_EXCHANGE = "user.events";
+    public static final String USER_EVENTS_EXCHANGE = USER_EXCHANGE;
+    public static final String USER_REGISTERED_ROUTING_KEY = "user.registered";
+    public static final String USER_DEACTIVATED_ROUTING_KEY = "user.deactivated";
     public static final String BOOKING_EXCHANGE = "booking.events";
     public static final String BOOKING_DLX = "booking.events.dlx";
     public static final String USER_BOOKING_SAGA_QUEUE = "user.booking.saga-listener";
