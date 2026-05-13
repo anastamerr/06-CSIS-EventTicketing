@@ -21,3 +21,12 @@ BEGIN
     END IF;
 END
 $$@@
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'ticket_sales')
+       AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uk_ticket_sales_booking_id') THEN
+        ALTER TABLE ticket_sales ADD CONSTRAINT uk_ticket_sales_booking_id UNIQUE (booking_id);
+    END IF;
+END
+$$@@

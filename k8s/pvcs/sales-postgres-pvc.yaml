@@ -1,2 +1,11 @@
-# Placeholder for the M3 sales PostgreSQL PVC manifest.
-# Populate according to M3.md when the sales-service slice is implemented.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sales-postgres-pvc
+  namespace: eventticketing
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -1,7 +1,87 @@
 {
-  "title": "Sales Service Placeholder",
-  "uid": "sales-service-placeholder",
+  "title": "Sales Service",
+  "uid": "sales-service",
   "schemaVersion": 39,
-  "version": 0,
-  "panels": []
+  "version": 1,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Request Rate",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"sales-service\"}[5m]))",
+          "legendFormat": "requests/sec"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "HTTP P95 Latency",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"sales-service\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "JVM Memory Used",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{job=\"sales-service\"}) by (area)",
+          "legendFormat": "{{area}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "Saga Payment Events",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "{app=\"sales-service\"} |= \"payment.\""
+        }
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}
+    },
+    {
+      "id": 5,
+      "title": "Booking Event Consumption",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "{app=\"sales-service\"} |~ \"booking.completed|booking.cancelled\""
+        }
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}
+    },
+    {
+      "id": 6,
+      "title": "Sales Errors",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "{app=\"sales-service\"} |~ \"ERROR|Exception|failed\""
+        }
+      ],
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
+    }
+  ]
 }

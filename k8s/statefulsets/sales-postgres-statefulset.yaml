@@ -1,2 +1,37 @@
-# Placeholder for the M3 sales PostgreSQL StatefulSet manifest.
-# Populate according to M3.md when the sales-service slice is implemented.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sales-postgres
+  namespace: eventticketing
+spec:
+  serviceName: sales-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sales-postgres
+  template:
+    metadata:
+      labels:
+        app: sales-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: sales-postgres-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
