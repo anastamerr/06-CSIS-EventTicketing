@@ -20,9 +20,9 @@ import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
 import com.team06.eventticketing.user.model.UserRole;
 import com.team06.eventticketing.user.model.UserStatus;
+import com.team06.eventticketing.user.messaging.UserEventPublisher;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
-import com.team06.eventticketing.user.messaging.UserEventPublisher;
 import feign.FeignException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -68,7 +68,7 @@ public class UserService {
             JwtService jwtService,
             JdbcTemplate jdbcTemplate,
             BookingServiceClient bookingServiceClient,
-            UserEventPublisher userEventPublisher,
+            @Nullable UserEventPublisher userEventPublisher,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory
     ) {

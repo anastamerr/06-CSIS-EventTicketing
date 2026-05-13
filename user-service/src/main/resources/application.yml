@@ -47,14 +47,22 @@ server:
   port: 8080
 
 feign:
+  user-service:
+    url: http://user-service:8080
+  event-service:
+    url: http://event-service:8080
   booking-service:
     url: ${FEIGN_BOOKING_SERVICE_URL:http://booking-service:8080}
+  ticket-service:
+    url: http://ticket-service:8080
+  sales-service:
+    url: http://sales-service:8080
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: "prometheus,health,info"
   endpoint:
     health:
       probes:
