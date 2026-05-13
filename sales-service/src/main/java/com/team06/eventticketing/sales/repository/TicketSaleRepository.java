@@ -15,6 +15,8 @@ public interface TicketSaleRepository extends JpaRepository<TicketSale, Long> {
 
     List<TicketSale> findByBookingId(Long bookingId);
 
+    Optional<TicketSale> findFirstByBookingIdOrderByIdAsc(Long bookingId);
+
     boolean existsByBookingIdAndStatus(Long bookingId, TicketSaleStatus status);
 
     List<TicketSale> findByUserId(Long userId);

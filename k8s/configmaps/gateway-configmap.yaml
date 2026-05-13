@@ -1,2 +1,8 @@
-# Placeholder for the M3 API gateway ConfigMap manifest.
-# Populate according to M3.md when the gateway slice is implemented.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: eventticketing
+data:
+  SPRING_APPLICATION_NAME: api-gateway
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
