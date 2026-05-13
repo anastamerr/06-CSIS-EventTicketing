@@ -1,2 +1,4 @@
-# Placeholder for the M3 monitoring namespace manifest.
-# Populate according to M3.md when the monitoring slice is implemented.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
