@@ -554,4 +554,9 @@ public class TicketService {
             register(new MongoEventLogger(mongoTemplate, eventFactory, EventType.TICKET, "ticket_events"));
         }
     }
+
+    @Transactional(readOnly = true)
+    public long getUsedTicketCountForBooking(Long bookingId) {
+        return ticketRepository.countUsedByBookingId(bookingId);
+    }
 }

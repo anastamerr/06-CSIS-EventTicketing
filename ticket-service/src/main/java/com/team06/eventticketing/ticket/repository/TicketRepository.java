@@ -166,4 +166,21 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
         WHERE b.event_id = :eventId
         """, nativeQuery = true)
     List<Object[]> findAttendanceSummaryByEventId(@Param("eventId") Long eventId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+        UPDATE tickets
+        SET event_id = :eventId
+        WHERE booking_id = :bookingId
+          AND event_id IS NULL
+        """, nativeQuery = true)
+    int backfillEventIdByBookingId(@Param("bookingId") Long bookingId, @Param("eventId") Long eventId);
+
+    @Query(value = """
+        SELECT COUNT(*)
+        FROM tickets
+        WHERE booking_id = :bookingId
+          AND status = 'USED'
+        """, nativeQuery = true)
+    long countUsedByBookingId(@Param("bookingId") Long bookingId);
 }
