@@ -5,6 +5,9 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.contracts.events.UserDeactivatedEvent;
+import com.team06.eventticketing.contracts.events.UserRegisteredEvent;
+import com.team06.eventticketing.user.messaging.UserEventPublisher;
 import com.team06.eventticketing.user.adapter.TopAttendeeAdapter;
 import com.team06.eventticketing.user.adapter.UserBookingSummaryAdapter;
 import com.team06.eventticketing.user.dto.AuthResponse;
@@ -52,6 +55,7 @@ public class UserService {
     private final UserBookingSummaryAdapter userBookingSummaryAdapter;
     private final TopAttendeeAdapter topAttendeeAdapter;
     private final JdbcTemplate jdbcTemplate;
+    private final UserEventPublisher eventPublisher;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
@@ -64,7 +68,8 @@ public class UserService {
             TopAttendeeAdapter topAttendeeAdapter,
             JdbcTemplate jdbcTemplate,
             MongoTemplate mongoTemplate,
-            EventFactory eventFactory
+            EventFactory eventFactory,
+            @org.springframework.lang.Nullable UserEventPublisher eventPublisher
     ) {
         this.userRepository = userRepository;
         this.favoriteVenueRepository = favoriteVenueRepository;
@@ -73,6 +78,7 @@ public class UserService {
         this.userBookingSummaryAdapter = userBookingSummaryAdapter;
         this.topAttendeeAdapter = topAttendeeAdapter;
         this.jdbcTemplate = jdbcTemplate;
+        this.eventPublisher = eventPublisher;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -84,6 +90,7 @@ public class UserService {
                 new JwtService(),
                 new UserBookingSummaryAdapter(),
                 new TopAttendeeAdapter(),
+                null,
                 null,
                 null,
                 null);
@@ -148,6 +155,9 @@ public class UserService {
         notifyObservers("USER_DEACTIVATED", Map.of(
                 "userId", saved.getId(),
                 "details", buildUserDetails(saved)));
+        if (eventPublisher != null) {
+            eventPublisher.publishUserDeactivated(new UserDeactivatedEvent(saved.getId()));
+        }
         return saved;
     }
 
@@ -357,6 +367,10 @@ public class UserService {
         notifyObservers("REGISTERED", Map.of(
                 "userId", saved.getId(),
                 "details", buildUserDetails(saved)));
+        if (eventPublisher != null) {
+            eventPublisher.publishUserRegistered(
+                    new UserRegisteredEvent(saved.getId(), saved.getEmail(), saved.getRole().name()));
+        }
         return new AuthResponse(
                 jwtService.generateToken(saved.getId(), saved.getEmail(), saved.getRole().name()),
                 saved.getId(),
