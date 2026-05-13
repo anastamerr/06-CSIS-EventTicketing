@@ -26,6 +26,9 @@ public class Ticket {
     @Column(nullable = false)
     private Long bookingId;
 
+    @Column(name = "event_id")
+    private Long eventId;
+
     @Column(nullable = false)
     private String attendeeName;
 
@@ -68,6 +71,14 @@ public class Ticket {
 
     public void setBookingId(Long bookingId) {
         this.bookingId = bookingId;
+    }
+
+    public Long getEventId() {
+        return eventId;
+    }
+
+    public void setEventId(Long eventId) {
+        this.eventId = eventId;
     }
 
     public String getAttendeeName() {
