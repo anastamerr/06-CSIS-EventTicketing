@@ -375,13 +375,11 @@ public class TicketService {
 
     @Transactional
     public Map<String, Object> batchIssue(Long bookingId, List<Ticket> tickets) {
-        if (bookingId == null || !ticketRepository.existsBookingById(bookingId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
-        }
-
         if (tickets == null || tickets.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tickets is required");
         }
+
+        BookingDTO booking = fetchBooking(bookingId);  // single Feign call for the whole batch
 
         List<String> codes = tickets.stream().map(Ticket::getTicketCode).toList();
         long distinctCount = codes.stream().distinct().count();
@@ -397,14 +395,19 @@ public class TicketService {
 
         for (Ticket ticket : tickets) {
             ticket.setBookingId(bookingId);
+            ticket.setEventId(booking.eventId());  // denormalize for F8/F9
             ticket.setStatus(TicketStatus.VALID);
         }
+
         List<Ticket> savedTickets = ticketRepository.saveAll(tickets);
+
+        savedTickets.forEach(this::publishTicketIssued);  // one event per ticket
+
         notifyObservers("BATCH_ISSUED", Map.of(
                 "ticketId", savedTickets.isEmpty() ? 0L : savedTickets.getFirst().getId(),
                 "details", Map.of("count", savedTickets.size(), "bookingId", bookingId)));
 
-        return Map.of("count", tickets.size());
+        return Map.of("count", savedTickets.size());
     }
 
     @Transactional
