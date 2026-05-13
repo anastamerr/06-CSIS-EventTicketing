@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: user-service
+              uri: ${USER_SERVICE_URI:http://user-service:8080}
+              predicates:
+                - Path=/api/users/**,/api/auth/**
+            - id: event-service
+              uri: ${EVENT_SERVICE_URI:http://event-service:8080}
+              predicates:
+                - Path=/api/events/**
+            - id: booking-service
+              uri: ${BOOKING_SERVICE_URI:http://booking-service:8080}
+              predicates:
+                - Path=/api/bookings/**
+            - id: ticket-service
+              uri: ${TICKET_SERVICE_URI:http://ticket-service:8080}
+              predicates:
+                - Path=/api/tickets/**
+            - id: sales-service
+              uri: ${SALES_SERVICE_URI:http://sales-service:8080}
+              predicates:
+                - Path=/api/sales/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+
+server:
+  port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h}
