@@ -1,2 +1,13 @@
-# Placeholder for the M3 event-service Service manifest.
-# Populate according to M3.md when the event-service Kubernetes slice is completed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-service
+  namespace: eventticketing
+spec:
+  type: ClusterIP
+  selector:
+    app: event-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
