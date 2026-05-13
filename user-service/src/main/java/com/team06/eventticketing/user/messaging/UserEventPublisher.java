@@ -33,10 +33,7 @@ public class UserEventPublisher {
             MDC.put("userId", userId.toString());
         }
         try {
-            rabbitTemplate.convertAndSend(
-                    UserEventConfig.USER_EVENTS_EXCHANGE,
-                    routingKey,
-                    event);
+            rabbitTemplate.convertAndSend(UserEventConfig.USER_EXCHANGE, routingKey, event);
             log.info("Published {} event for userId={}", routingKey, userId);
         } finally {
             MDC.remove("routingKey");
