@@ -31,5 +31,27 @@ jwt:
   secret: ${JWT_SECRET:bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h}
   expiration: ${JWT_EXPIRATION_MS:86400000}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "prometheus,health,info"
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
 server:
   port: 8080
+
+feign:
+  user-service:
+    url: http://user-service:8080
+  event-service:
+    url: http://event-service:8080
+  booking-service:
+    url: http://booking-service:8080
+  ticket-service:
+    url: http://ticket-service:8080
+  sales-service:
+    url: http://sales-service:8080

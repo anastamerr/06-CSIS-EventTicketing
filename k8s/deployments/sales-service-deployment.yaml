@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: sales-service
   namespace: eventticketing
+  labels:
+    app: sales-service
 spec:
   replicas: 1
   selector:
@@ -22,32 +24,18 @@ spec:
               containerPort: 8080
           envFrom:
             - configMapRef:
-                name: sales-service-configmap
-          env:
-            - name: SPRING_DATASOURCE_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  name: sales-postgres-secret
-                  key: POSTGRES_USER
-            - name: SPRING_DATASOURCE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: sales-postgres-secret
-                  key: POSTGRES_PASSWORD
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: jwt-secret
-                  key: jwt-secret
+                name: sales-service-config
+            - secretRef:
+                name: sales-postgres-secret
           readinessProbe:
             httpGet:
-              path: /actuator/health
+              path: /actuator/health/readiness
               port: http
-            initialDelaySeconds: 30
+            initialDelaySeconds: 20
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /actuator/health
+              path: /actuator/health/liveness
               port: http
-            initialDelaySeconds: 60
-            periodSeconds: 30
+            initialDelaySeconds: 40
+            periodSeconds: 20
