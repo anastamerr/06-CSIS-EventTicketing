@@ -7,7 +7,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication(scanBasePackages = "com.team06.eventticketing")
-@EnableFeignClients(basePackages = "com.team06.eventticketing.contracts.feign")
+@EnableFeignClients(basePackages = "com.team06.eventticketing.ticket.client")
 public class TicketServiceApplication {
 
     public static void main(String[] args) {
