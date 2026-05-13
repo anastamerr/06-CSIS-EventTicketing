@@ -646,7 +646,7 @@ public class TicketSaleService {
         }
 
         redisCacheService.deleteByPattern("sales-service::S5-F10::*");
-        redisCacheService.deleteByPattern("sales-service::S5-F11::*");
+        redisCacheService.delete("sales-service::S5-F11::" + saleId);
         redisCacheService.delete("sales-service::ticket-sale::" + saleId);
     }
 
