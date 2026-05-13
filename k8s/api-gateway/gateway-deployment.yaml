@@ -15,27 +15,24 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: team06/api-gateway:latest
+          image: api-gateway:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: gateway-configmap
-          env:
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: jwt-secret
-                  key: jwt-secret
+                name: gateway-config
+            - secretRef:
+                name: jwt-secret
           readinessProbe:
             httpGet:
               path: /actuator/health
               port: 8080
-            initialDelaySeconds: 30
+            initialDelaySeconds: 20
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 30
+            initialDelaySeconds: 40
+            periodSeconds: 20

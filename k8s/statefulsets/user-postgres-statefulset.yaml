@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: user-postgres
+  namespace: eventticketing
+spec:
+  serviceName: user-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-postgres
+  template:
+    metadata:
+      labels:
+        app: user-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: user-postgres-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
