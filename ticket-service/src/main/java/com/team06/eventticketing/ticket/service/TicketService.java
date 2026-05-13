@@ -186,10 +186,12 @@ public class TicketService {
         double attendanceRate = totalIssued == 0 ? 0.0 : (double) usedCount / totalIssued;
 
         Map<String, Long> ticketsByStatus = new LinkedHashMap<>();
-        ticketsByStatus.put(TicketStatus.VALID.name(), validCount);
-        ticketsByStatus.put(TicketStatus.USED.name(), usedCount);
-        ticketsByStatus.put(TicketStatus.EXPIRED.name(), expiredCount);
-        ticketsByStatus.put(TicketStatus.CANCELLED.name(), cancelledCount);
+        if (totalIssued > 0) {
+            ticketsByStatus.put(TicketStatus.VALID.name(), validCount);
+            ticketsByStatus.put(TicketStatus.USED.name(), usedCount);
+            ticketsByStatus.put(TicketStatus.EXPIRED.name(), expiredCount);
+            ticketsByStatus.put(TicketStatus.CANCELLED.name(), cancelledCount);
+        }
 
         return TicketAnalyticsDTO.builder()
                 .totalIssued(totalIssued)

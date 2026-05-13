@@ -38,6 +38,9 @@ build/
 
 ### VS Code ###
 .vscode/
+.mvn-home/
+.mvn-local-settings.xml
+Untitled
 
 ### Mac OS ###
 .DS_Store
