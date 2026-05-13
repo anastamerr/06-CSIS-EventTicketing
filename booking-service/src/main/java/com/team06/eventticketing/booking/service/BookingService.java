@@ -330,8 +330,11 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
-    public long getUserBookingCount(Long userId) {
-        return bookingRepository.countByUserId(userId);
+    public long getUserBookingCount(Long userId, BookingStatus status) {
+        if (status == null) {
+            return bookingRepository.countByUserId(userId);
+        }
+        return bookingRepository.countByUserIdAndStatus(userId, status);
     }
 
     @Transactional(readOnly = true)

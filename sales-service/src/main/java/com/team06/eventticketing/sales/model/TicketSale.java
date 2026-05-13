@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,7 +21,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 @Entity
-@Table(name = "ticket_sales")
+@Table(name = "ticket_sales", uniqueConstraints = @UniqueConstraint(name = "uk_ticket_sales_booking_id", columnNames = "booking_id"))
 public class TicketSale {
 
     @Id
