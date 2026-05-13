@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.team06.eventticketing.ticket.dto.EventTicketSummaryDTO;
 
 @RestController
 @RequestMapping("/api/tickets")
@@ -97,6 +98,12 @@ public class TicketController {
     @CachedFeature(service = "ticket-service", featureId = "S4-F3", ttlSeconds = 600)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(@PathVariable Long eventId) {
         return ticketService.getEventAttendanceSummary(eventId);
+    }
+
+    @GetMapping("/event/{eventId}/ticket-summary")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F8", ttlSeconds = 600)
+    public EventTicketSummaryDTO getEventTicketSummary(@PathVariable Long eventId) {
+        return ticketService.getEventTicketSummary(eventId);
     }
 
     @PostMapping("/booking/{bookingId}")

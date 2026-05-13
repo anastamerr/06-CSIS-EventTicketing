@@ -46,6 +46,7 @@ import com.team06.eventticketing.ticket.client.BookingServiceClient;
 import feign.FeignException;
 import com.team06.eventticketing.contracts.dto.BookingDTO;
 import com.team06.eventticketing.ticket.messaging.TicketEventPublisher;
+import com.team06.eventticketing.ticket.dto.EventTicketSummaryDTO;
 
 @Service
 public class TicketService {
@@ -317,6 +318,18 @@ public class TicketService {
         LocalDateTime lastCheckIn = toLocalDateTime(row[3]);
 
         return eventAttendanceSummaryAdapter.adapt(eventId, row);
+    }
+
+    @Transactional(readOnly = true)
+    public EventTicketSummaryDTO getEventTicketSummary(Long eventId) {
+        List<Object[]> rows = ticketRepository.findAttendanceSummaryByEventId(eventId);
+        if (rows.isEmpty()) {
+            return new EventTicketSummaryDTO(0L, 0L);
+        }
+        Object[] row = rows.getFirst();
+        long totalTicketsSold = toLong(row[0]);
+        long usedCount = toLong(row[1]);
+        return new EventTicketSummaryDTO(totalTicketsSold, usedCount);
     }
 
     @Transactional(readOnly = true)
