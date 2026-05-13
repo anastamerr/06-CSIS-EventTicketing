@@ -16,12 +16,13 @@ import com.team06.eventticketing.ticket.dto.TicketScanDTO;
 import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
-import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
-import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
 import com.team06.eventticketing.ticket.scan.TicketScanEvent;
 import com.team06.eventticketing.ticket.scan.TicketScanEventRepository;
 import com.team06.eventticketing.ticket.scan.TicketScanRequest;
+import com.team06.eventticketing.ticket.client.EventServiceClient;
+import com.team06.eventticketing.ticket.client.EventServiceClient.EventResponse;
+import com.team06.eventticketing.ticket.dto.VenueCoordsDTO;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -30,6 +31,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +61,7 @@ public class TicketService {
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
     private final AtomicLong lastScanEpochMillis = new AtomicLong();
     private final BookingServiceClient bookingServiceClient;
+    private final EventServiceClient eventServiceClient;
     private final TicketEventPublisher ticketEventPublisher;
 
     @Autowired
@@ -72,6 +75,7 @@ public class TicketService {
             TicketScanEventRepository ticketScanEventRepository,
             RedisCacheService redisCacheService,
             BookingServiceClient bookingServiceClient,
+            EventServiceClient eventServiceClient,
             TicketEventPublisher ticketEventPublisher
     ) {
         this.ticketRepository = ticketRepository;
@@ -81,6 +85,7 @@ public class TicketService {
         this.ticketScanEventRepository = ticketScanEventRepository;
         this.redisCacheService = redisCacheService;
         this.bookingServiceClient = bookingServiceClient;
+        this.eventServiceClient = eventServiceClient;
         this.ticketEventPublisher = ticketEventPublisher;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
@@ -93,6 +98,7 @@ public class TicketService {
         this.ticketScanEventRepository = null;
         this.redisCacheService = null;
         this.bookingServiceClient = null;
+        this.eventServiceClient = null;
         this.ticketEventPublisher = null;
     }
 
@@ -302,23 +308,22 @@ public class TicketService {
 
     @Transactional(readOnly = true)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(Long eventId) {
-        List<Object[]> rows = ticketRepository.findAttendanceSummaryByEventId(eventId);
-        if (rows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this event");
-        }
-
-        Object[] row = rows.getFirst();
-        long totalTickets = toLong(row[0]);
+        List<Ticket> tickets = ticketRepository.findByEventId(eventId);
+        long totalTickets = tickets.size();
         if (totalTickets == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this event");
         }
+        long usedTickets = tickets.stream().filter(ticket -> ticket.getStatus() == TicketStatus.USED).count();
+        long validTickets = tickets.stream().filter(ticket -> ticket.getStatus() == TicketStatus.VALID).count();
+        LocalDateTime lastCheckIn = tickets.stream()
+                .filter(ticket -> ticket.getStatus() == TicketStatus.USED)
+                .map(ticket -> ticket.getMetadata() == null ? null : ticket.getMetadata().get("checkInTime"))
+                .filter(value -> value != null && !value.toString().isBlank())
+                .map(value -> LocalDateTime.parse(value.toString()))
+                .max(Comparator.naturalOrder())
+                .orElse(null);
 
-        long usedTickets = toLong(row[1]);
-        long validTickets = toLong(row[2]);
-        double attendanceRate = (usedTickets * 100.0) / totalTickets;
-        LocalDateTime lastCheckIn = toLocalDateTime(row[3]);
-
-        return eventAttendanceSummaryAdapter.adapt(eventId, row);
+        return eventAttendanceSummaryAdapter.adapt(eventId, new Object[]{totalTickets, usedTickets, validTickets, lastCheckIn});
     }
 
     @Transactional(readOnly = true)
@@ -343,16 +348,19 @@ public class TicketService {
 
     @Transactional(readOnly = true)
     public List<UnusedTicketDTO> getUnusedUpcomingTickets() {
-        return ticketRepository.findUnusedTicketsForUpcomingEvents()
-                .stream()
-                .map(this::mapToUnusedTicketDTO)
+        return ticketRepository.findByStatusAndEventIdIsNotNull(TicketStatus.VALID).stream()
+                .map(this::toUnusedTicketDTO)
+                .filter(dto -> dto != null && dto.getEventDate() != null)
+                .sorted(Comparator.comparing(UnusedTicketDTO::getEventDate).thenComparing(UnusedTicketDTO::getTicketId))
                 .toList();
     }
 
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
         validateGeoParameters(latitude, longitude, radiusKm);
-        return ticketRepository.findTicketsNearVenue(latitude, longitude, radiusKm).stream()
-                .map(this::toNearbyTicketResponse)
+        return ticketRepository.findByStatusAndEventIdIsNotNull(TicketStatus.VALID).stream()
+                .map(ticket -> toNearbyTicketResponse(ticket, latitude, longitude))
+                .filter(dto -> dto != null && dto.getDistanceKm() <= radiusKm)
+                .sorted(Comparator.comparing(NearbyTicketResponseDTO::getDistanceKm).thenComparing(NearbyTicketResponseDTO::getTicketId))
                 .toList();
     }
 
@@ -377,9 +385,7 @@ public class TicketService {
 
     @Transactional
     public Map<String, Object> batchIssue(Long bookingId, List<Ticket> tickets) {
-        if (bookingId == null || !ticketRepository.existsBookingById(bookingId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
-        }
+        BookingDTO booking = fetchBooking(bookingId);
 
         if (tickets == null || tickets.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "tickets is required");
@@ -399,6 +405,7 @@ public class TicketService {
 
         for (Ticket ticket : tickets) {
             ticket.setBookingId(bookingId);
+            ticket.setEventId(booking.eventId());
             ticket.setStatus(TicketStatus.VALID);
         }
         List<Ticket> savedTickets = ticketRepository.saveAll(tickets);
@@ -531,28 +538,64 @@ public class TicketService {
         return LocalDateTime.parse(value.toString());
     }
 
-    private UnusedTicketDTO mapToUnusedTicketDTO(UnusedTicketProjection p) {
+    private UnusedTicketDTO toUnusedTicketDTO(Ticket ticket) {
+        EventResponse event = fetchEvent(ticket.getEventId());
+        if (event == null || event.status() == null || !"UPCOMING".equalsIgnoreCase(event.status())) {
+            return null;
+        }
         return UnusedTicketDTO.builder()
-                .ticketId(p.getTicketId())
-                .attendeeName(p.getAttendeeName())
-                .ticketCode(p.getTicketCode())
-                .bookingId(p.getBookingId())
-                .eventName(p.getEventName())
-                .eventDate(p.getEventDate())
+                .ticketId(ticket.getId())
+                .attendeeName(ticket.getAttendeeName())
+                .ticketCode(ticket.getTicketCode())
+                .bookingId(ticket.getBookingId())
+                .eventName(event.name())
+                .eventDate(event.eventDate())
                 .build();
     }
 
-    private NearbyTicketResponseDTO toNearbyTicketResponse(NearbyTicketProjection projection) {
+    private NearbyTicketResponseDTO toNearbyTicketResponse(Ticket ticket, double latitude, double longitude) {
+        EventResponse event = fetchEvent(ticket.getEventId());
+        VenueCoordsDTO coords = fetchVenueCoords(ticket.getEventId());
+        if (event == null || coords == null || coords.venueLat() == null || coords.venueLon() == null) {
+            return null;
+        }
+        double distanceKm = distanceKm(latitude, longitude, coords.venueLat(), coords.venueLon());
         return NearbyTicketResponseDTO.builder()
-                .ticketId(projection.getTicketId())
-                .attendeeName(projection.getAttendeeName())
-                .ticketCode(projection.getTicketCode())
-                .bookingId(projection.getBookingId())
-                .eventName(projection.getEventName())
-                .eventLat(projection.getEventLat())
-                .eventLon(projection.getEventLon())
-                .distanceKm(projection.getDistanceKm())
+                .ticketId(ticket.getId())
+                .attendeeName(ticket.getAttendeeName())
+                .ticketCode(ticket.getTicketCode())
+                .bookingId(ticket.getBookingId())
+                .eventName(event.name())
+                .eventLat(coords.venueLat())
+                .eventLon(coords.venueLon())
+                .distanceKm(distanceKm)
                 .build();
+    }
+
+    private EventResponse fetchEvent(Long eventId) {
+        if (eventId == null || eventServiceClient == null) {
+            return null;
+        }
+        try {
+            return eventServiceClient.getEvent(eventId);
+        } catch (FeignException.NotFound ex) {
+            return null;
+        }
+    }
+
+    private VenueCoordsDTO fetchVenueCoords(Long eventId) {
+        if (eventId == null || eventServiceClient == null) {
+            return null;
+        }
+        try {
+            return eventServiceClient.getVenueCoords(eventId);
+        } catch (FeignException.NotFound ex) {
+            return null;
+        }
+    }
+
+    private double distanceKm(double latitude, double longitude, double eventLat, double eventLon) {
+        return Math.sqrt(Math.pow(eventLat - latitude, 2) + Math.pow(eventLon - longitude, 2)) * 111.0;
     }
 
     public void register(EntityObserver observer) {

@@ -8,6 +8,7 @@ import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.EventDTO;
 import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
 import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
 import com.team06.eventticketing.contracts.events.PaymentCompletedEvent;
@@ -15,6 +16,7 @@ import com.team06.eventticketing.contracts.events.PaymentFailedEvent;
 import com.team06.eventticketing.contracts.events.PaymentInitiatedEvent;
 import com.team06.eventticketing.contracts.events.PaymentRefundedEvent;
 import com.team06.eventticketing.contracts.feign.BookingServiceClient;
+import com.team06.eventticketing.contracts.feign.EventServiceClient;
 import com.team06.eventticketing.contracts.feign.UserServiceClient;
 import com.team06.eventticketing.sales.messaging.PaymentEventPublisher;
 import com.team06.eventticketing.sales.adapter.MongoDocumentAdapter;
@@ -60,6 +62,7 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import feign.FeignException;
 
 
 
@@ -89,12 +92,12 @@ public class TicketSaleService {
     private final RedisCacheService redisCacheService;
     private final RefundStrategySelector refundStrategySelector;
     private final BookingServiceClient bookingServiceClient;
+    private final EventServiceClient eventServiceClient;
     private final UserServiceClient userServiceClient;
     private final PaymentEventPublisher paymentEventPublisher;
     private final JavaType tierRevenueListType;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
-    @Autowired
     public TicketSaleService(
             TicketSaleRepository ticketSaleRepository,
             BookingJdbcRepository bookingJdbcRepository,
@@ -122,6 +125,7 @@ public class TicketSaleService {
                 refundStrategySelector,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -142,6 +146,43 @@ public class TicketSaleService {
             @Nullable UserServiceClient userServiceClient,
             @Nullable PaymentEventPublisher paymentEventPublisher
     ) {
+        this(
+                ticketSaleRepository,
+                bookingJdbcRepository,
+                userJdbcRepository,
+                mongoTemplate,
+                eventFactory,
+                mongoDocumentAdapter,
+                tierRevenueJdbcRepository,
+                tierRevenueRowAdapter,
+                redisCacheService,
+                objectMapper,
+                refundStrategySelector,
+                bookingServiceClient,
+                null,
+                userServiceClient,
+                paymentEventPublisher
+        );
+    }
+
+    @Autowired
+    public TicketSaleService(
+            TicketSaleRepository ticketSaleRepository,
+            BookingJdbcRepository bookingJdbcRepository,
+            UserJdbcRepository userJdbcRepository,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory,
+            MongoDocumentAdapter mongoDocumentAdapter,
+            TierRevenueJdbcRepository tierRevenueJdbcRepository,
+            TierRevenueRowAdapter tierRevenueRowAdapter,
+            RedisCacheService redisCacheService,
+            ObjectMapper objectMapper,
+            RefundStrategySelector refundStrategySelector,
+            @Nullable BookingServiceClient bookingServiceClient,
+            @Nullable EventServiceClient eventServiceClient,
+            @Nullable UserServiceClient userServiceClient,
+            @Nullable PaymentEventPublisher paymentEventPublisher
+    ) {
         this.ticketSaleRepository = ticketSaleRepository;
         this.bookingJdbcRepository = bookingJdbcRepository;
         this.userJdbcRepository = userJdbcRepository;
@@ -152,6 +193,7 @@ public class TicketSaleService {
         this.redisCacheService = redisCacheService;
         this.refundStrategySelector = refundStrategySelector;
         this.bookingServiceClient = bookingServiceClient;
+        this.eventServiceClient = eventServiceClient;
         this.userServiceClient = userServiceClient;
         this.paymentEventPublisher = paymentEventPublisher;
         this.tierRevenueListType = objectMapper == null
@@ -181,6 +223,7 @@ public class TicketSaleService {
                 new RefundStrategySelector(),
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -200,6 +243,7 @@ public class TicketSaleService {
         this.redisCacheService = null;
         this.refundStrategySelector = new RefundStrategySelector();
         this.bookingServiceClient = null;
+        this.eventServiceClient = null;
         this.userServiceClient = null;
         this.paymentEventPublisher = null;
         this.tierRevenueListType = null;
@@ -250,6 +294,7 @@ public class TicketSaleService {
 
         LocalDateTime startInclusive = startDate.atStartOfDay();
         LocalDateTime endInclusive = endDate.atTime(LocalTime.MAX);
+        LocalDateTime endExclusive = endDate.plusDays(1).atStartOfDay();
         String cacheKey = "sales-service::S5-F10::" + startInclusive + "::" + endInclusive;
         if (redisCacheService != null && tierRevenueListType != null) {
             List<TierRevenueDTO> cached = redisCacheService.get(cacheKey, tierRevenueListType);
@@ -258,11 +303,25 @@ public class TicketSaleService {
             }
         }
 
-        List<TierRevenueDTO> response = tierRevenueJdbcRepository == null
+        List<TicketSale> completedSales = ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                startInclusive,
+                endExclusive
+        ).stream()
+                .filter(sale -> sale.getStatus() == TicketSaleStatus.COMPLETED)
+                .toList();
+        double totalRevenue = completedSales.stream()
+                .mapToDouble(sale -> sale.getAmount() == null ? 0.0 : sale.getAmount())
+                .sum();
+        long saleCount = completedSales.size();
+        List<TierRevenueDTO> response = saleCount == 0
                 ? List.of()
-                : tierRevenueJdbcRepository.aggregateByTier(startInclusive, endInclusive).stream()
-                        .map(tierRevenueRowAdapter::adapt)
-                        .toList();
+                : List.of(TierRevenueDTO.builder()
+                        .tier("UNSPECIFIED")
+                        .totalRevenue(totalRevenue)
+                        .saleCount(saleCount)
+                        .ticketsSold(saleCount)
+                        .averageRevenuePerSale(totalRevenue / saleCount)
+                        .build());
         if (redisCacheService != null) {
             redisCacheService.put(cacheKey, response, 600);
         }
@@ -334,22 +393,12 @@ public class TicketSaleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Payment method is required");
         }
 
-        Double bookingTotalAmount = null;
-        if (bookingServiceClient != null) {
-            BookingDTO booking = bookingServiceClient.getBooking(bookingId);
-            if (!"PAYMENT_PENDING".equals(booking.status())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Booking is not awaiting payment. Status: " + booking.status());
-            }
-            bookingTotalAmount = booking.totalAmount();
-        } else {
-            BookingJdbcRepository.BookingPaymentRow booking = bookingJdbcRepository.findByIdForUpdate(bookingId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
-            if (!"COMPLETED".equals(booking.status())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed before payment");
-            }
-            bookingTotalAmount = booking.totalAmount();
+        BookingDTO booking = fetchBooking(bookingId);
+        if (!"PAYMENT_PENDING".equals(booking.status()) && !"COMPLETED".equals(booking.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Booking is not awaiting payment. Status: " + booking.status());
         }
+        Double bookingTotalAmount = booking.totalAmount();
 
         if (ticketSaleRepository.existsByBookingIdAndStatus(bookingId, TicketSaleStatus.COMPLETED)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "already paid");
@@ -485,6 +534,43 @@ public class TicketSaleService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Ticket sale not found"));
     }
 
+    private BookingDTO fetchBooking(Long bookingId) {
+        if (bookingServiceClient == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service client is not configured");
+        }
+        try {
+            return bookingServiceClient.getBooking(bookingId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Booking service unavailable", exception);
+        }
+    }
+
+    private EventDTO fetchEvent(Long eventId) {
+        if (eventServiceClient == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service client is not configured");
+        }
+        try {
+            return eventServiceClient.getEvent(eventId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Event service unavailable", exception);
+        }
+    }
+
+    private void fetchUser(Long userId) {
+        if (userServiceClient == null) {
+            return;
+        }
+        try {
+            userServiceClient.getUser(userId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", exception);
+        }
+    }
+
     private void apply(TicketSale ticketSale, TicketSaleRequest request) {
         ticketSale.setBookingId(request.getBookingId());
         ticketSale.setUserId(request.getUserId());
@@ -596,9 +682,7 @@ public class TicketSaleService {
 
     @Transactional(readOnly = true)
     public UserSaleSummaryDTO getUserSaleSummary(Long userId) {
-        if (!userJdbcRepository.existsById(userId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
-        }
+        fetchUser(userId);
 
         List<TicketSaleRepository.PaymentMethodSummaryProjection> rows =
                 ticketSaleRepository.getCompletedSalesSummaryByMethod(userId);
@@ -711,14 +795,16 @@ public class TicketSaleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket sale must be completed before refund");
         }
 
-        BookingJdbcRepository.SaleEventDateRow eventRow = bookingJdbcRepository.findEventDateByTicketSaleId(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking has no associated event"));
-
-        if (eventRow.eventId() == null || eventRow.eventDate() == null) {
+        BookingDTO booking = fetchBooking(sale.getBookingId());
+        if (booking.eventId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking has no associated event");
+        }
+        EventDTO event = fetchEvent(booking.eventId());
+        if (event.eventDate() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking has no associated event");
         }
 
-        LocalDateTime eventDate = eventRow.eventDate();
+        LocalDateTime eventDate = event.eventDate();
         RefundStrategy strategy = refundStrategySelector.select(sale, eventDate);
         RefundResult result = strategy.calculateRefund(sale, request, eventDate);
 

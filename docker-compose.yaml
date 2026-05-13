@@ -1,17 +1,71 @@
 services:
-  postgres:
+  user-postgres:
     image: postgres:17
-    container_name: eventticketing-db
+    container_name: eventticketing-user-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: eventticketingdb
+      POSTGRES_DB: etdb-users
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - user-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d eventticketingdb"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d etdb-users"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  event-postgres:
+    image: postgres:17
+    container_name: eventticketing-event-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: etdb-events
+    ports:
+      - "${EVENT_POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - event-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d etdb-events"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  booking-postgres:
+    image: postgres:17
+    container_name: eventticketing-booking-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: etdb-bookings
+    ports:
+      - "${BOOKING_POSTGRES_HOST_PORT:-5434}:5432"
+    volumes:
+      - booking-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d etdb-bookings"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  ticket-postgres:
+    image: postgres:17
+    container_name: eventticketing-ticket-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: etdb-tickets
+    ports:
+      - "${TICKET_POSTGRES_HOST_PORT:-5435}:5432"
+    volumes:
+      - ticket-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d etdb-tickets"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -142,7 +196,7 @@ services:
     build: ./user-service
     container_name: eventticketing-user-service
     depends_on:
-      postgres:
+      user-postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -150,7 +204,7 @@ services:
         condition: service_healthy
     environment:
       JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/etdb-users
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin
@@ -167,7 +221,7 @@ services:
     build: ./event-service
     container_name: eventticketing-event-service
     depends_on:
-      postgres:
+      event-postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -179,7 +233,7 @@ services:
         condition: service_healthy
     environment:
       JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
+      SPRING_DATASOURCE_URL: jdbc:postgresql://event-postgres:5432/etdb-events
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin
@@ -201,7 +255,7 @@ services:
     build: ./booking-service
     container_name: eventticketing-booking-service
     depends_on:
-      postgres:
+      booking-postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -211,7 +265,7 @@ services:
         condition: service_healthy
     environment:
       JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
+      SPRING_DATASOURCE_URL: jdbc:postgresql://booking-postgres:5432/etdb-bookings
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin
@@ -234,7 +288,7 @@ services:
     build: ./ticket-service
     container_name: eventticketing-ticket-service
     depends_on:
-      postgres:
+      ticket-postgres:
         condition: service_healthy
       mongo:
         condition: service_healthy
@@ -246,7 +300,7 @@ services:
         condition: service_healthy
     environment:
       JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ticket-postgres:5432/etdb-tickets
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_MONGODB_URI: mongodb://root:rootpass@mongo:27017/eventticketingmongo?authSource=admin
@@ -320,7 +374,10 @@ services:
       - "${API_GATEWAY_HOST_PORT:-30080}:8080"
 
 volumes:
-  pgdata:
+  user-pgdata:
+  event-pgdata:
+  booking-pgdata:
+  ticket-pgdata:
   sales-pgdata:
   mongo-data:
   rabbitmq-data:

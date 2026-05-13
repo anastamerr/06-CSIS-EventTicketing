@@ -2,7 +2,7 @@ spring:
   application:
     name: ticket-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/eventticketingdb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://ticket-postgres:5432/etdb-tickets}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
