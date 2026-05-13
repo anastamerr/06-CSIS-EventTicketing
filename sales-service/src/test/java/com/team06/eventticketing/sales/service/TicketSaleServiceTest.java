@@ -10,6 +10,14 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team06.eventticketing.common.cache.RedisCacheService;
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
+import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
+import com.team06.eventticketing.contracts.events.PaymentCompletedEvent;
+import com.team06.eventticketing.contracts.events.PaymentInitiatedEvent;
+import com.team06.eventticketing.contracts.events.PaymentRefundedEvent;
+import com.team06.eventticketing.contracts.feign.BookingServiceClient;
+import com.team06.eventticketing.contracts.feign.UserServiceClient;
 import com.team06.eventticketing.sales.adapter.MongoDocumentAdapter;
 import com.team06.eventticketing.sales.adapter.TierRevenueRowAdapter;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
@@ -31,7 +39,9 @@ import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
 import com.team06.eventticketing.sales.repository.TierRevenueJdbcRepository;
 import com.team06.eventticketing.sales.repository.UserJdbcRepository;
+import com.team06.eventticketing.sales.messaging.PaymentEventPublisher;
 import com.team06.eventticketing.sales.strategy.RefundStrategySelector;
+import java.math.BigDecimal;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.time.LocalDate;
@@ -74,6 +84,15 @@ class TicketSaleServiceTest {
 
     @Mock
     private RedisCacheService redisCacheService;
+
+    @Mock
+    private BookingServiceClient bookingServiceClient;
+
+    @Mock
+    private UserServiceClient userServiceClient;
+
+    @Mock
+    private PaymentEventPublisher paymentEventPublisher;
 
     @Captor
     private ArgumentCaptor<TicketSale> ticketSaleCaptor;
@@ -401,6 +420,95 @@ class TicketSaleServiceTest {
                 () -> ticketSaleService.processBookingSale(44L, request));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+    }
+
+    @Test
+    void processBookingSaleWithFeignRequiresPaymentPendingAndPublishesCompleted() {
+        TicketSaleService service = sagaService();
+        TicketSale ticketSale = sale(12L, 650.0, TicketSaleStatus.PENDING);
+        ticketSale.setBookingId(44L);
+
+        ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
+        request.setMethod(TicketSaleMethod.CREDIT_CARD);
+        request.setCardLastFour("4242");
+
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "PAYMENT_PENDING", 650.0));
+        when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(false);
+        when(ticketSaleRepository.findByBookingIdForUpdate(44L)).thenReturn(List.of(ticketSale));
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        TicketSaleResponse response = service.processBookingSale(44L, request);
+
+        assertEquals(TicketSaleStatus.COMPLETED, response.getStatus());
+        verify(bookingServiceClient).getBooking(44L);
+        verify(paymentEventPublisher).publishPaymentCompleted(any(PaymentCompletedEvent.class));
+        verify(bookingJdbcRepository, never()).findByIdForUpdate(44L);
+    }
+
+    @Test
+    void processBookingSaleWithFeignRejectsNonPaymentPendingBooking() {
+        TicketSaleService service = sagaService();
+        ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
+        request.setMethod(TicketSaleMethod.CREDIT_CARD);
+
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "CONFIRMED", 650.0));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> service.processBookingSale(44L, request));
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(ticketSaleRepository, never()).findByBookingIdForUpdate(44L);
+    }
+
+    @Test
+    void bookingCompletedCreatesPendingSaleAndPublishesPaymentInitiated() {
+        TicketSaleService service = sagaService();
+        when(ticketSaleRepository.findFirstByBookingIdOrderByIdAsc(10L)).thenReturn(Optional.empty());
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> {
+            TicketSale sale = invocation.getArgument(0);
+            sale.setId(77L);
+            return sale;
+        });
+
+        TicketSaleResponse response = service.handleBookingCompleted(
+                new BookingCompletedEvent(10L, 20L, 30L, BigDecimal.valueOf(800)));
+
+        TicketSale saved = ticketSaleCaptor.getValue();
+        assertEquals(10L, saved.getBookingId());
+        assertEquals(20L, saved.getUserId());
+        assertEquals(800.0, saved.getAmount());
+        assertEquals(TicketSaleStatus.PENDING, saved.getStatus());
+        assertEquals(77L, response.getId());
+        verify(userServiceClient).getUser(20L);
+        verify(paymentEventPublisher).publishPaymentInitiated(any(PaymentInitiatedEvent.class));
+    }
+
+    @Test
+    void bookingCompletedIsIdempotentForExistingPendingSale() {
+        TicketSaleService service = sagaService();
+        TicketSale existing = sale(77L, 800.0, TicketSaleStatus.PENDING);
+        existing.setBookingId(10L);
+        when(ticketSaleRepository.findFirstByBookingIdOrderByIdAsc(10L)).thenReturn(Optional.of(existing));
+
+        service.handleBookingCompleted(new BookingCompletedEvent(10L, 20L, 30L, BigDecimal.valueOf(800)));
+
+        verify(ticketSaleRepository, never()).save(any(TicketSale.class));
+        verify(paymentEventPublisher).publishPaymentInitiated(any(PaymentInitiatedEvent.class));
+    }
+
+    @Test
+    void bookingCancelledRefundsPendingOrCompletedSaleAndPublishesRefunded() {
+        TicketSaleService service = sagaService();
+        TicketSale existing = sale(77L, 800.0, TicketSaleStatus.COMPLETED);
+        existing.setBookingId(10L);
+        when(ticketSaleRepository.findFirstByBookingIdOrderByIdAsc(10L)).thenReturn(Optional.of(existing));
+        when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.handleBookingCancelled(new BookingCancelledEvent(10L, 20L, 30L, "payment_failed"));
+
+        assertEquals(TicketSaleStatus.REFUNDED, ticketSaleCaptor.getValue().getStatus());
+        assertEquals("payment_failed", ticketSaleCaptor.getValue().getTransactionDetails().get("refundReason"));
+        verify(paymentEventPublisher).publishPaymentRefunded(any(PaymentRefundedEvent.class));
     }
 
     @Test
@@ -817,6 +925,24 @@ class TicketSaleServiceTest {
                 redisCacheService,
                 new ObjectMapper(),
                 new RefundStrategySelector());
+    }
+
+    private TicketSaleService sagaService() {
+        return new TicketSaleService(
+                ticketSaleRepository,
+                bookingJdbcRepository,
+                userJdbcRepository,
+                mongoTemplate,
+                null,
+                new MongoDocumentAdapter(),
+                tierRevenueJdbcRepository,
+                new TierRevenueRowAdapter(),
+                redisCacheService,
+                new ObjectMapper(),
+                new RefundStrategySelector(),
+                bookingServiceClient,
+                userServiceClient,
+                paymentEventPublisher);
     }
 
     private RefundRequest refundRequest(String reason) {

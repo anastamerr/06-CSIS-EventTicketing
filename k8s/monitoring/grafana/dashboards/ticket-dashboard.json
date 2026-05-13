@@ -1,7 +1,99 @@
 {
-  "title": "Ticket Service Placeholder",
-  "uid": "ticket-service-placeholder",
+  "title": "Ticket Service",
+  "uid": "ticket-service",
   "schemaVersion": 39,
-  "version": 0,
-  "panels": []
+  "version": 1,
+  "tags": ["eventticketing", "ticket-service"],
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "corrId",
+        "type": "textbox",
+        "label": "Correlation ID",
+        "current": { "value": ".*", "text": ".*" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Error rate (ERRORs/min)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (service) (count_over_time({app=\"eventticketing\", service=\"ticket-service\", level=\"ERROR\"}[1m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Correlation ID trace",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "{app=\"eventticketing\"} | json | correlationId=~\"$corrId\"",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Ticket RabbitMQ routing keys (5m)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (routingKey) (count_over_time({app=\"eventticketing\", service=\"ticket-service\"} | json | routingKey=~\"ticket\\\\..*\"[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "HTTP request rate by URI",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"ticket-service\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "P99 latency on /api/tickets/**",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"ticket-service\", uri=~\"/api/tickets.*\"}[5m])))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "JVM heap usage ratio",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "expr": "sum by (area) (jvm_memory_used_bytes{job=\"ticket-service\"}) / sum by (area) (jvm_memory_max_bytes{job=\"ticket-service\"})",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
 }

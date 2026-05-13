@@ -7,6 +7,16 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
+import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
+import com.team06.eventticketing.contracts.events.PaymentCompletedEvent;
+import com.team06.eventticketing.contracts.events.PaymentFailedEvent;
+import com.team06.eventticketing.contracts.events.PaymentInitiatedEvent;
+import com.team06.eventticketing.contracts.events.PaymentRefundedEvent;
+import com.team06.eventticketing.contracts.feign.BookingServiceClient;
+import com.team06.eventticketing.contracts.feign.UserServiceClient;
+import com.team06.eventticketing.sales.messaging.PaymentEventPublisher;
 import com.team06.eventticketing.sales.adapter.MongoDocumentAdapter;
 import com.team06.eventticketing.sales.adapter.TierRevenueRowAdapter;
 import com.team06.eventticketing.sales.dto.ProcessBookingSaleRequest;
@@ -20,6 +30,7 @@ import com.team06.eventticketing.sales.dto.TierRevenueDTO;
 import com.team06.eventticketing.sales.dto.UserSaleSummaryDTO;
 import com.team06.eventticketing.sales.model.SalePromotion;
 import com.team06.eventticketing.sales.model.TicketSale;
+import com.team06.eventticketing.sales.model.TicketSaleMethod;
 import com.team06.eventticketing.sales.model.TicketSaleStatus;
 import com.team06.eventticketing.sales.repository.BookingJdbcRepository;
 import com.team06.eventticketing.sales.repository.TicketSaleRepository;
@@ -31,6 +42,7 @@ import com.team06.eventticketing.sales.strategy.RefundStrategySelector;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +88,9 @@ public class TicketSaleService {
     private final TierRevenueRowAdapter tierRevenueRowAdapter;
     private final RedisCacheService redisCacheService;
     private final RefundStrategySelector refundStrategySelector;
+    private final BookingServiceClient bookingServiceClient;
+    private final UserServiceClient userServiceClient;
+    private final PaymentEventPublisher paymentEventPublisher;
     private final JavaType tierRevenueListType;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
@@ -93,6 +108,40 @@ public class TicketSaleService {
             ObjectMapper objectMapper,
             RefundStrategySelector refundStrategySelector
     ) {
+        this(
+                ticketSaleRepository,
+                bookingJdbcRepository,
+                userJdbcRepository,
+                mongoTemplate,
+                eventFactory,
+                mongoDocumentAdapter,
+                tierRevenueJdbcRepository,
+                tierRevenueRowAdapter,
+                redisCacheService,
+                objectMapper,
+                refundStrategySelector,
+                null,
+                null,
+                null
+        );
+    }
+
+    public TicketSaleService(
+            TicketSaleRepository ticketSaleRepository,
+            BookingJdbcRepository bookingJdbcRepository,
+            UserJdbcRepository userJdbcRepository,
+            MongoTemplate mongoTemplate,
+            EventFactory eventFactory,
+            MongoDocumentAdapter mongoDocumentAdapter,
+            TierRevenueJdbcRepository tierRevenueJdbcRepository,
+            TierRevenueRowAdapter tierRevenueRowAdapter,
+            RedisCacheService redisCacheService,
+            ObjectMapper objectMapper,
+            RefundStrategySelector refundStrategySelector,
+            @Nullable BookingServiceClient bookingServiceClient,
+            @Nullable UserServiceClient userServiceClient,
+            @Nullable PaymentEventPublisher paymentEventPublisher
+    ) {
         this.ticketSaleRepository = ticketSaleRepository;
         this.bookingJdbcRepository = bookingJdbcRepository;
         this.userJdbcRepository = userJdbcRepository;
@@ -102,6 +151,9 @@ public class TicketSaleService {
         this.tierRevenueRowAdapter = tierRevenueRowAdapter;
         this.redisCacheService = redisCacheService;
         this.refundStrategySelector = refundStrategySelector;
+        this.bookingServiceClient = bookingServiceClient;
+        this.userServiceClient = userServiceClient;
+        this.paymentEventPublisher = paymentEventPublisher;
         this.tierRevenueListType = objectMapper == null
                 ? null
                 : objectMapper.getTypeFactory().constructCollectionType(List.class, TierRevenueDTO.class);
@@ -126,7 +178,10 @@ public class TicketSaleService {
                 new TierRevenueRowAdapter(),
                 null,
                 null,
-                new RefundStrategySelector()
+                new RefundStrategySelector(),
+                null,
+                null,
+                null
         );
     }
 
@@ -144,6 +199,9 @@ public class TicketSaleService {
         this.tierRevenueRowAdapter = new TierRevenueRowAdapter();
         this.redisCacheService = null;
         this.refundStrategySelector = new RefundStrategySelector();
+        this.bookingServiceClient = null;
+        this.userServiceClient = null;
+        this.paymentEventPublisher = null;
         this.tierRevenueListType = null;
     }
 
@@ -276,11 +334,21 @@ public class TicketSaleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Payment method is required");
         }
 
-        BookingJdbcRepository.BookingPaymentRow booking = bookingJdbcRepository.findByIdForUpdate(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
-
-        if (!"COMPLETED".equals(booking.status())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed before payment");
+        Double bookingTotalAmount = null;
+        if (bookingServiceClient != null) {
+            BookingDTO booking = bookingServiceClient.getBooking(bookingId);
+            if (!"PAYMENT_PENDING".equals(booking.status())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Booking is not awaiting payment. Status: " + booking.status());
+            }
+            bookingTotalAmount = booking.totalAmount();
+        } else {
+            BookingJdbcRepository.BookingPaymentRow booking = bookingJdbcRepository.findByIdForUpdate(bookingId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
+            if (!"COMPLETED".equals(booking.status())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed before payment");
+            }
+            bookingTotalAmount = booking.totalAmount();
         }
 
         if (ticketSaleRepository.existsByBookingIdAndStatus(bookingId, TicketSaleStatus.COMPLETED)) {
@@ -289,8 +357,8 @@ public class TicketSaleService {
 
         TicketSale ticketSale = findPendingTicketSaleForBooking(bookingId);
         ticketSale.setMethod(request.getMethod());
-        if (booking.totalAmount() != null) {
-            ticketSale.setAmount(booking.totalAmount());
+        if (bookingTotalAmount != null) {
+            ticketSale.setAmount(bookingTotalAmount);
         }
         Map<String, Object> transactionDetails = buildProcessedTransactionDetails(ticketSale, request);
         ticketSale.setTransactionDetails(transactionDetails);
@@ -304,15 +372,67 @@ public class TicketSaleService {
             ticketSale.setStatus(TicketSaleStatus.FAILED);
             saved = ticketSaleRepository.save(ticketSale);
             notifyObservers("FAILED", buildAuditPayload(saved, Map.of("simulateFailure", true)));
+            publishPaymentFailed(saved, "Simulated gateway failure");
         } else {
             transactionDetails.put("gatewayResponse", "approved");
             transactionDetails.put("paidAt", LocalDateTime.now().toString());
             ticketSale.setStatus(TicketSaleStatus.COMPLETED);
             saved = ticketSaleRepository.save(ticketSale);
             notifyObservers("COMPLETED", buildAuditPayload(saved, null));
+            publishPaymentCompleted(saved);
         }
 
         return toResponse(saved);
+    }
+
+    @Transactional
+    public TicketSaleResponse handleBookingCompleted(BookingCompletedEvent event) {
+        if (event == null || event.bookingId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking.completed event is missing bookingId");
+        }
+
+        if (userServiceClient != null && event.userId() != null) {
+            userServiceClient.getUser(event.userId());
+        }
+
+        TicketSale sale = ticketSaleRepository.findFirstByBookingIdOrderByIdAsc(event.bookingId())
+                .orElseGet(() -> {
+                    TicketSale pending = new TicketSale();
+                    pending.setBookingId(event.bookingId());
+                    pending.setUserId(event.userId());
+                    pending.setAmount(toDouble(event.totalAmount()));
+                    pending.setMethod(TicketSaleMethod.CREDIT_CARD);
+                    pending.setStatus(TicketSaleStatus.PENDING);
+                    pending.setTransactionDetails(new LinkedHashMap<>(Map.of(
+                            "sagaState", "PAYMENT_INITIATED",
+                            "initiatedAt", LocalDateTime.now().toString())));
+                    return ticketSaleRepository.save(pending);
+                });
+
+        if (sale.getStatus() == TicketSaleStatus.PENDING) {
+            publishPaymentInitiated(sale);
+        }
+        return toResponse(sale);
+    }
+
+    @Transactional
+    public void handleBookingCancelled(BookingCancelledEvent event) {
+        if (event == null || event.bookingId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking.cancelled event is missing bookingId");
+        }
+
+        ticketSaleRepository.findFirstByBookingIdOrderByIdAsc(event.bookingId())
+                .filter(sale -> sale.getStatus() == TicketSaleStatus.PENDING || sale.getStatus() == TicketSaleStatus.COMPLETED)
+                .ifPresent(sale -> {
+                    Map<String, Object> details = new LinkedHashMap<>(copyTransactionDetails(sale.getTransactionDetails()));
+                    details.put("refundReason", event.reason());
+                    details.put("refundedAt", LocalDateTime.now().toString());
+                    sale.setTransactionDetails(details);
+                    sale.setStatus(TicketSaleStatus.REFUNDED);
+                    TicketSale saved = ticketSaleRepository.save(sale);
+                    notifyObservers("REFUNDED", buildAuditPayload(saved, Map.of("refundReason", event.reason())));
+                    publishPaymentRefunded(saved);
+                });
     }
 
     @Transactional
@@ -646,8 +766,49 @@ public class TicketSaleService {
         }
 
         redisCacheService.deleteByPattern("sales-service::S5-F10::*");
-        redisCacheService.deleteByPattern("sales-service::S5-F11::*");
+        redisCacheService.delete("sales-service::S5-F11::" + saleId);
         redisCacheService.delete("sales-service::ticket-sale::" + saleId);
+    }
+
+    private void publishPaymentInitiated(TicketSale sale) {
+        if (paymentEventPublisher != null) {
+            paymentEventPublisher.publishPaymentInitiated(new PaymentInitiatedEvent(
+                    sale.getId(),
+                    sale.getBookingId(),
+                    toBigDecimal(sale.getAmount())));
+        }
+    }
+
+    private void publishPaymentCompleted(TicketSale sale) {
+        if (paymentEventPublisher != null) {
+            paymentEventPublisher.publishPaymentCompleted(new PaymentCompletedEvent(
+                    sale.getId(),
+                    sale.getBookingId(),
+                    toBigDecimal(sale.getAmount())));
+        }
+    }
+
+    private void publishPaymentFailed(TicketSale sale, String reason) {
+        if (paymentEventPublisher != null) {
+            paymentEventPublisher.publishPaymentFailed(new PaymentFailedEvent(sale.getId(), sale.getBookingId(), reason));
+        }
+    }
+
+    private void publishPaymentRefunded(TicketSale sale) {
+        if (paymentEventPublisher != null) {
+            paymentEventPublisher.publishPaymentRefunded(new PaymentRefundedEvent(
+                    sale.getId(),
+                    sale.getBookingId(),
+                    toBigDecimal(sale.getAmount())));
+        }
+    }
+
+    private BigDecimal toBigDecimal(Double value) {
+        return value == null ? BigDecimal.ZERO : BigDecimal.valueOf(value);
+    }
+
+    private Double toDouble(BigDecimal value) {
+        return value == null ? 0.0 : value.doubleValue();
     }
 
 

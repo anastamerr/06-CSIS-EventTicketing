@@ -1,2 +1,41 @@
-# Placeholder for the M3 sales-service Deployment manifest.
-# Populate according to M3.md when the sales-service slice is implemented.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sales-service
+  namespace: eventticketing
+  labels:
+    app: sales-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sales-service
+  template:
+    metadata:
+      labels:
+        app: sales-service
+    spec:
+      containers:
+        - name: sales-service
+          image: sales-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: sales-service-config
+            - secretRef:
+                name: sales-postgres-secret
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 20
