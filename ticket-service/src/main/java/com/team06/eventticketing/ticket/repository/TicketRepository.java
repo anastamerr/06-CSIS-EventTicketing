@@ -67,22 +67,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     @Query(value = "SELECT EXISTS (SELECT 1 FROM bookings WHERE id = :bookingId)", nativeQuery = true)
     boolean existsBookingById(@Param("bookingId") Long bookingId);
 
-    @Query(value = """
-            SELECT
-                t.id            AS ticketId,
-                t.attendee_name AS attendeeName,
-                t.ticket_code   AS ticketCode,
-                t.booking_id    AS bookingId,
-                e.name          AS eventName,
-                e.event_date    AS eventDate
-            FROM tickets t
-            JOIN bookings b ON b.id = t.booking_id
-            JOIN events e   ON e.id = b.event_id
-            WHERE t.status = 'VALID'
-              AND e.status = 'UPCOMING'
-            ORDER BY e.event_date ASC, t.id ASC
-            """, nativeQuery = true)
-    List<UnusedTicketProjection> findUnusedTicketsForUpcomingEvents();
+    @Query("SELECT t FROM Ticket t WHERE t.status = com.team06.eventticketing.ticket.model.TicketStatus.VALID AND t.eventId IS NOT NULL ORDER BY t.eventId ASC, t.id ASC")
+    List<Ticket> findValidTicketsWithEventId();
 
     @Query(value = """
             SELECT
