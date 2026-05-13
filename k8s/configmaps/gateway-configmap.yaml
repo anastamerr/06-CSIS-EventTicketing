@@ -1,36 +1,8 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: gateway-configmap
+  name: gateway-config
   namespace: eventticketing
 data:
-  application.yml: |
-    spring:
-      application:
-        name: api-gateway
-      cloud:
-        gateway:
-          routes:
-            - id: user-service
-              uri: http://user-service:8080
-              predicates:
-                - Path=/api/users/**,/api/auth/**
-            - id: event-service
-              uri: http://event-service:8080
-              predicates:
-                - Path=/api/events/**
-            - id: booking-service
-              uri: http://booking-service:8080
-              predicates:
-                - Path=/api/bookings/**
-            - id: ticket-service
-              uri: http://ticket-service:8080
-              predicates:
-                - Path=/api/tickets/**
-            - id: sales-service
-              uri: http://sales-service:8080
-              predicates:
-                - Path=/api/sales/**
-
-    server:
-      port: 8080
+  SPRING_APPLICATION_NAME: api-gateway
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info

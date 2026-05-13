@@ -296,6 +296,24 @@ services:
     ports:
       - "${SALES_SERVICE_HOST_PORT:-8085}:8080"
 
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: eventticketing-api-gateway
+    depends_on:
+      - user-service
+      - event-service
+      - booking-service
+      - ticket-service
+      - sales-service
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
+      JWT_SECRET: bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h
+      JWT_EXPIRATION_MS: 86400000
+    ports:
+      - "${API_GATEWAY_HOST_PORT:-30080}:8080"
+
 volumes:
   pgdata:
   sales-pgdata:
