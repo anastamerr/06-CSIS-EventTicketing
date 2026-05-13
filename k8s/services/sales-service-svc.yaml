@@ -1,2 +1,15 @@
-# Placeholder for the M3 sales-service Service manifest.
-# Populate according to M3.md when the sales-service slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sales-service
+  namespace: eventticketing
+  labels:
+    app: sales-service
+spec:
+  type: ClusterIP
+  selector:
+    app: sales-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
