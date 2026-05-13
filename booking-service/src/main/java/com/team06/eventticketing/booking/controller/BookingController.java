@@ -13,6 +13,10 @@ import com.team06.eventticketing.booking.dto.BookingRequest;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.service.BookingService;
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
+import com.team06.eventticketing.contracts.dto.EventBookingRevenueDTO;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -47,6 +51,52 @@ public class BookingController {
     @CachedDetail(service = "booking-service", entity = "booking", key = "#id", ttlSeconds = 900)
     public Booking getBookingById(@PathVariable Long id) {
         return bookingService.getBookingById(id);
+    }
+
+    @GetMapping("/{bookingId}/contract")
+    public BookingDTO getBookingContract(@PathVariable Long bookingId) {
+        return bookingService.getBookingContract(bookingId);
+    }
+
+    @GetMapping("/user/{userId}/summary")
+    public BookingSummaryDTO getUserBookingSummary(@PathVariable Long userId) {
+        return bookingService.getUserBookingSummary(userId);
+    }
+
+    @GetMapping("/user/{userId}/active-count")
+    public int getUserActiveBookingCount(@PathVariable Long userId) {
+        return bookingService.getUserActiveBookingCount(userId);
+    }
+
+    @GetMapping("/user/{userId}/count")
+    public long getUserBookingCount(
+            @PathVariable Long userId,
+            @RequestParam(required = false) BookingStatus status
+    ) {
+        return bookingService.getUserBookingCount(userId, status);
+    }
+
+    @GetMapping("/user/{userId}/total")
+    public BigDecimal getUserCompletedBookingTotal(
+            @PathVariable Long userId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return bookingService.getUserCompletedBookingTotal(userId, startDate, endDate);
+    }
+
+    @GetMapping("/event/{eventId}/revenue")
+    public EventBookingRevenueDTO getEventRevenue(
+            @PathVariable Long eventId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        return bookingService.getEventRevenue(eventId, startDate, endDate);
+    }
+
+    @GetMapping("/event/{eventId}/active-count")
+    public int getEventActiveBookingCount(@PathVariable Long eventId) {
+        return bookingService.getEventActiveBookingCount(eventId);
     }
 
     @GetMapping("/{bookingId}/details")

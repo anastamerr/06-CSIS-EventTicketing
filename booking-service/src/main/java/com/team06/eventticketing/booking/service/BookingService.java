@@ -9,18 +9,29 @@ import com.team06.eventticketing.booking.dto.BookingDetailsItemDTO;
 import com.team06.eventticketing.booking.dto.BookingEstimateRequest;
 import com.team06.eventticketing.booking.dto.BookingItemRequest;
 import com.team06.eventticketing.booking.dto.BookingRequest;
+import com.team06.eventticketing.booking.messaging.BookingEventPublisher;
 import com.team06.eventticketing.booking.model.Booking;
 import com.team06.eventticketing.booking.model.BookingItem;
 import com.team06.eventticketing.booking.model.BookingItemStatus;
 import com.team06.eventticketing.booking.model.BookingStatus;
 import com.team06.eventticketing.booking.repository.BookingRepository;
-import com.team06.eventticketing.booking.repository.TicketJdbcRepository;
-import com.team06.eventticketing.booking.repository.TicketSaleJdbcRepository;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.contracts.dto.AvgCapacityDTO;
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
+import com.team06.eventticketing.contracts.dto.EventBookingRevenueDTO;
+import com.team06.eventticketing.contracts.dto.EventDTO;
+import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
+import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
+import com.team06.eventticketing.contracts.events.BookingPlacedEvent;
+import com.team06.eventticketing.contracts.feign.EventServiceClient;
+import feign.FeignException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -28,9 +39,7 @@ import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,43 +53,41 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class BookingService {
 
-    private static final Set<String> SUPPORTED_PAYMENT_METHODS = Set.of("CREDIT_CARD", "DEBIT_CARD", "WALLET");
-
     private final BookingRepository bookingRepository;
-    private final TicketJdbcRepository ticketJdbcRepository;
-    private final TicketSaleJdbcRepository ticketSaleJdbcRepository;
     private final BookingAnalyticsAdapter bookingAnalyticsAdapter;
     private final ObjectProvider<BookingService> selfProvider;
+    private final EventServiceClient eventServiceClient;
+    private final BookingEventPublisher bookingEventPublisher;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
     public BookingService(
             BookingRepository bookingRepository,
-            TicketJdbcRepository ticketJdbcRepository,
-            TicketSaleJdbcRepository ticketSaleJdbcRepository,
             BookingAnalyticsAdapter bookingAnalyticsAdapter,
             MongoTemplate mongoTemplate,
             EventFactory eventFactory,
-            ObjectProvider<BookingService> selfProvider
+            ObjectProvider<BookingService> selfProvider,
+            EventServiceClient eventServiceClient,
+            BookingEventPublisher bookingEventPublisher
     ) {
         this.bookingRepository = bookingRepository;
-        this.ticketJdbcRepository = ticketJdbcRepository;
-        this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
         this.bookingAnalyticsAdapter = bookingAnalyticsAdapter;
         this.selfProvider = selfProvider;
+        this.eventServiceClient = eventServiceClient;
+        this.bookingEventPublisher = bookingEventPublisher;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
     public BookingService(
             BookingRepository bookingRepository,
-            TicketJdbcRepository ticketJdbcRepository,
-            TicketSaleJdbcRepository ticketSaleJdbcRepository
+            EventServiceClient eventServiceClient,
+            BookingEventPublisher bookingEventPublisher
     ) {
         this.bookingRepository = bookingRepository;
-        this.ticketJdbcRepository = ticketJdbcRepository;
-        this.ticketSaleJdbcRepository = ticketSaleJdbcRepository;
         this.bookingAnalyticsAdapter = new BookingAnalyticsAdapter();
         this.selfProvider = null;
+        this.eventServiceClient = eventServiceClient;
+        this.bookingEventPublisher = bookingEventPublisher;
     }
 
     public List<Booking> getAllBookings() {
@@ -90,7 +97,8 @@ public class BookingService {
     @Transactional(readOnly = true)
     public BookingCostEstimateDTO estimateBookingCost(BookingEstimateRequest request) {
         validateEstimateRequest(request);
-        Double averageSessionCapacity = bookingRepository.findAverageSessionCapacityByEventId(request.eventId());
+        AvgCapacityDTO capacity = getAverageCapacity(request.eventId());
+        Double averageSessionCapacity = capacity.avgCapacity();
         if (averageSessionCapacity == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event sessions not found");
         }
@@ -174,17 +182,14 @@ public class BookingService {
         booking.setTotalAmount(totalAmount);
         booking.setStatus(BookingStatus.COMPLETED);
 
-        if (!ticketSaleJdbcRepository.existsByBookingId(id)) {
-            ticketSaleJdbcRepository.createPendingSale(
-                    booking.getId(),
-                    booking.getUserId(),
-                    totalAmount,
-                    resolvePaymentMethod(booking),
-                    buildTransactionDetails(booking, totalAmount)
-            );
-        }
+        booking.setStatus(BookingStatus.COMPLETING);
 
         Booking saved = bookingRepository.save(booking);
+        bookingEventPublisher.publishBookingCompleted(new BookingCompletedEvent(
+                saved.getId(),
+                saved.getUserId(),
+                saved.getEventId(),
+                BigDecimal.valueOf(totalAmount)));
         notifyObservers("BOOKING_COMPLETED", Map.of(
                 "bookingId", saved.getId(),
                 "details", buildBookingDetails(saved)));
@@ -266,9 +271,13 @@ public class BookingService {
             );
         }
 
-        ticketJdbcRepository.cancelValidTicketsForBooking(bookingId);
         booking.setStatus(BookingStatus.CANCELLED);
         Booking saved = bookingRepository.save(booking);
+        bookingEventPublisher.publishBookingCancelled(new BookingCancelledEvent(
+                saved.getId(),
+                saved.getUserId(),
+                saved.getEventId(),
+                "user_requested"));
         notifyObservers("BOOKING_CANCELLED", Map.of(
                 "bookingId", saved.getId(),
                 "details", buildBookingDetails(saved)));
@@ -283,14 +292,8 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only requested bookings can be confirmed");
         }
 
-        List<Object[]> eventRows = bookingRepository.findEventById(eventId);
-        if (eventRows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found");
-        }
-
-        Object[] eventRow = eventRows.get(0);
-        String eventStatus = eventRow[1] == null ? null : eventRow[1].toString();
-        if (!"UPCOMING".equals(eventStatus)) {
+        EventDTO event = getEvent(eventId);
+        if (!"UPCOMING".equalsIgnoreCase(event.status())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Event must be UPCOMING to confirm a booking");
         }
 
@@ -299,10 +302,85 @@ public class BookingService {
         booking.setConfirmedAt(LocalDateTime.now());
 
         Booking saved = bookingRepository.save(booking);
+        bookingEventPublisher.publishBookingPlaced(new BookingPlacedEvent(
+                saved.getId(),
+                saved.getUserId(),
+                saved.getEventId()));
         notifyObservers("BOOKING_CONFIRMED", Map.of(
                 "bookingId", saved.getId(),
                 "details", buildBookingDetails(saved)));
         return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public BookingSummaryDTO getUserBookingSummary(Long userId) {
+        long totalBookings = bookingRepository.countByUserId(userId);
+        long completedBookings = bookingRepository.countByUserIdAndStatus(userId, BookingStatus.COMPLETED);
+        long cancelledBookings = bookingRepository.countByUserIdAndStatus(userId, BookingStatus.CANCELLED);
+        BigDecimal totalSpent = nullToZero(bookingRepository.sumCompletedAmountByUserId(userId));
+        BigDecimal average = completedBookings == 0
+                ? BigDecimal.ZERO
+                : totalSpent.divide(BigDecimal.valueOf(completedBookings), 2, RoundingMode.HALF_UP);
+        return new BookingSummaryDTO(totalBookings, completedBookings, cancelledBookings, totalSpent, average);
+    }
+
+    @Transactional(readOnly = true)
+    public int getUserActiveBookingCount(Long userId) {
+        return Math.toIntExact(bookingRepository.countActiveBookingsByUserId(userId));
+    }
+
+    @Transactional(readOnly = true)
+    public long getUserBookingCount(Long userId, BookingStatus status) {
+        if (status == null) {
+            return bookingRepository.countByUserId(userId);
+        }
+        return bookingRepository.countByUserIdAndStatus(userId, status);
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal getUserCompletedBookingTotal(Long userId, LocalDate startDate, LocalDate endDate) {
+        validateAnalyticsDateRange(startDate, endDate);
+        return nullToZero(bookingRepository.sumCompletedAmountByUserIdAndDateRange(
+                userId,
+                startDate.atStartOfDay(),
+                endDate.atTime(LocalTime.MAX)));
+    }
+
+    @Transactional(readOnly = true)
+    public EventBookingRevenueDTO getEventRevenue(Long eventId, LocalDate startDate, LocalDate endDate) {
+        validateAnalyticsDateRange(startDate, endDate);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(LocalTime.MAX);
+        long totalBookings = bookingRepository.countByEventIdAndBookingDateBetween(eventId, start, end);
+        long completedBookings = bookingRepository.countByEventIdAndStatusAndBookingDateBetween(
+                eventId,
+                BookingStatus.COMPLETED,
+                start,
+                end);
+        BigDecimal totalRevenue = nullToZero(bookingRepository.sumCompletedAmountByEventIdAndDateRange(
+                eventId,
+                start,
+                end));
+        BigDecimal average = completedBookings == 0
+                ? BigDecimal.ZERO
+                : totalRevenue.divide(BigDecimal.valueOf(completedBookings), 2, RoundingMode.HALF_UP);
+        return new EventBookingRevenueDTO(totalBookings, totalRevenue.doubleValue(), average.doubleValue());
+    }
+
+    @Transactional(readOnly = true)
+    public int getEventActiveBookingCount(Long eventId) {
+        return Math.toIntExact(bookingRepository.countActiveBookingsByEventId(eventId));
+    }
+
+    @Transactional(readOnly = true)
+    public BookingDTO getBookingContract(Long bookingId) {
+        Booking booking = getBookingById(bookingId);
+        return new BookingDTO(
+                booking.getId(),
+                booking.getUserId(),
+                booking.getEventId(),
+                booking.getStatus() == null ? null : booking.getStatus().name(),
+                booking.getTotalAmount());
     }
 
     @Transactional
@@ -517,6 +595,30 @@ public class BookingService {
         }
     }
 
+    private AvgCapacityDTO getAverageCapacity(Long eventId) {
+        try {
+            return eventServiceClient.getEventAverageSessionCapacity(eventId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service temporarily unavailable", exception);
+        }
+    }
+
+    private EventDTO getEvent(Long eventId) {
+        try {
+            return eventServiceClient.getEvent(eventId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service temporarily unavailable", exception);
+        }
+    }
+
+    private BigDecimal nullToZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
     private BookingAnalyticsDashboardDTO buildDashboardAnalytics(List<Object[]> rows) {
         Map<String, Long> bookingsByStatus = new LinkedHashMap<>();
         for (BookingStatus status : BookingStatus.values()) {
@@ -569,26 +671,6 @@ public class BookingService {
             return number.doubleValue();
         }
         return Double.parseDouble(String.valueOf(value));
-    }
-
-    private Map<String, Object> buildTransactionDetails(Booking booking, double totalAmount) {
-        Map<String, Object> transactionDetails = new LinkedHashMap<>();
-        transactionDetails.put("bookingTotalAmount", totalAmount);
-        return transactionDetails;
-    }
-
-    private String resolvePaymentMethod(Booking booking) {
-        if (booking.getMetadata() == null) {
-            return "WALLET";
-        }
-
-        Object paymentMethod = booking.getMetadata().get("paymentMethod");
-        if (!(paymentMethod instanceof String paymentMethodValue)) {
-            return "WALLET";
-        }
-
-        String normalized = paymentMethodValue.trim().toUpperCase(Locale.ROOT);
-        return SUPPORTED_PAYMENT_METHODS.contains(normalized) ? normalized : "WALLET";
     }
 
     private int safeQuantity(BookingItem item) {

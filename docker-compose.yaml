@@ -46,6 +46,20 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: eventticketing-rabbitmq
+    ports:
+      - "${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   elasticsearch:
     image: elasticsearch:9.2.5
     container_name: eventticketing-elasticsearch
@@ -141,6 +155,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       elasticsearch:
         condition: service_healthy
     environment:
@@ -153,6 +169,10 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: redispass
+      SPRING_RABBITMQ_HOST: rabbitmq
+      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
+      FEIGN_USER_SERVICE_URL: http://user-service:8080
+      FEIGN_TICKET_SERVICE_URL: http://ticket-service:8080
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
       JWT_SECRET: bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h
       JWT_EXPIRATION_MS: 86400000
@@ -249,31 +269,27 @@ services:
       - "${SALES_SERVICE_HOST_PORT:-8085}:8080"
 
   api-gateway:
-    build: ./api-gateway
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
     container_name: eventticketing-api-gateway
     depends_on:
-      user-service:
-        condition: service_started
-      event-service:
-        condition: service_started
-      booking-service:
-        condition: service_started
-      ticket-service:
-        condition: service_started
-      sales-service:
-        condition: service_started
+      - user-service
+      - event-service
+      - booking-service
+      - ticket-service
+      - sales-service
     environment:
-      USER_SERVICE_URI: http://user-service:8080
-      EVENT_SERVICE_URI: http://event-service:8080
-      BOOKING_SERVICE_URI: http://booking-service:8080
-      TICKET_SERVICE_URI: http://ticket-service:8080
-      SALES_SERVICE_URI: http://sales-service:8080
+      JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
+      JWT_SECRET: bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h
+      JWT_EXPIRATION_MS: 86400000
     ports:
-      - "${API_GATEWAY_HOST_PORT:-8080}:8080"
+      - "${API_GATEWAY_HOST_PORT:-30080}:8080"
 
 volumes:
   pgdata:
   mongo-data:
+  rabbitmq-data:
   es-data:
   neo4j-data:
   cassandra-data:

@@ -4,225 +4,147 @@ metadata:
   name: grafana-dashboards
   namespace: monitoring
 data:
-  dashboardproviders.yaml: |
+  dashboards.yml: |
     apiVersion: 1
     providers:
-      - name: event-ticketing
+      - name: Event Ticketing
         orgId: 1
         folder: Event Ticketing
         type: file
         disableDeletion: false
-        editable: true
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
         options:
           path: /etc/grafana/provisioning/dashboards
   user-dashboard.json: |
     {
-      "annotations": {
-        "list": [
-          {
-            "builtIn": 1,
-            "datasource": "-- Grafana --",
-            "enable": true,
-            "hide": true,
-            "iconColor": "rgba(0, 211, 255, 1)",
-            "name": "Annotations & Alerts",
-            "type": "dashboard"
-          }
-        ]
-      },
-      "editable": true,
-      "fiscalYearStartMonth": 0,
-      "graphTooltip": 0,
+      "title": "User Service Placeholder",
+      "uid": "user-service-placeholder",
+      "schemaVersion": 39,
+      "version": 0,
+      "panels": []
+    }
+  event-dashboard.json: |
+    {
+      "title": "Event Service",
+      "uid": "event-service",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "15s",
+      "tags": ["eventticketing", "event-service"],
       "panels": [
         {
-          "datasource": "Prometheus",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 0
-          },
           "id": 1,
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          },
+          "title": "Event Service Error Logs",
+          "type": "timeseries",
+          "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
-            {
-              "expr": "sum by (method, uri) (rate(http_server_requests_seconds_count{job=\"user-service\"}[5m]))",
-              "legendFormat": "{{method}} {{uri}}",
-              "refId": "A"
-            }
+            {"expr": "count_over_time({app=\"eventticketing\", service=\"event-service\", level=\"ERROR\"} | json [1m])"}
           ],
-          "title": "User HTTP Request Rate",
-          "type": "timeseries"
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
         },
         {
-          "datasource": "Prometheus",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 0
-          },
           "id": 2,
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          },
+          "title": "Event RabbitMQ Publishes",
+          "type": "timeseries",
+          "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
-            {
-              "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"user-service\"}[5m])))",
-              "legendFormat": "p95 {{uri}}",
-              "refId": "A"
-            }
+            {"expr": "sum by (routingKey) (count_over_time({app=\"eventticketing\", service=\"event-service\"} | json | routingKey=~\"event.status-changed|event.rated\" [5m]))"}
           ],
-          "title": "User HTTP P95 Latency",
-          "type": "timeseries"
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
         },
         {
-          "datasource": "Prometheus",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 8
-          },
           "id": 3,
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          },
+          "title": "Event Feign Outcomes",
+          "type": "timeseries",
+          "datasource": {"type": "loki", "uid": "loki"},
           "targets": [
-            {
-              "expr": "jvm_memory_used_bytes{job=\"user-service\", area=\"heap\"}",
-              "legendFormat": "{{id}}",
-              "refId": "A"
-            }
+            {"expr": "sum by (level) (count_over_time({app=\"eventticketing\", service=\"event-service\"} | json | message=~\".*Feign.*\" [5m]))"}
           ],
-          "title": "User JVM Heap Usage",
-          "type": "timeseries"
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
         },
         {
-          "datasource": "Loki",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 8
-          },
           "id": 4,
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          },
+          "title": "Event HTTP Request Rate",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {
-              "expr": "sum by (level) (count_over_time({app=\"eventticketing\", service=\"user-service\"}[5m]))",
-              "legendFormat": "{{level}}",
-              "refId": "A"
-            }
+            {"expr": "sum by (uri, method) (rate(http_server_requests_seconds_count{job=\"event-service\"}[5m]))"}
           ],
-          "title": "User Service Log Volume",
-          "type": "timeseries"
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}
         },
         {
-          "datasource": "Loki",
-          "fieldConfig": {
-            "defaults": {},
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 16
-          },
           "id": 5,
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom"
-            }
-          },
+          "title": "Event HTTP P95 Latency",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {
-              "expr": "sum by (level) (count_over_time({app=\"eventticketing\", service=\"user-service\"} |= \"Unauthorized\" [15m]))",
-              "legendFormat": "{{level}} auth failures",
-              "refId": "A"
-            }
+            {"expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"event-service\"}[5m])))"}
           ],
-          "title": "User Auth Failures",
-          "type": "timeseries"
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}
         },
         {
-          "datasource": "Loki",
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 16
-          },
           "id": 6,
-          "options": {
-            "dedupStrategy": "none",
-            "enableLogDetails": true,
-            "showCommonLabels": false,
-            "showLabels": true,
-            "showTime": true,
-            "sortOrder": "Descending",
-            "wrapLogMessage": true
-          },
+          "title": "Event JVM Heap Used",
+          "type": "timeseries",
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {
-              "expr": "{app=\"eventticketing\", service=\"user-service\"} | json",
-              "refId": "A"
-            }
+            {"expr": "sum(jvm_memory_used_bytes{job=\"event-service\", area=\"heap\"})"}
           ],
-          "title": "Recent User-Service Logs",
-          "type": "logs"
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
         }
-      ],
+      ]
+    }
+  booking-dashboard.json: |
+    {
+      "title": "Booking Service",
+      "uid": "booking-service",
+      "schemaVersion": 39,
+      "version": 1,
       "refresh": "30s",
-      "schemaVersion": 41,
-      "style": "dark",
-      "tags": [
-        "event-ticketing",
-        "user-service",
-        "m3"
-      ],
-      "templating": {
-        "list": []
-      },
-      "time": {
-        "from": "now-6h",
-        "to": "now"
-      },
-      "title": "User Service Dashboard",
-      "uid": "user-service-dashboard",
-      "version": 1
+      "panels": [
+        {
+          "id": 1,
+          "type": "logs",
+          "title": "Booking Errors",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            { "expr": "{service=\"booking-service\"} |= \"ERROR\"", "refId": "A" }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "logs",
+          "title": "Feign Calls",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            { "expr": "{service=\"booking-service\"} |= \"Feign\"", "refId": "A" }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "logs",
+          "title": "Booking Events",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            { "expr": "{service=\"booking-service\"} |~ \"booking\\\\.(placed|completed|cancelled)\"", "refId": "A" }
+          ]
+        }
+      ]
+    }
+  ticket-dashboard.json: |
+    {
+      "title": "Ticket Service Placeholder",
+      "uid": "ticket-service-placeholder",
+      "schemaVersion": 39,
+      "version": 0,
+      "panels": []
+    }
+  sales-dashboard.json: |
+    {
+      "title": "Sales Service Placeholder",
+      "uid": "sales-service-placeholder",
+      "schemaVersion": 39,
+      "version": 0,
+      "panels": []
     }

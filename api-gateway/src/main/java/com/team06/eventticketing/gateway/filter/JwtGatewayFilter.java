@@ -1,17 +1,12 @@
 package com.team06.eventticketing.gateway.filter;
 
+import com.team06.eventticketing.common.auth.JwtService;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import java.nio.charset.StandardCharsets;
-import java.security.Key;
-import java.util.Base64;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
@@ -21,78 +16,75 @@ import reactor.core.publisher.Mono;
 @Component
 public class JwtGatewayFilter implements GlobalFilter, Ordered {
 
-    @Value("${jwt.secret:bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h}")
-    private String jwtSecret;
+    private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String USER_ROLE_HEADER = "X-User-Role";
+    private static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
+    private static final String BEARER_PREFIX = "Bearer ";
+
+    private final JwtService jwtService;
+
+    public JwtGatewayFilter(JwtService jwtService) {
+        this.jwtService = jwtService;
+    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        String correlationId = correlationId(exchange);
         String path = exchange.getRequest().getURI().getPath();
 
-        if (path.startsWith("/api/auth/")) {
-            return forwardWithCorrelationId(exchange, chain, null, null);
+        if (path.startsWith("/api/auth/") || path.startsWith("/actuator/health")) {
+            return forward(exchange, chain, correlationId, null, null);
         }
 
-        String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
+        String authorization = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
+            return unauthorized(exchange, correlationId);
         }
 
-        String token = authHeader.substring(7);
-        Claims claims;
         try {
-            claims = Jwts.parser()
-                    .verifyWith((javax.crypto.SecretKey) signingKey())
-                    .build()
-                    .parseSignedClaims(token)
-                    .getPayload();
-        } catch (JwtException | IllegalArgumentException e) {
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
+            Claims claims = jwtService.parseClaims(authorization.substring(BEARER_PREFIX.length()));
+            return forward(
+                    exchange,
+                    chain,
+                    correlationId,
+                    String.valueOf(jwtService.extractUserId(claims)),
+                    jwtService.extractRole(claims));
+        } catch (RuntimeException exception) {
+            return unauthorized(exchange, correlationId);
         }
-
-        Object uid = claims.get("uid");
-        String userId = uid == null ? "" : String.valueOf(uid instanceof Number n ? n.longValue() : uid);
-        Object role = claims.get("role");
-        String userRole = role == null ? "" : role.toString();
-
-        return forwardWithCorrelationId(exchange, chain, userId, userRole);
-    }
-
-    private Mono<Void> forwardWithCorrelationId(ServerWebExchange exchange,
-                                                 GatewayFilterChain chain,
-                                                 String userId,
-                                                 String userRole) {
-        String correlationId = exchange.getRequest().getHeaders().getFirst("X-Correlation-ID");
-        if (correlationId == null || correlationId.isBlank()) {
-            correlationId = UUID.randomUUID().toString();
-        }
-
-        ServerHttpRequest.Builder mutated = exchange.getRequest().mutate()
-                .header("X-Correlation-ID", correlationId);
-
-        if (userId != null) {
-            mutated.header("X-User-Id", userId);
-        }
-        if (userRole != null) {
-            mutated.header("X-User-Role", userRole);
-        }
-
-        return chain.filter(exchange.mutate().request(mutated.build()).build());
-    }
-
-    private Key signingKey() {
-        byte[] keyBytes;
-        try {
-            keyBytes = Base64.getDecoder().decode(jwtSecret);
-        } catch (IllegalArgumentException e) {
-            keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
-        }
-        return Keys.hmacShaKeyFor(keyBytes);
     }
 
     @Override
     public int getOrder() {
         return -1;
+    }
+
+    private Mono<Void> forward(
+            ServerWebExchange exchange,
+            GatewayFilterChain chain,
+            String correlationId,
+            String userId,
+            String role
+    ) {
+        ServerHttpRequest.Builder request = exchange.getRequest().mutate()
+                .header(CORRELATION_ID_HEADER, correlationId);
+        if (userId != null) {
+            request.header(USER_ID_HEADER, userId);
+        }
+        if (role != null) {
+            request.header(USER_ROLE_HEADER, role);
+        }
+        return chain.filter(exchange.mutate().request(request.build()).build());
+    }
+
+    private Mono<Void> unauthorized(ServerWebExchange exchange, String correlationId) {
+        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+        exchange.getResponse().getHeaders().set(CORRELATION_ID_HEADER, correlationId);
+        return exchange.getResponse().setComplete();
+    }
+
+    private String correlationId(ServerWebExchange exchange) {
+        String incoming = exchange.getRequest().getHeaders().getFirst(CORRELATION_ID_HEADER);
+        return incoming == null || incoming.isBlank() ? UUID.randomUUID().toString() : incoming;
     }
 }

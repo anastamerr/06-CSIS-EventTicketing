@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team06.eventticketing.booking.dto.EventRecommendationCandidate;
 import com.team06.eventticketing.booking.dto.EventRecommendationDTO;
 import com.team06.eventticketing.booking.repository.AttendanceGraphRepository;
-import com.team06.eventticketing.booking.repository.BookingRecommendationLookupRepository;
 import com.team06.eventticketing.common.auth.JwtService;
 import com.team06.eventticketing.common.cache.RedisCacheService;
+import com.team06.eventticketing.contracts.dto.EventDTO;
+import com.team06.eventticketing.contracts.feign.EventServiceClient;
+import com.team06.eventticketing.contracts.feign.UserServiceClient;
+import feign.FeignException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import java.util.Comparator;
@@ -26,22 +29,25 @@ public class BookingRecommendationService {
     private static final long CACHE_TTL_SECONDS = 300L;
 
     private final AttendanceGraphRepository attendanceGraphRepository;
-    private final BookingRecommendationLookupRepository lookupRepository;
     private final RedisCacheService redisCacheService;
     private final ObjectMapper objectMapper;
     private final JwtService jwtService;
+    private final UserServiceClient userServiceClient;
+    private final EventServiceClient eventServiceClient;
 
     public BookingRecommendationService(
             AttendanceGraphRepository attendanceGraphRepository,
-            BookingRecommendationLookupRepository lookupRepository,
             RedisCacheService redisCacheService,
             ObjectMapper objectMapper,
-            JwtService jwtService) {
+            JwtService jwtService,
+            UserServiceClient userServiceClient,
+            EventServiceClient eventServiceClient) {
         this.attendanceGraphRepository = attendanceGraphRepository;
-        this.lookupRepository = lookupRepository;
         this.redisCacheService = redisCacheService;
         this.objectMapper = objectMapper;
         this.jwtService = jwtService;
+        this.userServiceClient = userServiceClient;
+        this.eventServiceClient = eventServiceClient;
     }
 
     @Transactional(readOnly = true)
@@ -54,9 +60,7 @@ public class BookingRecommendationService {
         if (!callerUid.equals(userId) && !"ADMIN".equalsIgnoreCase(callerRole)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
         }
-        if (!lookupRepository.userExists(userId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
-        }
+        assertUserExists(userId);
 
         String cacheKey = "booking-service::S3-F12::recommendations::" + userId + "::" + limit;
         JavaType cacheType = objectMapper.getTypeFactory()
@@ -96,12 +100,40 @@ public class BookingRecommendationService {
             scores.put(candidate.eventId(), candidate.score());
         }
 
-        List<EventRecommendationDTO> details = lookupRepository.findEventsByIds(scores.keySet().stream().toList(), scores);
+        List<EventRecommendationDTO> details = scores.keySet().stream()
+                .map(eventId -> toRecommendation(eventId, scores.get(eventId)))
+                .toList();
         return details.stream()
                 .sorted(Comparator
                         .comparingLong(EventRecommendationDTO::getScore)
                         .reversed()
-                        .thenComparing(EventRecommendationDTO::getEventId))
+                .thenComparing(EventRecommendationDTO::getEventId))
                 .toList();
+    }
+
+    private void assertUserExists(Long userId) {
+        try {
+            userServiceClient.getUser(userId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service temporarily unavailable", exception);
+        }
+    }
+
+    private EventRecommendationDTO toRecommendation(Long eventId, long score) {
+        try {
+            EventDTO event = eventServiceClient.getEvent(eventId);
+            return new EventRecommendationDTO(
+                    event.id(),
+                    event.name(),
+                    event.category(),
+                    event.eventDate(),
+                    score);
+        } catch (FeignException.NotFound exception) {
+            return new EventRecommendationDTO(eventId, null, null, null, score);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service temporarily unavailable", exception);
+        }
     }
 }

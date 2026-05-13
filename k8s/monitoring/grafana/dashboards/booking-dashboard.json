@@ -1,0 +1,36 @@
+{
+  "title": "Booking Service",
+  "uid": "booking-service",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "logs",
+      "title": "Booking Errors",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{service=\"booking-service\"} |= \"ERROR\"", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Feign Calls",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{service=\"booking-service\"} |= \"Feign\"", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "Booking Events",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{service=\"booking-service\"} |~ \"booking\\\\.(placed|completed|cancelled)\"", "refId": "A" }
+      ]
+    }
+  ]
+}

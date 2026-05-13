@@ -17,48 +17,6 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id BIGSERIAL PRIMARY KEY,
-                    name VARCHAR(255),
-                    email VARCHAR(255) UNIQUE,
-                    password VARCHAR(255),
-                    phone VARCHAR(255) UNIQUE,
-                    role VARCHAR(50),
-                    status VARCHAR(50),
-                    preferences JSONB,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """);
-        jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50)");
-        jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50)");
-
-        jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS bookings (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL,
-                    event_id BIGINT,
-                    contact_email VARCHAR(255) NOT NULL DEFAULT 'test@events.com',
-                    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
-                    total_amount DOUBLE PRECISION,
-                    metadata JSONB DEFAULT '{}'::jsonb,
-                    booking_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    confirmed_at TIMESTAMP,
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """);
-        jdbcTemplate.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS event_id BIGINT");
-        jdbcTemplate.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS total_amount DOUBLE PRECISION");
-        jdbcTemplate.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_date TIMESTAMP");
-        jdbcTemplate.execute("ALTER TABLE bookings ALTER COLUMN booking_date SET DEFAULT CURRENT_TIMESTAMP");
-        jdbcTemplate.execute("""
-                UPDATE bookings
-                SET booking_date = COALESCE(booking_date, CURRENT_TIMESTAMP),
-                    created_at = COALESCE(created_at, booking_date, CURRENT_TIMESTAMP)
-                WHERE booking_date IS NULL
-                   OR created_at IS NULL
-                """);
-
-        jdbcTemplate.execute("""
                 ALTER TABLE events
                 ALTER COLUMN venue SET DEFAULT 'Default Venue',
                 ALTER COLUMN event_date SET DEFAULT TIMESTAMP '2026-12-01 00:00:00',
