@@ -93,6 +93,11 @@ public class TicketController {
         return ticketService.getLatestTicketForBooking(bookingId);
     }
 
+    @GetMapping("/booking/{bookingId}/used-count")
+    public int getUsedTicketCountForBooking(@PathVariable Long bookingId) {
+        return ticketService.getUsedTicketCountForBooking(bookingId);
+    }
+
     @GetMapping("/event/{eventId}/summary")
     @CachedFeature(service = "ticket-service", featureId = "S4-F3", ttlSeconds = 600)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(@PathVariable Long eventId) {

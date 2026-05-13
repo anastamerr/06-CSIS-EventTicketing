@@ -186,10 +186,12 @@ public class TicketService {
         double attendanceRate = totalIssued == 0 ? 0.0 : (double) usedCount / totalIssued;
 
         Map<String, Long> ticketsByStatus = new LinkedHashMap<>();
-        ticketsByStatus.put(TicketStatus.VALID.name(), validCount);
-        ticketsByStatus.put(TicketStatus.USED.name(), usedCount);
-        ticketsByStatus.put(TicketStatus.EXPIRED.name(), expiredCount);
-        ticketsByStatus.put(TicketStatus.CANCELLED.name(), cancelledCount);
+        if (totalIssued > 0) {
+            ticketsByStatus.put(TicketStatus.VALID.name(), validCount);
+            ticketsByStatus.put(TicketStatus.USED.name(), usedCount);
+            ticketsByStatus.put(TicketStatus.EXPIRED.name(), expiredCount);
+            ticketsByStatus.put(TicketStatus.CANCELLED.name(), cancelledCount);
+        }
 
         return TicketAnalyticsDTO.builder()
                 .totalIssued(totalIssued)
@@ -270,6 +272,14 @@ public class TicketService {
         }
         return ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
+    }
+
+    @Transactional(readOnly = true)
+    public int getUsedTicketCountForBooking(Long bookingId) {
+        if (bookingId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required");
+        }
+        return Math.toIntExact(ticketRepository.countByBookingIdAndStatus(bookingId, TicketStatus.USED));
     }
 
     @Transactional(readOnly = true)
