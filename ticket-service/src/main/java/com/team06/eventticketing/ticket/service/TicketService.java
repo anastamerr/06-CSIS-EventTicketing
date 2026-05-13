@@ -408,10 +408,68 @@ public class TicketService {
 
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
         validateGeoParameters(latitude, longitude, radiusKm);
-        return ticketRepository.findTicketsNearVenue(latitude, longitude, radiusKm).stream()
-                .map(this::toNearbyTicketResponse)
+
+        List<Ticket> validTickets = ticketRepository.findValidTicketsWithEventId();
+        if (validTickets.isEmpty()) {
+            return List.of();
+        }
+
+        // Fetch event info (name + coords) once per unique eventId.
+        // Skip the booking-service hop the spec suggests — we already have eventId
+        // denormalized on the ticket (populated by F2/F4 + the BookingPlacedConsumer).
+        Map<Long, EventInfo> eventInfoCache = new HashMap<>();
+        for (Ticket t : validTickets) {
+            eventInfoCache.computeIfAbsent(t.getEventId(), this::fetchEventInfoSafely);
+        }
+
+        return validTickets.stream()
+                .map(t -> toNearbyResponseIfWithinRadius(t, latitude, longitude, radiusKm, eventInfoCache.get(t.getEventId())))
+                .filter(java.util.Objects::nonNull)
+                .sorted(java.util.Comparator
+                        .comparing(NearbyTicketResponseDTO::getDistanceKm)
+                        .thenComparing(NearbyTicketResponseDTO::getTicketId))
                 .toList();
     }
+
+    private NearbyTicketResponseDTO toNearbyResponseIfWithinRadius(
+            Ticket ticket,
+            double centerLat,
+            double centerLon,
+            double radiusKm,
+            EventInfo eventInfo
+    ) {
+        if (eventInfo == null || eventInfo.lat() == null || eventInfo.lon() == null) {
+            return null;  // missing event or missing coords → drop
+        }
+        double dLat = eventInfo.lat() - centerLat;
+        double dLon = eventInfo.lon() - centerLon;
+        double distanceKm = Math.sqrt(dLat * dLat + dLon * dLon) * 111.0;
+        if (distanceKm > radiusKm) {
+            return null;
+        }
+        return NearbyTicketResponseDTO.builder()
+                .ticketId(ticket.getId())
+                .attendeeName(ticket.getAttendeeName())
+                .ticketCode(ticket.getTicketCode())
+                .bookingId(ticket.getBookingId())
+                .eventName(eventInfo.name())
+                .eventLat(eventInfo.lat())
+                .eventLon(eventInfo.lon())
+                .distanceKm(distanceKm)
+                .build();
+    }
+
+    private EventInfo fetchEventInfoSafely(Long eventId) {
+        try {
+            var event = eventServiceClient.getEvent(eventId);
+            var coords = eventServiceClient.getVenueCoords(eventId);
+            return new EventInfo(event.name(), coords.venueLat(), coords.venueLon());
+        } catch (feign.FeignException ex) {
+            return null;  // event missing or event-service down — ticket gets dropped
+        }
+    }
+
+    private record EventInfo(String name, Double lat, Double lon) {}
 
     @Transactional
     public PurgeTicketsResponseDTO purgeTickets(long olderThanDays) {
@@ -602,18 +660,18 @@ public class TicketService {
 //                .build();
 //    }
 
-    private NearbyTicketResponseDTO toNearbyTicketResponse(NearbyTicketProjection projection) {
-        return NearbyTicketResponseDTO.builder()
-                .ticketId(projection.getTicketId())
-                .attendeeName(projection.getAttendeeName())
-                .ticketCode(projection.getTicketCode())
-                .bookingId(projection.getBookingId())
-                .eventName(projection.getEventName())
-                .eventLat(projection.getEventLat())
-                .eventLon(projection.getEventLon())
-                .distanceKm(projection.getDistanceKm())
-                .build();
-    }
+//    private NearbyTicketResponseDTO toNearbyTicketResponse(NearbyTicketProjection projection) {
+//        return NearbyTicketResponseDTO.builder()
+//                .ticketId(projection.getTicketId())
+//                .attendeeName(projection.getAttendeeName())
+//                .ticketCode(projection.getTicketCode())
+//                .bookingId(projection.getBookingId())
+//                .eventName(projection.getEventName())
+//                .eventLat(projection.getEventLat())
+//                .eventLon(projection.getEventLon())
+//                .distanceKm(projection.getDistanceKm())
+//                .build();
+//    }
 
     public void register(EntityObserver observer) {
         observers.add(observer);
