@@ -44,6 +44,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import com.team06.eventticketing.ticket.client.BookingServiceClient;
 import feign.FeignException;
+import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.ticket.messaging.TicketEventPublisher;
 
 @Service
 public class TicketService {
@@ -57,6 +59,7 @@ public class TicketService {
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
     private final AtomicLong lastScanEpochMillis = new AtomicLong();
     private final BookingServiceClient bookingServiceClient;
+    private final TicketEventPublisher ticketEventPublisher;
 
     @Autowired
     public TicketService(
@@ -68,7 +71,8 @@ public class TicketService {
             EventFactory eventFactory,
             TicketScanEventRepository ticketScanEventRepository,
             RedisCacheService redisCacheService,
-            BookingServiceClient bookingServiceClient
+            BookingServiceClient bookingServiceClient,
+            TicketEventPublisher ticketEventPublisher
     ) {
         this.ticketRepository = ticketRepository;
         this.clock = clock;
@@ -77,6 +81,7 @@ public class TicketService {
         this.ticketScanEventRepository = ticketScanEventRepository;
         this.redisCacheService = redisCacheService;
         this.bookingServiceClient = bookingServiceClient;
+        this.ticketEventPublisher = ticketEventPublisher;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
 
@@ -88,6 +93,7 @@ public class TicketService {
         this.ticketScanEventRepository = null;
         this.redisCacheService = null;
         this.bookingServiceClient = null;
+        this.ticketEventPublisher = null;
     }
 
     public List<Ticket> getAllTickets() { return ticketRepository.findAll(); }
@@ -122,6 +128,7 @@ public class TicketService {
         Ticket ticket = buildTicketForIssue(bookingId, attendeeName, ticketCode, metadata);
         ticket.setStatus(resolveTicketStatus(status));
         Ticket saved = ticketRepository.save(ticket);
+        publishTicketIssued(saved);
         notifyObservers("TICKET_ISSUED", Map.of(
                 "ticketId", saved.getId(),
                 "details", buildTicketDetails(saved)));
@@ -132,13 +139,13 @@ public class TicketService {
     public Ticket issueTicketWithMetadata(Long bookingId, String attendeeName, String ticketCode, Map<String, Object> metadata) {
         Ticket ticket = buildTicketForIssue(bookingId, attendeeName, ticketCode, metadata);
         ticket.setStatus(TicketStatus.VALID);
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+        publishTicketIssued(saved);
+        return saved;
     }
 
     private Ticket buildTicketForIssue(Long bookingId, String attendeeName, String ticketCode, Map<String, Object> metadata) {
-        if (bookingId == null || !ticketRepository.existsBookingById(bookingId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
-        }
+        BookingDTO booking = fetchBooking(bookingId);  // throws 404 if missing
 
         if (ticketRepository.findByTicketCode(ticketCode).isPresent()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ticket code already exists");
@@ -146,6 +153,7 @@ public class TicketService {
 
         Ticket ticket = new Ticket();
         ticket.setBookingId(bookingId);
+        ticket.setEventId(booking.eventId());  // denormalize for F8/F9
         ticket.setAttendeeName(attendeeName);
         ticket.setTicketCode(ticketCode);
         ticket.setIssuedAt(LocalDateTime.now(clock));
@@ -271,17 +279,17 @@ public class TicketService {
     }
 
     public Ticket getLatestTicketForBooking(Long bookingId) {
-        verifyBookingExists(bookingId);
+        fetchBooking(bookingId);
         return ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(bookingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No tickets found for this booking"));
     }
 
-    private void verifyBookingExists(Long bookingId) {
+    private BookingDTO fetchBooking(Long bookingId) {
         if (bookingId == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
         }
         try {
-            bookingServiceClient.getBookingContract(bookingId);
+            return bookingServiceClient.getBookingContract(bookingId);
         } catch (FeignException.NotFound ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
         } catch (FeignException ex) {
@@ -574,5 +582,19 @@ public class TicketService {
     @Transactional(readOnly = true)
     public long getUsedTicketCountForBooking(Long bookingId) {
         return ticketRepository.countUsedByBookingId(bookingId);
+    }
+
+    private void publishTicketIssued(Ticket ticket) {
+        if (ticketEventPublisher == null) {
+            return;  // test-only constructor path; no broker wired
+        }
+        ticketEventPublisher.publishTicketIssued(
+                new TicketEventPublisher.TicketIssuedEvent(
+                        ticket.getId(),
+                        ticket.getBookingId(),
+                        ticket.getEventId(),
+                        ticket.getTicketCode()
+                )
+        );
     }
 }
