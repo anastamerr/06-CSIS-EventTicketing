@@ -1,36 +1,104 @@
 {
-  "title": "Booking Service",
-  "uid": "booking-service",
-  "schemaVersion": 39,
+  "title": "Booking Service Dashboard",
+  "timezone": "browser",
+  "schemaVersion": 36,
   "version": 1,
-  "refresh": "30s",
   "panels": [
     {
       "id": 1,
-      "type": "logs",
-      "title": "Booking Errors",
-      "datasource": { "type": "loki", "uid": "loki" },
+      "title": "Booking Logs Count",
+      "type": "timeseries",
       "targets": [
-        { "expr": "{service=\"booking-service\"} |= \"ERROR\"", "refId": "A" }
-      ]
+        {
+          "expr": "sum(count_over_time({app=\"booking-service\"}[5m]))",
+          "legendFormat": "logs"
+        }
+      ],
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 }
     },
     {
       "id": 2,
-      "type": "logs",
-      "title": "Feign Calls",
-      "datasource": { "type": "loki", "uid": "loki" },
+      "title": "Error Logs",
+      "type": "timeseries",
       "targets": [
-        { "expr": "{service=\"booking-service\"} |= \"Feign\"", "refId": "A" }
-      ]
+        {
+          "expr": "sum(count_over_time({app=\"booking-service\",level=\"ERROR\"}[5m]))",
+          "legendFormat": "errors"
+        }
+      ],
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 }
     },
     {
       "id": 3,
-      "type": "logs",
-      "title": "Booking Events",
-      "datasource": { "type": "loki", "uid": "loki" },
+      "title": "Booking Completed Events",
+      "type": "timeseries",
       "targets": [
-        { "expr": "{service=\"booking-service\"} |~ \"booking\\\\.(placed|completed|cancelled)\"", "refId": "A" }
-      ]
+        {
+          "expr": "sum(count_over_time({app=\"booking-service\"} |= \"BOOKING_COMPLETED\" [5m]))",
+          "legendFormat": "completed"
+        }
+      ],
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 }
+    },
+    {
+      "id": 4,
+      "title": "HTTP Request Rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(http_server_requests_seconds_count{application=\"booking-service\"}[5m])",
+          "legendFormat": "requests/sec"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 }
+    },
+    {
+      "id": 5,
+      "title": "JVM Memory Usage",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{application=\"booking-service\"}",
+          "legendFormat": "{{area}}"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 }
+    },
+    {
+      "id": 6,
+      "title": "CPU Usage",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "process_cpu_usage{application=\"booking-service\"}",
+          "legendFormat": "cpu"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }
     }
   ]
 }

@@ -32,7 +32,7 @@ public interface BookingServiceClient {
     int getUserActiveBookingCount(@PathVariable Long userId);
 
     @GetMapping("/api/bookings/user/{userId}/count")
-    long getUserBookingCount(@PathVariable Long userId);
+    long getUserBookingCount(@PathVariable Long userId, @RequestParam(required = false) String status);
 
     @GetMapping("/api/bookings/user/{userId}/total")
     BigDecimal getUserCompletedBookingTotal(

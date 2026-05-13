@@ -5,21 +5,25 @@ import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
+import com.team06.eventticketing.contracts.feign.BookingServiceClient;
 import com.team06.eventticketing.user.dto.TopAttendeeDTO;
 import com.team06.eventticketing.user.dto.UserBookingSummaryDTO;
 import com.team06.eventticketing.user.dto.UserProfileDTO;
+import com.team06.eventticketing.user.messaging.UserEventPublisher;
 import com.team06.eventticketing.user.model.FavoriteVenue;
 import com.team06.eventticketing.user.model.User;
+import com.team06.eventticketing.user.model.UserRole;
 import com.team06.eventticketing.user.model.UserStatus;
 import com.team06.eventticketing.user.repository.FavoriteVenueRepository;
 import com.team06.eventticketing.user.repository.UserRepository;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,11 +46,17 @@ class UserServiceTest {
     @Mock
     private FavoriteVenueRepository favoriteVenueRepository;
 
+    @Mock
+    private BookingServiceClient bookingServiceClient;
+
+    @Mock
+    private UserEventPublisher userEventPublisher;
+
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, favoriteVenueRepository);
+        userService = new UserService(userRepository, favoriteVenueRepository, bookingServiceClient, userEventPublisher);
     }
 
     @Test
@@ -96,7 +106,7 @@ class UserServiceTest {
         user.setStatus(UserStatus.ACTIVE);
 
         when(userRepository.findById(4L)).thenReturn(Optional.of(user));
-        when(userRepository.existsActiveBookingsByUserId(4L)).thenReturn(true);
+        when(bookingServiceClient.getUserActiveBookingCount(4L)).thenReturn(1);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> userService.deactivateUser(4L));
@@ -118,7 +128,7 @@ class UserServiceTest {
                 () -> userService.deactivateUser(6L));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(userRepository, never()).existsActiveBookingsByUserId(6L);
+        verify(bookingServiceClient, never()).getUserActiveBookingCount(6L);
         verify(userRepository, never()).save(any(User.class));
     }
 
@@ -129,13 +139,15 @@ class UserServiceTest {
         user.setStatus(UserStatus.ACTIVE);
 
         when(userRepository.findById(5L)).thenReturn(Optional.of(user));
-        when(userRepository.existsActiveBookingsByUserId(5L)).thenReturn(false);
+        when(bookingServiceClient.getUserActiveBookingCount(5L)).thenReturn(0);
         when(userRepository.save(user)).thenReturn(user);
 
         User result = userService.deactivateUser(5L);
 
         assertEquals(UserStatus.DEACTIVATED, result.getStatus());
         verify(userRepository).save(user);
+        verify(userEventPublisher).publishUserDeactivated(org.mockito.ArgumentMatchers.argThat(
+                event -> event.userId().equals(5L)));
     }
 
     @Test
@@ -224,9 +236,7 @@ class UserServiceTest {
                 () -> userService.getUsersByFavoriteCategoryAndMinBookings(" ", 1));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(userRepository, never()).findByCategoryAndMinCompletedBookings(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt());
+        verify(userRepository, never()).findByFavoriteCategory(org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -235,24 +245,23 @@ class UserServiceTest {
                 () -> userService.getUsersByFavoriteCategoryAndMinBookings("CONCERT", -1));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(userRepository, never()).findByCategoryAndMinCompletedBookings(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt());
+        verify(userRepository, never()).findByFavoriteCategory(org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
-    void getUsersByFavoriteCategoryDelegatesToRepository() {
+    void getUsersByFavoriteCategoryFiltersCandidatesWithFeignCompletedCount() {
         User firstUser = new User();
         firstUser.setId(1L);
         User secondUser = new User();
         secondUser.setId(2L);
-        List<User> expectedUsers = List.of(firstUser, secondUser);
 
-        when(userRepository.findByCategoryAndMinCompletedBookings("CONCERT", 3)).thenReturn(expectedUsers);
+        when(userRepository.findByFavoriteCategory("CONCERT")).thenReturn(List.of(firstUser, secondUser));
+        when(bookingServiceClient.getUserBookingCount(1L, "COMPLETED")).thenReturn(5L);
+        when(bookingServiceClient.getUserBookingCount(2L, "COMPLETED")).thenReturn(2L);
 
         List<User> actualUsers = userService.getUsersByFavoriteCategoryAndMinBookings("CONCERT", 3);
 
-        assertIterableEquals(expectedUsers, actualUsers);
+        assertIterableEquals(List.of(firstUser), actualUsers);
     }
 
     @Test
@@ -287,7 +296,7 @@ class UserServiceTest {
                         LocalDate.of(2026, 3, 1), 5));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(userRepository, never()).findTopAttendeesBySpending(any(), any(), any());
+        verify(userRepository, never()).findAll();
     }
 
     @Test
@@ -297,27 +306,43 @@ class UserServiceTest {
                         LocalDate.of(2026, 3, 31), 0));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(userRepository, never()).findTopAttendeesBySpending(any(), any(), any());
+        verify(userRepository, never()).findAll();
     }
 
     @Test
-    void getTopAttendeesBySpendingMapsNativeRowsIntoDtoValues() {
-        when(userRepository.findTopAttendeesBySpending(any(), any(), any())).thenReturn(List.of(
-                new Object[]{BigInteger.valueOf(7L), "Top User", BigDecimal.valueOf(5000), BigInteger.valueOf(3L)},
-                new Object[]{BigInteger.valueOf(8L), "Fallback User", null, null}
-        ));
+    void getTopAttendeesBySpendingUsesFeignTotalsAndSortsDescending() {
+        User first = new User();
+        first.setId(7L);
+        first.setName("Second User");
+        first.setRole(UserRole.ATTENDEE);
+        User second = new User();
+        second.setId(8L);
+        second.setName("Top User");
+        second.setRole(UserRole.ATTENDEE);
+        User admin = new User();
+        admin.setId(9L);
+        admin.setRole(UserRole.ADMIN);
+
+        when(userRepository.findAll()).thenReturn(List.of(first, second, admin));
+        when(bookingServiceClient.getUserCompletedBookingTotal(7L, "2026-03-01", "2026-03-31"))
+                .thenReturn(BigDecimal.valueOf(2000));
+        when(bookingServiceClient.getUserCompletedBookingTotal(8L, "2026-03-01", "2026-03-31"))
+                .thenReturn(BigDecimal.valueOf(5000));
+        when(bookingServiceClient.getUserBookingCount(7L, "COMPLETED")).thenReturn(3L);
+        when(bookingServiceClient.getUserBookingCount(8L, "COMPLETED")).thenReturn(5L);
 
         List<TopAttendeeDTO> result = userService.getTopAttendeesBySpending(LocalDate.of(2026, 3, 1),
                 LocalDate.of(2026, 3, 31), 2);
 
         assertEquals(2, result.size());
-        assertEquals(7L, result.getFirst().getUserId());
+        assertEquals(8L, result.getFirst().getUserId());
         assertEquals("Top User", result.getFirst().getName());
         assertEquals(BigDecimal.valueOf(5000), result.getFirst().getTotalSpent());
-        assertEquals(3L, result.getFirst().getBookingCount());
-        assertEquals(8L, result.get(1).getUserId());
-        assertEquals(BigDecimal.ZERO, result.get(1).getTotalSpent());
-        assertEquals(0L, result.get(1).getBookingCount());
+        assertEquals(5L, result.getFirst().getBookingCount());
+        assertEquals(7L, result.get(1).getUserId());
+        assertEquals(BigDecimal.valueOf(2000), result.get(1).getTotalSpent());
+        assertEquals(3L, result.get(1).getBookingCount());
+        verify(bookingServiceClient, never()).getUserCompletedBookingTotal(eq(9L), any(), any());
     }
 
     @Test
@@ -328,25 +353,22 @@ class UserServiceTest {
                 () -> userService.getUserBookingSummary(33L));
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
-        verify(userRepository, never()).findBookingSummaryByUserId(33L);
+        verify(bookingServiceClient, never()).getUserBookingSummary(33L);
     }
 
     @Test
-    void getUserBookingSummaryMapsBigIntegerAndBigDecimalValues() {
+    void getUserBookingSummaryCombinesLocalUserWithFeignSummary() {
         User user = new User();
         user.setId(7L);
         user.setName("Nora");
 
         when(userRepository.findById(7L)).thenReturn(Optional.of(user));
-        when(userRepository.findBookingSummaryByUserId(7L)).thenReturn(List.<Object[]>of(new Object[]{
-                BigInteger.valueOf(7L),
-                "Nora",
-                BigInteger.valueOf(5L),
-                BigInteger.valueOf(3L),
-                BigInteger.valueOf(1L),
+        when(bookingServiceClient.getUserBookingSummary(7L)).thenReturn(new BookingSummaryDTO(
+                5L,
+                3L,
+                1L,
                 new BigDecimal("1500.50"),
-                new BigDecimal("500.1667")
-        }));
+                new BigDecimal("500.1667")));
 
         UserBookingSummaryDTO summary = userService.getUserBookingSummary(7L);
 
@@ -360,21 +382,13 @@ class UserServiceTest {
     }
 
     @Test
-    void getUserBookingSummaryFallsBackToZeroValues() {
+    void getUserBookingSummaryFallsBackToZeroValuesWhenFeignReturnsNull() {
         User user = new User();
         user.setId(9L);
         user.setName("Sara");
 
         when(userRepository.findById(9L)).thenReturn(Optional.of(user));
-        when(userRepository.findBookingSummaryByUserId(9L)).thenReturn(List.<Object[]>of(new Object[]{
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        }));
+        when(bookingServiceClient.getUserBookingSummary(9L)).thenReturn(null);
 
         UserBookingSummaryDTO summary = userService.getUserBookingSummary(9L);
 
@@ -385,36 +399,6 @@ class UserServiceTest {
         assertEquals(0L, summary.getCancelledBookings());
         assertEquals(BigDecimal.ZERO, summary.getTotalSpent());
         assertEquals(BigDecimal.ZERO, summary.getAverageBookingAmount());
-    }
-
-    @Test
-    void getUserBookingSummaryUnwrapsNestedNativeRows() {
-        User user = new User();
-        user.setId(11L);
-        user.setName("Rana");
-
-        when(userRepository.findById(11L)).thenReturn(Optional.of(user));
-        when(userRepository.findBookingSummaryByUserId(11L)).thenReturn(List.<Object[]>of(new Object[]{
-                new Object[]{
-                        BigInteger.valueOf(11L),
-                        "Rana",
-                        BigInteger.valueOf(4L),
-                        BigInteger.valueOf(2L),
-                        BigInteger.valueOf(1L),
-                        new BigDecimal("900.00"),
-                        new BigDecimal("450.00")
-                }
-        }));
-
-        UserBookingSummaryDTO summary = userService.getUserBookingSummary(11L);
-
-        assertEquals(11L, summary.getUserId());
-        assertEquals("Rana", summary.getName());
-        assertEquals(4L, summary.getTotalBookings());
-        assertEquals(2L, summary.getCompletedBookings());
-        assertEquals(1L, summary.getCancelledBookings());
-        assertEquals(new BigDecimal("900.00"), summary.getTotalSpent());
-        assertEquals(new BigDecimal("450.00"), summary.getAverageBookingAmount());
     }
 
     @Test
