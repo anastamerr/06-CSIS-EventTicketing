@@ -10,4 +10,7 @@ public interface TicketServiceClient {
 
     @GetMapping("/api/tickets/event/{eventId}/summary")
     EventTicketSummaryDTO getEventTicketSummary(@PathVariable Long eventId);
+
+    @GetMapping("/api/tickets/booking/{bookingId}/used-count")
+    int getUsedTicketCountForBooking(@PathVariable Long bookingId);
 }
