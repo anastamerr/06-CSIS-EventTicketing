@@ -248,6 +248,29 @@ services:
     ports:
       - "${SALES_SERVICE_HOST_PORT:-8085}:8080"
 
+  api-gateway:
+    build: ./api-gateway
+    container_name: eventticketing-api-gateway
+    depends_on:
+      user-service:
+        condition: service_started
+      event-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+      ticket-service:
+        condition: service_started
+      sales-service:
+        condition: service_started
+    environment:
+      USER_SERVICE_URI: http://user-service:8080
+      EVENT_SERVICE_URI: http://event-service:8080
+      BOOKING_SERVICE_URI: http://booking-service:8080
+      TICKET_SERVICE_URI: http://ticket-service:8080
+      SALES_SERVICE_URI: http://sales-service:8080
+    ports:
+      - "${API_GATEWAY_HOST_PORT:-8080}:8080"
+
 volumes:
   pgdata:
   mongo-data:
