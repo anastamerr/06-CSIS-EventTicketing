@@ -224,6 +224,8 @@ services:
         condition: service_healthy
       cassandra:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       JAVA_TOOL_OPTIONS: -Xms96m -Xmx256m
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/eventticketingdb
@@ -240,6 +242,9 @@ services:
       SPRING_CASSANDRA_SCHEMA_ACTION: CREATE_IF_NOT_EXISTS
       JWT_SECRET: bWlsZXN0b25lLTItc2hhcmVkLXNlY3JldC0zMi1ieXRlcy1taW4h
       JWT_EXPIRATION_MS: 86400000
+      SPRING_RABBITMQ_HOST: rabbitmq
+      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
+      FEIGN_EVENT_SERVICE_URL: http://event-service:8080
     ports:
       - "${TICKET_SERVICE_HOST_PORT:-8084}:8080"
 

@@ -243,4 +243,9 @@ public class TicketController {
         }
         return text;
     }
+
+    @GetMapping("/booking/{bookingId}/used-count")
+    public long getUsedTicketCount(@PathVariable Long bookingId) {
+        return ticketService.getUsedTicketCountForBooking(bookingId);
+    }
 }
