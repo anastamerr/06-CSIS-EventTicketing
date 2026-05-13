@@ -17,44 +17,6 @@ public class ExternalSchemaInitializer implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id BIGSERIAL PRIMARY KEY,
-                    name VARCHAR(255),
-                    email VARCHAR(255) UNIQUE,
-                    password VARCHAR(255),
-                    phone VARCHAR(255) UNIQUE,
-                    role VARCHAR(50),
-                    status VARCHAR(50),
-                    preferences JSONB,
-                    created_at TIMESTAMP
-                )
-                """);
-        jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP");
-        jdbcTemplate.execute("ALTER TABLE users ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP");
-        jdbcTemplate.execute("UPDATE users SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP) WHERE created_at IS NULL");
-
-        jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS bookings (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL,
-                    event_id BIGINT,
-                    contact_email VARCHAR(255) NOT NULL,
-                    status VARCHAR(50) NOT NULL,
-                    total_amount DOUBLE PRECISION,
-                    metadata JSONB,
-                    booking_date TIMESTAMP NOT NULL,
-                    created_at TIMESTAMP,
-                    confirmed_at TIMESTAMP
-                )
-                """);
-
-        jdbcTemplate.execute("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_at TIMESTAMP");
-        jdbcTemplate.execute("ALTER TABLE bookings ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP");
-        jdbcTemplate.execute(
-                "UPDATE bookings SET created_at = COALESCE(created_at, booking_date, NOW()) WHERE created_at IS NULL"
-        );
-
-        jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS promotions (
                     id BIGSERIAL PRIMARY KEY,
                     code VARCHAR(255) NOT NULL UNIQUE,
