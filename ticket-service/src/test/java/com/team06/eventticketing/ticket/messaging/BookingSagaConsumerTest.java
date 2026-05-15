@@ -56,7 +56,17 @@ class BookingSagaConsumerTest {
                 TicketEventConfig.BOOKING_CANCELLED_ROUTING_KEY,
                 "corr-3");
 
-        verify(ticketService).cancelTicketsForBooking(55L);
+        verify(ticketService).cancelTicketsForBooking(55L, true);
+    }
+
+    @Test
+    void userRequestedBookingCancellationKeepsUsedTicketsOutOfCancellation() {
+        consumer.consumeBookingEvent(
+                new BookingCancelledEvent(55L, 9L, 77L, "user_requested"),
+                TicketEventConfig.BOOKING_CANCELLED_ROUTING_KEY,
+                "corr-3");
+
+        verify(ticketService).cancelTicketsForBooking(55L, false);
     }
 
     @Test

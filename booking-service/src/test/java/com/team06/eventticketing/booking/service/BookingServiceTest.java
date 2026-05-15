@@ -277,7 +277,7 @@ class BookingServiceTest {
                 10L,
                 7L,
                 5L,
-                "card_declined"));
+                "payment_failed"));
     }
 
     @Test

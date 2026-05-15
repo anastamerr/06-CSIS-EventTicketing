@@ -78,10 +78,16 @@ public class BookingSagaConsumer {
         logWithContext(event.bookingId(), event.eventId(), null,
                 TicketEventConfig.BOOKING_CANCELLED_ROUTING_KEY, correlationId,
                 "Consuming booking.cancelled to cancel ticket records");
-        int cancelled = ticketService.cancelTicketsForBooking(event.bookingId());
+        int cancelled = ticketService.cancelTicketsForBooking(
+                event.bookingId(),
+                isPaymentFailureCompensation(event));
         logWithContext(event.bookingId(), event.eventId(), null,
                 TicketEventConfig.BOOKING_CANCELLED_ROUTING_KEY, correlationId,
-                "Processed booking.cancelled and cancelled " + cancelled + " VALID ticket(s)");
+                "Processed booking.cancelled and cancelled " + cancelled + " ticket(s)");
+    }
+
+    private boolean isPaymentFailureCompensation(BookingCancelledEvent event) {
+        return event.reason() != null && "payment_failed".equalsIgnoreCase(event.reason());
     }
 
     private void requireField(Object value, String fieldName) {
