@@ -32,7 +32,7 @@ jobs:
           cache: maven
 
       - name: Build and test reactor
-        run: ./user-service/mvnw -B -am test
+        run: bash ./user-service/mvnw -B -am test
 
   docker-build:
     name: Docker build
@@ -62,7 +62,7 @@ jobs:
 
       - name: Package service jar
         if: matrix.service != 'api-gateway'
-        run: ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
+        run: bash ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
 
       - name: Build image
         run: |
@@ -111,7 +111,7 @@ jobs:
       - name: Build and push image
         run: |
           if [ "${{ matrix.service }}" != "api-gateway" ]; then
-            ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
+            bash ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
           fi
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}"
           if [ "${{ matrix.service }}" = "api-gateway" ]; then
