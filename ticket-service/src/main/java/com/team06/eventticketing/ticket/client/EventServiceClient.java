@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface EventServiceClient {
 
     @GetMapping("/api/events/{eventId}/venue-coords")
-    VenueCoordsDTO getVenueCoords(@PathVariable("eventId") Long eventId);
+    VenueCoordsDTO getEventVenueCoords(@PathVariable("eventId") Long eventId);
 
     @GetMapping("/api/events/{eventId}")
     EventResponse getEvent(@PathVariable("eventId") Long eventId);

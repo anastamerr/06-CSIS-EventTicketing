@@ -25,10 +25,13 @@ import com.team06.eventticketing.contracts.dto.BookingDTO;
 import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
 import com.team06.eventticketing.contracts.dto.EventBookingRevenueDTO;
 import com.team06.eventticketing.contracts.dto.EventDTO;
+import com.team06.eventticketing.contracts.dto.UserDTO;
 import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
 import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
 import com.team06.eventticketing.contracts.events.BookingPlacedEvent;
 import com.team06.eventticketing.contracts.feign.EventServiceClient;
+import com.team06.eventticketing.contracts.feign.TicketServiceClient;
+import com.team06.eventticketing.contracts.feign.UserServiceClient;
 import feign.FeignException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -57,6 +60,8 @@ public class BookingService {
     private final BookingAnalyticsAdapter bookingAnalyticsAdapter;
     private final ObjectProvider<BookingService> selfProvider;
     private final EventServiceClient eventServiceClient;
+    private final UserServiceClient userServiceClient;
+    private final TicketServiceClient ticketServiceClient;
     private final BookingEventPublisher bookingEventPublisher;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
@@ -68,12 +73,16 @@ public class BookingService {
             EventFactory eventFactory,
             ObjectProvider<BookingService> selfProvider,
             EventServiceClient eventServiceClient,
+            UserServiceClient userServiceClient,
+            TicketServiceClient ticketServiceClient,
             BookingEventPublisher bookingEventPublisher
     ) {
         this.bookingRepository = bookingRepository;
         this.bookingAnalyticsAdapter = bookingAnalyticsAdapter;
         this.selfProvider = selfProvider;
         this.eventServiceClient = eventServiceClient;
+        this.userServiceClient = userServiceClient;
+        this.ticketServiceClient = ticketServiceClient;
         this.bookingEventPublisher = bookingEventPublisher;
         registerObserverIfAvailable(mongoTemplate, eventFactory);
     }
@@ -81,12 +90,16 @@ public class BookingService {
     public BookingService(
             BookingRepository bookingRepository,
             EventServiceClient eventServiceClient,
+            UserServiceClient userServiceClient,
+            TicketServiceClient ticketServiceClient,
             BookingEventPublisher bookingEventPublisher
     ) {
         this.bookingRepository = bookingRepository;
         this.bookingAnalyticsAdapter = new BookingAnalyticsAdapter();
         this.selfProvider = null;
         this.eventServiceClient = eventServiceClient;
+        this.userServiceClient = userServiceClient;
+        this.ticketServiceClient = ticketServiceClient;
         this.bookingEventPublisher = bookingEventPublisher;
     }
 
@@ -179,9 +192,9 @@ public class BookingService {
         validateCompletableBooking(booking);
 
         double totalAmount = booking.getTotalAmount() == null ? calculateTotalAmount(booking) : booking.getTotalAmount();
-        booking.setTotalAmount(totalAmount);
-        booking.setStatus(BookingStatus.COMPLETED);
+        validateSagaPreChecks(booking);
 
+        booking.setTotalAmount(totalAmount);
         booking.setStatus(BookingStatus.COMPLETING);
 
         Booking saved = bookingRepository.save(booking);
@@ -191,6 +204,83 @@ public class BookingService {
                 saved.getEventId(),
                 BigDecimal.valueOf(totalAmount)));
         notifyObservers("BOOKING_COMPLETED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
+    }
+
+    @Transactional
+    public Booking markPaymentInitiated(Long bookingId) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+        if (booking.getStatus() == BookingStatus.PAYMENT_PENDING
+                || booking.getStatus() == BookingStatus.PAID
+                || booking.getStatus() == BookingStatus.PAYMENT_FAILED
+                || booking.getStatus() == BookingStatus.REFUNDED) {
+            return booking;
+        }
+        if (booking.getStatus() != BookingStatus.COMPLETING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not awaiting payment initiation");
+        }
+        booking.setStatus(BookingStatus.PAYMENT_PENDING);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("PAYMENT_INITIATED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
+    }
+
+    @Transactional
+    public Booking markPaymentCompleted(Long bookingId) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+        if (booking.getStatus() == BookingStatus.PAID) {
+            return booking;
+        }
+        if (booking.getStatus() != BookingStatus.PAYMENT_PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not pending payment");
+        }
+        booking.setStatus(BookingStatus.PAID);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("PAYMENT_COMPLETED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
+    }
+
+    @Transactional
+    public Booking markPaymentFailed(Long bookingId, String reason) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+        if (booking.getStatus() == BookingStatus.PAYMENT_FAILED
+                || booking.getStatus() == BookingStatus.REFUNDED) {
+            return booking;
+        }
+        if (booking.getStatus() != BookingStatus.PAYMENT_PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not pending payment");
+        }
+        booking.setStatus(BookingStatus.PAYMENT_FAILED);
+        Booking saved = bookingRepository.save(booking);
+        bookingEventPublisher.publishBookingCancelled(new BookingCancelledEvent(
+                saved.getId(),
+                saved.getUserId(),
+                saved.getEventId(),
+                reason == null || reason.isBlank() ? "payment_failed" : reason));
+        notifyObservers("PAYMENT_FAILED", Map.of(
+                "bookingId", saved.getId(),
+                "details", buildBookingDetails(saved)));
+        return saved;
+    }
+
+    @Transactional
+    public Booking markPaymentRefunded(Long bookingId) {
+        Booking booking = getBookingByIdForUpdate(bookingId);
+        if (booking.getStatus() == BookingStatus.REFUNDED) {
+            return booking;
+        }
+        if (booking.getStatus() != BookingStatus.PAYMENT_FAILED && booking.getStatus() != BookingStatus.CANCELLED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not refundable");
+        }
+        booking.setStatus(BookingStatus.REFUNDED);
+        Booking saved = bookingRepository.save(booking);
+        notifyObservers("PAYMENT_REFUNDED", Map.of(
                 "bookingId", saved.getId(),
                 "details", buildBookingDetails(saved)));
         return saved;
@@ -497,11 +587,28 @@ public class BookingService {
     }
 
     private void validateCompletableBooking(Booking booking) {
-        if (booking.getStatus() != BookingStatus.CHECKED_IN && booking.getStatus() != BookingStatus.IN_PROGRESS) {
+        if (booking.getStatus() != BookingStatus.CHECKED_IN) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Booking must be checked in before completion"
             );
+        }
+    }
+
+    private void validateSagaPreChecks(Booking booking) {
+        EventDTO event = getEvent(booking.getEventId());
+        if (!"ONGOING".equalsIgnoreCase(event.status()) && !"COMPLETED".equalsIgnoreCase(event.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Event has not yet occurred or was cancelled");
+        }
+
+        UserDTO user = getUser(booking.getUserId());
+        if (!"ACTIVE".equalsIgnoreCase(user.status())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not active");
+        }
+
+        int usedTicketCount = getUsedTicketCountForBooking(booking.getId());
+        if (usedTicketCount < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No attendance recorded for this booking");
         }
     }
 
@@ -612,6 +719,26 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found", exception);
         } catch (FeignException exception) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service temporarily unavailable", exception);
+        }
+    }
+
+    private UserDTO getUser(Long userId) {
+        try {
+            return userServiceClient.getUser(userId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service temporarily unavailable", exception);
+        }
+    }
+
+    private int getUsedTicketCountForBooking(Long bookingId) {
+        try {
+            return ticketServiceClient.getUsedTicketCountForBooking(bookingId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tickets not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Ticket service temporarily unavailable", exception);
         }
     }
 
