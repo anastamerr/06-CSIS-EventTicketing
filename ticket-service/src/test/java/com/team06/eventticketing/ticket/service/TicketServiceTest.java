@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -456,7 +455,7 @@ class TicketServiceTest {
                 () -> ticketService.findTicketsNearVenue(91.0, 31.0, 10.0));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(ticketRepository, never()).findTicketsNearVenue(anyDouble(), anyDouble(), anyDouble());
+        verify(ticketRepository, never()).findByStatus(TicketStatus.VALID);
     }
 
     @Test
@@ -465,7 +464,7 @@ class TicketServiceTest {
                 () -> ticketService.findTicketsNearVenue(30.0, 181.0, 10.0));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(ticketRepository, never()).findTicketsNearVenue(anyDouble(), anyDouble(), anyDouble());
+        verify(ticketRepository, never()).findByStatus(TicketStatus.VALID);
     }
 
     @Test
@@ -474,7 +473,7 @@ class TicketServiceTest {
                 () -> ticketService.findTicketsNearVenue(30.0, 31.0, 0.0));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-        verify(ticketRepository, never()).findTicketsNearVenue(anyDouble(), anyDouble(), anyDouble());
+        verify(ticketRepository, never()).findByStatus(TicketStatus.VALID);
     }
 
     @Test
@@ -484,7 +483,8 @@ class TicketServiceTest {
         ticket.setBookingId(55L);
         ticket.setEventId(77L);
         ticket.setStatus(TicketStatus.VALID);
-        when(ticketRepository.findByStatusAndEventIdIsNotNull(TicketStatus.VALID)).thenReturn(List.of(ticket));
+        when(ticketRepository.findByStatus(TicketStatus.VALID)).thenReturn(List.of(ticket));
+        when(bookingServiceClient.getBooking(55L)).thenReturn(booking(55L, 77L));
         when(eventServiceClient.getEvent(77L)).thenReturn(new EventResponse(
                 77L,
                 "Jazz Night",

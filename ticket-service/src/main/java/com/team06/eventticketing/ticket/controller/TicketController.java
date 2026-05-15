@@ -52,7 +52,7 @@ public class TicketController {
     public Ticket getTicketById(@PathVariable Long id) { return ticketService.getTicketById(id); }
 
     @GetMapping("/metadata/search")
-    @CachedFeature(service = "ticket-service", featureId = "S4-F1", ttlSeconds = 300)
+    @CachedFeature(service = "ticket-service", featureId = "S4-F5", ttlSeconds = 300)
     public List<Ticket> searchTicketsByMetadata(
             @RequestParam String key,
             @RequestParam String operator,
@@ -89,7 +89,7 @@ public class TicketController {
     }
 
     @GetMapping("/booking/{bookingId}/latest")
-    @CachedFeature(service = "ticket-service", featureId = "S4-F5", ttlSeconds = 300)
+    @CachedFeature(service = "ticket-service", featureId = "S4-F1", ttlSeconds = 300)
     public Ticket getLatestTicketForBooking(@PathVariable Long bookingId) {
         return ticketService.getLatestTicketForBooking(bookingId);
     }
@@ -100,7 +100,7 @@ public class TicketController {
     }
 
     @GetMapping("/event/{eventId}/summary")
-    @CachedFeature(service = "ticket-service", featureId = "S4-F3", ttlSeconds = 600)
+    @CachedFeature(service = "ticket-service", featureId = "S4-F8", ttlSeconds = 600)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(@PathVariable Long eventId) {
         return ticketService.getEventAttendanceSummary(eventId);
     }
@@ -145,13 +145,13 @@ public class TicketController {
     }
 
     @GetMapping("/unused-upcoming")
-    @CachedFeature(service = "ticket-service", featureId = "S4-F8", ttlSeconds = 900)
+    @CachedFeature(service = "ticket-service", featureId = "S4-F9", ttlSeconds = 900)
     public List<UnusedTicketDTO> getUnusedUpcomingTickets() {
         return ticketService.getUnusedUpcomingTickets();
     }
 
     @GetMapping("/nearby")
-    @CachedFeature(service = "ticket-service", featureId = "S4-F9", ttlSeconds = 600)
+    @CachedFeature(service = "ticket-service", featureId = "S4-F3", ttlSeconds = 600)
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(
             @RequestParam(name = "lat") double latitude,
             @RequestParam(name = "lon") double longitude,
