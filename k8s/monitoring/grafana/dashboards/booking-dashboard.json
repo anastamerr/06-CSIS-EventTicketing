@@ -52,7 +52,7 @@
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "sum by (level) (count_over_time({app=\"booking-service\", service=\"booking-service\", level=\"ERROR\"} | json [1m]))",
+          "expr": "sum by (level) (count_over_time({app=\"eventticketing\", service=\"booking-service\", level=\"ERROR\"} | json [1m]))",
           "refId": "A"
         }
       ],
@@ -65,7 +65,7 @@
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "sum(count_over_time({app=\"booking-service\", service=\"booking-service\"} | json | message=~\".*Feign.*\" [5m]))",
+          "expr": "sum(count_over_time({app=\"eventticketing\", service=\"booking-service\"} | json | message=~\".*Feign.*\" [5m]))",
           "refId": "A"
         }
       ],
@@ -78,7 +78,7 @@
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "sum(count_over_time({app=\"booking-service\", service=\"booking-service\"} | json | message=~\".*booking\\\\.(placed|completed|cancelled).*\" [5m]))",
+          "expr": "sum(count_over_time({app=\"eventticketing\", service=\"booking-service\"} | json | message=~\".*booking\\\\.(placed|completed|cancelled).*\" [5m]))",
           "refId": "A"
         }
       ],
