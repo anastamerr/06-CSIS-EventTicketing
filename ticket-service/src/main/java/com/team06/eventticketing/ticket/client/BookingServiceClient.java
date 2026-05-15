@@ -9,5 +9,5 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface BookingServiceClient {
 
     @GetMapping("/api/bookings/{bookingId}/contract")
-    BookingDTO getBookingContract(@PathVariable("bookingId") Long bookingId);
+    BookingDTO getBooking(@PathVariable("bookingId") Long bookingId);
 }

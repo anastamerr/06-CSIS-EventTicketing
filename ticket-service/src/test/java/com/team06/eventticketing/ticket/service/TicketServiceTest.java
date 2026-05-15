@@ -13,6 +13,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.events.TicketCancelledEvent;
+import com.team06.eventticketing.contracts.events.TicketStatusChangedEvent;
 import com.team06.eventticketing.ticket.adapter.CassandraRowAdapter;
 import com.team06.eventticketing.ticket.adapter.EventAttendanceSummaryAdapter;
 import com.team06.eventticketing.ticket.client.BookingServiceClient;
@@ -26,6 +28,7 @@ import com.team06.eventticketing.ticket.dto.UnusedTicketDTO;
 import com.team06.eventticketing.ticket.dto.VenueCoordsDTO;
 import com.team06.eventticketing.ticket.model.Ticket;
 import com.team06.eventticketing.ticket.model.TicketStatus;
+import com.team06.eventticketing.ticket.messaging.TicketEventPublisher;
 import com.team06.eventticketing.ticket.repository.NearbyTicketProjection;
 import com.team06.eventticketing.ticket.repository.TicketRepository;
 import com.team06.eventticketing.ticket.repository.UnusedTicketProjection;
@@ -64,6 +67,9 @@ class TicketServiceTest {
     @Mock
     private EventServiceClient eventServiceClient;
 
+    @Mock
+    private TicketEventPublisher ticketEventPublisher;
+
     @Captor
     private ArgumentCaptor<List<Ticket>> ticketsCaptor;
 
@@ -85,12 +91,12 @@ class TicketServiceTest {
                 null,
                 bookingServiceClient,
                 eventServiceClient,
-                null);
+                ticketEventPublisher);
     }
 
     @Test
     void batchIssueRejectsNonexistentBooking() {
-        when(bookingServiceClient.getBookingContract(55L)).thenReturn(null);
+        when(bookingServiceClient.getBooking(55L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.batchIssue(55L, List.of(ticket("A", "TIX-1"))));
@@ -102,7 +108,7 @@ class TicketServiceTest {
     @Test
     void batchIssueRejectsDuplicateCodesInsideBatch() {
         List<Ticket> tickets = List.of(ticket("A", "TIX-1"), ticket("B", "TIX-1"));
-        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
+        when(bookingServiceClient.getBooking(55L)).thenReturn(booking(55L, 77L));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.batchIssue(55L, tickets));
@@ -117,9 +123,16 @@ class TicketServiceTest {
         Ticket secondTicket = ticket("B", "TIX-2");
         List<Ticket> tickets = List.of(firstTicket, secondTicket);
 
-        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
+        when(bookingServiceClient.getBooking(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findByTicketCode("TIX-1")).thenReturn(Optional.empty());
         when(ticketRepository.findByTicketCode("TIX-2")).thenReturn(Optional.empty());
+        when(ticketRepository.saveAll(anyList())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<Ticket> savedTickets = invocation.getArgument(0);
+            savedTickets.get(0).setId(101L);
+            savedTickets.get(1).setId(102L);
+            return savedTickets;
+        });
 
         Map<String, Object> response = ticketService.batchIssue(55L, tickets);
 
@@ -133,11 +146,15 @@ class TicketServiceTest {
         assertEquals(TicketStatus.VALID, secondTicket.getStatus());
         assertEquals(77L, secondTicket.getEventId());
         assertEquals(2, response.get("count"));
+        verify(ticketEventPublisher).publishTicketIssued(
+                new TicketEventPublisher.TicketIssuedEvent(101L, 55L, 77L, "TIX-1"));
+        verify(ticketEventPublisher).publishTicketIssued(
+                new TicketEventPublisher.TicketIssuedEvent(102L, 55L, 77L, "TIX-2"));
     }
 
     @Test
     void issueTicketWithMetadataRejectsMissingBooking() {
-        when(bookingServiceClient.getBookingContract(404L)).thenReturn(null);
+        when(bookingServiceClient.getBooking(404L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.issueTicketWithMetadata(404L, "Ahmed", "TIX-404", Map.of("seatNumber", "A12")));
@@ -148,7 +165,7 @@ class TicketServiceTest {
 
     @Test
     void issueTicketWithMetadataCreatesValidTicketWithNowAndMetadata() {
-        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
+        when(bookingServiceClient.getBooking(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findByTicketCode("TIX-2026-001")).thenReturn(Optional.empty());
         when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -334,7 +351,7 @@ class TicketServiceTest {
 
     @Test
     void getLatestTicketThrowsNotFoundForNonexistentBooking() {
-        when(bookingServiceClient.getBookingContract(99L)).thenReturn(null);
+        when(bookingServiceClient.getBooking(99L)).thenReturn(null);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> ticketService.getLatestTicketForBooking(99L));
@@ -344,7 +361,7 @@ class TicketServiceTest {
 
     @Test
     void getLatestTicketThrowsNotFoundWhenNoTicketsExist() {
-        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
+        when(bookingServiceClient.getBooking(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.empty());
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -357,7 +374,7 @@ class TicketServiceTest {
     void getLatestTicketReturnsLatestByIssuedAt() {
         Ticket latest = ticket("Ahmed", "TIX-3");
 
-        when(bookingServiceClient.getBookingContract(55L)).thenReturn(booking(55L, 77L));
+        when(bookingServiceClient.getBooking(55L)).thenReturn(booking(55L, 77L));
         when(ticketRepository.findTopByBookingIdOrderByIssuedAtDesc(55L)).thenReturn(Optional.of(latest));
 
         Ticket result = ticketService.getLatestTicketForBooking(55L);
@@ -473,7 +490,7 @@ class TicketServiceTest {
                 "Jazz Night",
                 "UPCOMING",
                 LocalDateTime.of(2026, 4, 10, 20, 0)));
-        when(eventServiceClient.getVenueCoords(77L)).thenReturn(new VenueCoordsDTO(30.0444, 31.2357));
+        when(eventServiceClient.getEventVenueCoords(77L)).thenReturn(new VenueCoordsDTO(30.0444, 31.2357));
 
         List<NearbyTicketResponseDTO> result = ticketService.findTicketsNearVenue(30.0444, 31.2357, 5.0);
 
@@ -486,6 +503,86 @@ class TicketServiceTest {
         assertEquals(30.0444, result.get(0).getEventLat());
         assertEquals(31.2357, result.get(0).getEventLon());
         assertEquals(0.0, result.get(0).getDistanceKm());
+    }
+
+    @Test
+    void captureEventIdForBookingBackfillsDenormalizedEventId() {
+        Ticket firstTicket = ticket("A", "TIX-1");
+        firstTicket.setId(11L);
+        firstTicket.setBookingId(55L);
+        Ticket secondTicket = ticket("B", "TIX-2");
+        secondTicket.setId(12L);
+        secondTicket.setBookingId(55L);
+        when(ticketRepository.backfillEventIdByBookingId(55L, 77L)).thenReturn(2);
+        when(ticketRepository.findByBookingId(55L)).thenReturn(List.of(firstTicket, secondTicket));
+
+        int updated = ticketService.captureEventIdForBooking(55L, 77L);
+
+        assertEquals(2, updated);
+        verify(ticketRepository).backfillEventIdByBookingId(55L, 77L);
+    }
+
+    @Test
+    void publishStatusChangedAuditSignalsUsesCurrentTicketStateWithoutMutatingIt() {
+        Ticket usedTicket = ticket("A", "TIX-USED");
+        usedTicket.setId(201L);
+        usedTicket.setBookingId(55L);
+        usedTicket.setEventId(77L);
+        usedTicket.setStatus(TicketStatus.USED);
+
+        Ticket validTicket = ticket("B", "TIX-VALID");
+        validTicket.setId(202L);
+        validTicket.setBookingId(55L);
+        validTicket.setEventId(77L);
+        validTicket.setStatus(TicketStatus.VALID);
+
+        when(ticketRepository.findByBookingId(55L)).thenReturn(List.of(usedTicket, validTicket));
+
+        int published = ticketService.publishStatusChangedAuditSignals(55L);
+
+        assertEquals(2, published);
+        assertEquals(TicketStatus.USED, usedTicket.getStatus());
+        assertEquals(TicketStatus.VALID, validTicket.getStatus());
+        verify(ticketRepository, never()).saveAll(anyList());
+        verify(ticketEventPublisher).publishTicketStatusChanged(
+                new TicketStatusChangedEvent(201L, 55L, "USED"),
+                77L);
+        verify(ticketEventPublisher).publishTicketStatusChanged(
+                new TicketStatusChangedEvent(202L, 55L, "VALID"),
+                77L);
+    }
+
+    @Test
+    void cancelTicketsForBookingCancelsOnlyValidTicketsAndPublishesEvents() {
+        Ticket validTicket = ticket("A", "TIX-VALID-1");
+        validTicket.setId(301L);
+        validTicket.setBookingId(55L);
+        validTicket.setEventId(77L);
+        validTicket.setStatus(TicketStatus.VALID);
+
+        Ticket usedTicket = ticket("B", "TIX-USED");
+        usedTicket.setId(302L);
+        usedTicket.setBookingId(55L);
+        usedTicket.setEventId(77L);
+        usedTicket.setStatus(TicketStatus.USED);
+
+        Ticket secondValidTicket = ticket("C", "TIX-VALID-2");
+        secondValidTicket.setId(303L);
+        secondValidTicket.setBookingId(55L);
+        secondValidTicket.setEventId(77L);
+        secondValidTicket.setStatus(TicketStatus.VALID);
+
+        when(ticketRepository.findByBookingId(55L)).thenReturn(List.of(validTicket, usedTicket, secondValidTicket));
+        when(ticketRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        int cancelled = ticketService.cancelTicketsForBooking(55L);
+
+        assertEquals(2, cancelled);
+        assertEquals(TicketStatus.CANCELLED, validTicket.getStatus());
+        assertEquals(TicketStatus.USED, usedTicket.getStatus());
+        assertEquals(TicketStatus.CANCELLED, secondValidTicket.getStatus());
+        verify(ticketEventPublisher).publishTicketCancelled(new TicketCancelledEvent(301L, 55L), 77L);
+        verify(ticketEventPublisher).publishTicketCancelled(new TicketCancelledEvent(303L, 55L), 77L);
     }
 
     private Ticket ticket(String attendeeName, String ticketCode) {
