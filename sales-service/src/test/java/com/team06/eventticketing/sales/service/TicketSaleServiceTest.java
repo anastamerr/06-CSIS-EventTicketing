@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team06.eventticketing.common.cache.RedisCacheService;
 import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.BookingItemDTO;
 import com.team06.eventticketing.contracts.dto.EventDTO;
 import com.team06.eventticketing.contracts.dto.UserDTO;
 import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
@@ -215,7 +216,7 @@ class TicketSaleServiceTest {
     }
 
     @Test
-    void getTierRevenueMapsPdfScenarioRowsAndCachesForTenMinutes() {
+    void getTierRevenueAggregatesBookingItemsByTierAndCachesForTenMinutes() {
         TicketSaleService service = m2Service();
         LocalDate startDate = LocalDate.of(2026, 4, 1);
         LocalDate endDate = LocalDate.of(2026, 4, 30);
@@ -226,15 +227,33 @@ class TicketSaleServiceTest {
         TicketSale third = sale(3L, 100.0, TicketSaleStatus.COMPLETED);
         when(ticketSaleRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(start, endExclusive))
                 .thenReturn(List.of(first, second, third));
+        when(bookingServiceClient.getBookingItems(first.getBookingId()))
+                .thenReturn(List.of(
+                        bookingItem(1L, 2, 1500.0, Map.of("ticketTier", "VIP")),
+                        bookingItem(2L, 1, 500.0, Map.of("ticketTier", "STANDARD"))));
+        when(bookingServiceClient.getBookingItems(second.getBookingId()))
+                .thenReturn(List.of(bookingItem(3L, 2, 300.0, Map.of("ticketTier", "STANDARD"))));
+        when(bookingServiceClient.getBookingItems(third.getBookingId()))
+                .thenReturn(List.of(bookingItem(4L, 1, 100.0, Map.of())));
 
         List<TierRevenueDTO> result = service.getTierRevenue(startDate, endDate);
 
-        assertEquals(1, result.size());
-        assertEquals("UNSPECIFIED", result.get(0).getTier());
-        assertEquals(4200.0, result.get(0).getTotalRevenue());
-        assertEquals(3L, result.get(0).getSaleCount());
-        assertEquals(3L, result.get(0).getTicketsSold());
-        assertEquals(1400.0, result.get(0).getAverageRevenuePerSale());
+        assertEquals(3, result.size());
+        assertEquals("VIP", result.get(0).getTier());
+        assertEquals(3000.0, result.get(0).getTotalRevenue());
+        assertEquals(1L, result.get(0).getSaleCount());
+        assertEquals(2L, result.get(0).getTicketsSold());
+        assertEquals(3000.0, result.get(0).getAverageRevenuePerSale());
+        assertEquals("STANDARD", result.get(1).getTier());
+        assertEquals(1100.0, result.get(1).getTotalRevenue());
+        assertEquals(2L, result.get(1).getSaleCount());
+        assertEquals(3L, result.get(1).getTicketsSold());
+        assertEquals(550.0, result.get(1).getAverageRevenuePerSale());
+        assertEquals("UNSPECIFIED", result.get(2).getTier());
+        assertEquals(100.0, result.get(2).getTotalRevenue());
+        assertEquals(1L, result.get(2).getSaleCount());
+        assertEquals(1L, result.get(2).getTicketsSold());
+        assertEquals(100.0, result.get(2).getAverageRevenuePerSale());
         verify(redisCacheService).put("sales-service::S5-F10::2026-04-01T00:00::2026-04-30T23:59:59.999999999", result, 600);
     }
 
@@ -342,7 +361,7 @@ class TicketSaleServiceTest {
         request.setMethod(TicketSaleMethod.CREDIT_CARD);
         request.setCardLastFour("4242");
 
-        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "COMPLETED", 650.0));
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "PAYMENT_PENDING", 650.0));
         when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(false);
         when(ticketSaleRepository.findByBookingIdForUpdate(44L)).thenReturn(List.of(ticketSale));
         when(ticketSaleRepository.save(ticketSaleCaptor.capture())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -375,7 +394,7 @@ class TicketSaleServiceTest {
     }
 
     @Test
-    void processBookingSaleRejectsNonCompletedBooking() {
+    void processBookingSaleRejectsNonPaymentPendingBooking() {
         ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
         request.setMethod(TicketSaleMethod.CREDIT_CARD);
 
@@ -392,7 +411,7 @@ class TicketSaleServiceTest {
         ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
         request.setMethod(TicketSaleMethod.WALLET);
 
-        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "COMPLETED", 650.0));
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "PAYMENT_PENDING", 650.0));
         when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(true);
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
@@ -407,7 +426,7 @@ class TicketSaleServiceTest {
         ProcessBookingSaleRequest request = new ProcessBookingSaleRequest();
         request.setMethod(TicketSaleMethod.WALLET);
 
-        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "COMPLETED", 650.0));
+        when(bookingServiceClient.getBooking(44L)).thenReturn(new BookingDTO(44L, 91L, 5L, "PAYMENT_PENDING", 650.0));
         when(ticketSaleRepository.existsByBookingIdAndStatus(44L, TicketSaleStatus.COMPLETED)).thenReturn(false);
         when(ticketSaleRepository.findByBookingIdForUpdate(44L)).thenReturn(List.of());
 
@@ -941,6 +960,10 @@ class TicketSaleServiceTest {
 
     private BookingDTO bookingForSale(TicketSale sale, Long eventId) {
         return new BookingDTO(sale.getBookingId(), sale.getUserId(), eventId, "COMPLETED", sale.getAmount());
+    }
+
+    private BookingItemDTO bookingItem(Long id, Integer quantity, Double unitPrice, Map<String, Object> metadata) {
+        return new BookingItemDTO(id, id.intValue(), 10L + id, "Session " + id, quantity, unitPrice, "CONFIRMED", metadata);
     }
 
     private EventDTO event(Long eventId, LocalDateTime eventDate) {
