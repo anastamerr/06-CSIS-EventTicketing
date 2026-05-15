@@ -1,5 +1,6 @@
 package com.team06.eventticketing.booking.messaging;
 
+import com.team06.eventticketing.contracts.messaging.EventTicketingMessagingContracts;
 import java.util.Map;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -14,13 +15,17 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class BookingEventConfig {
 
-    public static final String BOOKING_EXCHANGE = "booking.events";
-    public static final String PAYMENT_EXCHANGE = "payment.events";
-    public static final String TICKET_EXCHANGE = "ticket.events";
-    public static final String BOOKING_SAGA_FEEDBACK_QUEUE = "booking.saga-feedback";
-    public static final String BOOKING_SAGA_FEEDBACK_DLQ = "booking.saga-feedback.dlq";
-    public static final String BOOKING_SAGA_FEEDBACK_DLX = "booking.saga-feedback.dlx";
-    public static final String BOOKING_SAGA_FEEDBACK_DLQ_ROUTING_KEY = "booking.saga-feedback.dead";
+    public static final String BOOKING_EXCHANGE = EventTicketingMessagingContracts.BOOKING_EVENTS_EXCHANGE;
+    public static final String PAYMENT_EXCHANGE = EventTicketingMessagingContracts.PAYMENT_EVENTS_EXCHANGE;
+    public static final String TICKET_EXCHANGE = EventTicketingMessagingContracts.TICKET_EVENTS_EXCHANGE;
+    public static final String BOOKING_SAGA_FEEDBACK_QUEUE =
+            EventTicketingMessagingContracts.BOOKING_SAGA_FEEDBACK_QUEUE;
+    public static final String BOOKING_SAGA_FEEDBACK_DLQ =
+            EventTicketingMessagingContracts.BOOKING_SAGA_FEEDBACK_DLQ;
+    public static final String BOOKING_SAGA_FEEDBACK_DLX =
+            EventTicketingMessagingContracts.BOOKING_SAGA_FEEDBACK_DLX;
+    public static final String BOOKING_SAGA_FEEDBACK_DLQ_ROUTING_KEY =
+            EventTicketingMessagingContracts.BOOKING_SAGA_FEEDBACK_DLQ_ROUTING_KEY;
 
     @Bean
     public TopicExchange bookingExchange() {
@@ -59,7 +64,9 @@ public class BookingEventConfig {
             @Qualifier("bookingSagaFeedbackQueue") Queue bookingSagaFeedbackQueue,
             @Qualifier("paymentExchange") TopicExchange paymentExchange
     ) {
-        return BindingBuilder.bind(bookingSagaFeedbackQueue).to(paymentExchange).with("payment.initiated");
+        return BindingBuilder.bind(bookingSagaFeedbackQueue)
+                .to(paymentExchange)
+                .with(EventTicketingMessagingContracts.PAYMENT_INITIATED_ROUTING_KEY);
     }
 
     @Bean
@@ -67,7 +74,9 @@ public class BookingEventConfig {
             @Qualifier("bookingSagaFeedbackQueue") Queue bookingSagaFeedbackQueue,
             @Qualifier("paymentExchange") TopicExchange paymentExchange
     ) {
-        return BindingBuilder.bind(bookingSagaFeedbackQueue).to(paymentExchange).with("payment.completed");
+        return BindingBuilder.bind(bookingSagaFeedbackQueue)
+                .to(paymentExchange)
+                .with(EventTicketingMessagingContracts.PAYMENT_COMPLETED_ROUTING_KEY);
     }
 
     @Bean
@@ -75,7 +84,9 @@ public class BookingEventConfig {
             @Qualifier("bookingSagaFeedbackQueue") Queue bookingSagaFeedbackQueue,
             @Qualifier("paymentExchange") TopicExchange paymentExchange
     ) {
-        return BindingBuilder.bind(bookingSagaFeedbackQueue).to(paymentExchange).with("payment.failed");
+        return BindingBuilder.bind(bookingSagaFeedbackQueue)
+                .to(paymentExchange)
+                .with(EventTicketingMessagingContracts.PAYMENT_FAILED_ROUTING_KEY);
     }
 
     @Bean
@@ -83,7 +94,9 @@ public class BookingEventConfig {
             @Qualifier("bookingSagaFeedbackQueue") Queue bookingSagaFeedbackQueue,
             @Qualifier("paymentExchange") TopicExchange paymentExchange
     ) {
-        return BindingBuilder.bind(bookingSagaFeedbackQueue).to(paymentExchange).with("payment.refunded");
+        return BindingBuilder.bind(bookingSagaFeedbackQueue)
+                .to(paymentExchange)
+                .with(EventTicketingMessagingContracts.PAYMENT_REFUNDED_ROUTING_KEY);
     }
 
     @Bean
@@ -91,7 +104,9 @@ public class BookingEventConfig {
             @Qualifier("bookingSagaFeedbackQueue") Queue bookingSagaFeedbackQueue,
             @Qualifier("ticketExchange") TopicExchange ticketExchange
     ) {
-        return BindingBuilder.bind(bookingSagaFeedbackQueue).to(ticketExchange).with("ticket.issued");
+        return BindingBuilder.bind(bookingSagaFeedbackQueue)
+                .to(ticketExchange)
+                .with(EventTicketingMessagingContracts.TICKET_ISSUED_ROUTING_KEY);
     }
 
     @Bean

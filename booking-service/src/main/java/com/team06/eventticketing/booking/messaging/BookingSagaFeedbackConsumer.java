@@ -6,6 +6,7 @@ import com.team06.eventticketing.contracts.events.PaymentFailedEvent;
 import com.team06.eventticketing.contracts.events.PaymentInitiatedEvent;
 import com.team06.eventticketing.contracts.events.PaymentRefundedEvent;
 import com.team06.eventticketing.contracts.events.TicketIssuedEvent;
+import com.team06.eventticketing.contracts.messaging.EventTicketingMessagingContracts;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,11 +38,16 @@ public class BookingSagaFeedbackConsumer {
         putMdc(bookingId, routingKey, correlationId);
         try {
             switch (routingKey) {
-                case "payment.initiated" -> bookingService.markPaymentInitiated(bookingId);
-                case "payment.completed" -> bookingService.markPaymentCompleted(bookingId);
-                case "payment.failed" -> bookingService.markPaymentFailed(bookingId, extractReason(event));
-                case "payment.refunded" -> bookingService.markPaymentRefunded(bookingId);
-                case "ticket.issued" -> log.info("Consumed ticket.issued saga feedback for booking {}", bookingId);
+                case EventTicketingMessagingContracts.PAYMENT_INITIATED_ROUTING_KEY ->
+                        bookingService.markPaymentInitiated(bookingId);
+                case EventTicketingMessagingContracts.PAYMENT_COMPLETED_ROUTING_KEY ->
+                        bookingService.markPaymentCompleted(bookingId);
+                case EventTicketingMessagingContracts.PAYMENT_FAILED_ROUTING_KEY ->
+                        bookingService.markPaymentFailed(bookingId, extractReason(event));
+                case EventTicketingMessagingContracts.PAYMENT_REFUNDED_ROUTING_KEY ->
+                        bookingService.markPaymentRefunded(bookingId);
+                case EventTicketingMessagingContracts.TICKET_ISSUED_ROUTING_KEY ->
+                        log.info("Consumed ticket.issued saga feedback for booking {}", bookingId);
                 default -> log.warn("Ignoring unsupported booking saga feedback routing key {}", routingKey);
             }
         } finally {
