@@ -1,2 +1,11 @@
-# Placeholder for the M3 Prometheus PVC manifest.
-# Populate according to M3.md when the monitoring slice is implemented.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

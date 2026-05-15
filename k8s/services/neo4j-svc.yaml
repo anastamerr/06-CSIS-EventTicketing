@@ -1,2 +1,16 @@
-# Placeholder for the M3 Neo4j Service manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  namespace: eventticketing
+spec:
+  type: ClusterIP
+  selector:
+    app: neo4j
+  ports:
+    - name: http
+      port: 7474
+      targetPort: http
+    - name: bolt
+      port: 7687
+      targetPort: bolt

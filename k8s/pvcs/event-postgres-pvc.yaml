@@ -1,2 +1,11 @@
-# Placeholder for the M3 event PostgreSQL PVC manifest.
-# Populate according to M3.md when the event-service Kubernetes slice is completed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: event-postgres-pvc
+  namespace: eventticketing
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

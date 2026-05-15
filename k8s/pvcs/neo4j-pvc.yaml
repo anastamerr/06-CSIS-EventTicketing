@@ -1,2 +1,11 @@
-# Placeholder for the M3 Neo4j PVC manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: neo4j-pvc
+  namespace: eventticketing
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

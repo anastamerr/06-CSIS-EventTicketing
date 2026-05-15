@@ -1,2 +1,37 @@
-# Placeholder for the M3 ticket PostgreSQL StatefulSet manifest.
-# Populate according to M3.md when the ticket-service slice is implemented.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ticket-postgres
+  namespace: eventticketing
+spec:
+  serviceName: ticket-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticket-postgres
+  template:
+    metadata:
+      labels:
+        app: ticket-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: ticket-postgres-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
