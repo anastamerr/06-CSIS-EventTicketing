@@ -5,4 +5,5 @@ metadata:
   namespace: eventticketing
 data:
   SPRING_APPLICATION_NAME: api-gateway
+  BOOKING_SERVICE_URI: http://booking-service:8080
   MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
