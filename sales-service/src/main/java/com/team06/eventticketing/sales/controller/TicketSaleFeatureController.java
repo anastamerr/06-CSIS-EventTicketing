@@ -39,7 +39,7 @@ public class TicketSaleFeatureController {
     }
 
     @GetMapping("/{saleId}/details")
-    @CachedFeature(service = "sales-service", featureId = "S5-F3", ttlSeconds = 600)
+    @CachedFeature(service = "sales-service", featureId = "S5-F8", ttlSeconds = 600)
     public SaleDetailsDTO getTicketSaleDetails(@PathVariable Long saleId) {
         return ticketSaleService.getTicketSaleDetails(saleId);
     }
@@ -58,7 +58,7 @@ public class TicketSaleFeatureController {
     }
 
     @GetMapping("/user/{userId}/summary")
-    @CachedFeature(service = "sales-service", featureId = "S5-F8", ttlSeconds = 600)
+    @CachedFeature(service = "sales-service", featureId = "S5-F3", ttlSeconds = 600)
     public UserSaleSummaryDTO getUserSaleSummary(@PathVariable Long userId) {
         return ticketSaleService.getUserSaleSummary(userId);
     }

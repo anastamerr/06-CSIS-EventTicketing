@@ -1,9 +1,11 @@
 package com.team06.eventticketing.contracts.feign;
 
 import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.BookingItemDTO;
 import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
 import com.team06.eventticketing.contracts.dto.EventBookingRevenueDTO;
 import java.math.BigDecimal;
+import java.util.List;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,6 +26,9 @@ public interface BookingServiceClient {
 
     @GetMapping("/api/bookings/{bookingId}")
     BookingDTO getBooking(@PathVariable Long bookingId);
+
+    @GetMapping("/api/bookings/{bookingId}/items")
+    List<BookingItemDTO> getBookingItems(@PathVariable Long bookingId);
 
     @GetMapping("/api/bookings/user/{userId}/summary")
     BookingSummaryDTO getUserBookingSummary(@PathVariable Long userId);

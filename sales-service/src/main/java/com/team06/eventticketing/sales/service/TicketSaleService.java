@@ -8,6 +8,7 @@ import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.contracts.dto.BookingDTO;
+import com.team06.eventticketing.contracts.dto.BookingItemDTO;
 import com.team06.eventticketing.contracts.dto.EventDTO;
 import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
 import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
@@ -46,6 +47,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -309,19 +311,43 @@ public class TicketSaleService {
         ).stream()
                 .filter(sale -> sale.getStatus() == TicketSaleStatus.COMPLETED)
                 .toList();
-        double totalRevenue = completedSales.stream()
-                .mapToDouble(sale -> sale.getAmount() == null ? 0.0 : sale.getAmount())
-                .sum();
-        long saleCount = completedSales.size();
-        List<TierRevenueDTO> response = saleCount == 0
-                ? List.of()
-                : List.of(TierRevenueDTO.builder()
-                        .tier("UNSPECIFIED")
-                        .totalRevenue(totalRevenue)
-                        .saleCount(saleCount)
-                        .ticketsSold(saleCount)
-                        .averageRevenuePerSale(totalRevenue / saleCount)
-                        .build());
+
+        Map<Long, List<BookingItemDTO>> itemsByBookingId = new LinkedHashMap<>();
+        Map<String, TierRevenueAccumulator> revenueByTier = new LinkedHashMap<>();
+
+        for (TicketSale sale : completedSales) {
+            List<BookingItemDTO> bookingItems = itemsByBookingId.computeIfAbsent(
+                    sale.getBookingId(),
+                    this::fetchBookingItems
+            );
+
+            for (BookingItemDTO item : bookingItems) {
+                String tier = ticketTier(item);
+                TierRevenueAccumulator accumulator = revenueByTier.computeIfAbsent(
+                        tier,
+                        ignored -> new TierRevenueAccumulator()
+                );
+                int quantity = item.quantity() == null ? 0 : item.quantity();
+                double unitPrice = item.unitPrice() == null ? 0.0 : item.unitPrice();
+                accumulator.totalRevenue += quantity * unitPrice;
+                accumulator.ticketsSold += quantity;
+                accumulator.saleIds.add(sale.getId());
+            }
+        }
+
+        List<TierRevenueDTO> response = revenueByTier.entrySet().stream()
+                .map(entry -> {
+                    TierRevenueAccumulator accumulator = entry.getValue();
+                    long saleCount = accumulator.saleIds.size();
+                    return TierRevenueDTO.builder()
+                            .tier(entry.getKey())
+                            .totalRevenue(accumulator.totalRevenue)
+                            .saleCount(saleCount)
+                            .ticketsSold(accumulator.ticketsSold)
+                            .averageRevenuePerSale(saleCount == 0 ? 0.0 : accumulator.totalRevenue / saleCount)
+                            .build();
+                })
+                .toList();
         if (redisCacheService != null) {
             redisCacheService.put(cacheKey, response, 600);
         }
@@ -394,7 +420,7 @@ public class TicketSaleService {
         }
 
         BookingDTO booking = fetchBooking(bookingId);
-        if (!"PAYMENT_PENDING".equals(booking.status()) && !"COMPLETED".equals(booking.status())) {
+        if (!"PAYMENT_PENDING".equals(booking.status())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Booking is not awaiting payment. Status: " + booking.status());
         }
@@ -549,6 +575,32 @@ public class TicketSaleService {
         } catch (FeignException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Booking service unavailable", exception);
         }
+    }
+
+    private List<BookingItemDTO> fetchBookingItems(Long bookingId) {
+        if (bookingServiceClient == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service client is not configured");
+        }
+        try {
+            List<BookingItemDTO> bookingItems = bookingServiceClient.getBookingItems(bookingId);
+            return bookingItems == null ? List.of() : bookingItems;
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking items not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Booking service unavailable", exception);
+        }
+    }
+
+    private String ticketTier(BookingItemDTO item) {
+        if (item == null || item.metadata() == null) {
+            return "UNSPECIFIED";
+        }
+
+        Object ticketTier = item.metadata().get("ticketTier");
+        if (ticketTier == null || ticketTier.toString().isBlank()) {
+            return "UNSPECIFIED";
+        }
+        return ticketTier.toString();
     }
 
     private EventDTO fetchEvent(Long eventId) {
@@ -920,6 +972,12 @@ public class TicketSaleService {
 
     private Double toDouble(BigDecimal value) {
         return value == null ? 0.0 : value.doubleValue();
+    }
+
+    private static final class TierRevenueAccumulator {
+        private double totalRevenue;
+        private long ticketsSold;
+        private final Set<Long> saleIds = new LinkedHashSet<>();
     }
 
 
