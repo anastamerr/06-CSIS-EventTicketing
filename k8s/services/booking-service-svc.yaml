@@ -1,2 +1,15 @@
-# Placeholder for the M3 booking-service Service manifest.
-# Populate according to M3.md when the booking-service slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+  namespace: eventticketing
+  labels:
+    app: booking-service
+spec:
+  type: ClusterIP
+  selector:
+    app: booking-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
