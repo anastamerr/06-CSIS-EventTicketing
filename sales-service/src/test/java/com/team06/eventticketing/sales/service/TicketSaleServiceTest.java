@@ -479,7 +479,7 @@ class TicketSaleServiceTest {
     }
 
     @Test
-    void bookingCompletedIsIdempotentForExistingPendingSale() {
+    void bookingCompletedDoesNotRepublishForExistingPendingSale() {
         TicketSaleService service = sagaService();
         TicketSale existing = sale(77L, 800.0, TicketSaleStatus.PENDING);
         existing.setBookingId(10L);
@@ -488,7 +488,7 @@ class TicketSaleServiceTest {
         service.handleBookingCompleted(new BookingCompletedEvent(10L, 20L, 30L, BigDecimal.valueOf(800)));
 
         verify(ticketSaleRepository, never()).save(any(TicketSale.class));
-        verify(paymentEventPublisher).publishPaymentInitiated(any(PaymentInitiatedEvent.class));
+        verify(paymentEventPublisher, never()).publishPaymentInitiated(any(PaymentInitiatedEvent.class));
     }
 
     @Test

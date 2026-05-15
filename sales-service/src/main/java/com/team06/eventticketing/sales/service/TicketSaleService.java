@@ -440,12 +440,12 @@ public class TicketSaleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "booking.completed event is missing bookingId");
         }
 
-        if (userServiceClient != null && event.userId() != null) {
-            userServiceClient.getUser(event.userId());
-        }
+        verifySagaUser(event.userId());
 
+        boolean[] created = {false};
         TicketSale sale = ticketSaleRepository.findFirstByBookingIdOrderByIdAsc(event.bookingId())
                 .orElseGet(() -> {
+                    created[0] = true;
                     TicketSale pending = new TicketSale();
                     pending.setBookingId(event.bookingId());
                     pending.setUserId(event.userId());
@@ -458,7 +458,7 @@ public class TicketSaleService {
                     return ticketSaleRepository.save(pending);
                 });
 
-        if (sale.getStatus() == TicketSaleStatus.PENDING) {
+        if (created[0] && sale.getStatus() == TicketSaleStatus.PENDING) {
             publishPaymentInitiated(sale);
         }
         return toResponse(sale);
@@ -578,6 +578,21 @@ public class TicketSaleService {
             }
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service temporarily unavailable", exception);
+        }
+    }
+
+    private void verifySagaUser(Long userId) {
+        if (userServiceClient == null || userId == null) {
+            return;
+        }
+        try {
+            userServiceClient.getUser(userId);
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service temporarily unavailable", exception);
         }
     }
 

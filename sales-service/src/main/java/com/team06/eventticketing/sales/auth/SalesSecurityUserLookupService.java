@@ -26,6 +26,8 @@ public class SalesSecurityUserLookupService implements SecurityUserLookupService
             return Optional.of(new SecurityUserRecord(user.id(), user.email(), user.role()));
         } catch (FeignException.NotFound exception) {
             return Optional.empty();
+        } catch (FeignException exception) {
+            return Optional.empty();
         }
     }
 }
