@@ -1,2 +1,36 @@
-# Placeholder for the M3 Redis StatefulSet manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: eventticketing
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2
+          ports:
+            - name: redis
+              containerPort: 6379
+          command: ["redis-server"]
+          args: ["--appendonly", "yes"]
+          volumeMounts:
+            - name: redis-storage
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-storage
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

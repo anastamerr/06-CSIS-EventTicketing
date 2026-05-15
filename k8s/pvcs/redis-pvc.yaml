@@ -1,2 +1,11 @@
-# Placeholder for the M3 Redis PVC manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: eventticketing
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
