@@ -74,17 +74,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
         return false;
     }
 
-    default List<UnusedTicketProjection> findUnusedTicketsForUpcomingEvents() {
-        return List.of();
-    }
-
-    default List<NearbyTicketProjection> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
-        return List.of();
-    }
-
-    default List<Object[]> findAttendanceSummaryByEventId(Long eventId) {
-        return List.of();
-    }
+    @Query("SELECT t FROM Ticket t WHERE t.status = com.team06.eventticketing.ticket.model.TicketStatus.VALID AND t.eventId IS NOT NULL ORDER BY t.eventId ASC, t.id ASC")
+    List<Ticket> findValidTicketsWithEventId();
 
     @Query(value = """
             SELECT *
@@ -120,6 +111,22 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             @Param("key") String key,
             @Param("value") String value
     );
+
+    @Query(value = """
+    SELECT
+        COUNT(id) AS totalTickets,
+        COALESCE(SUM(CASE WHEN status = 'USED' THEN 1 ELSE 0 END), 0) AS usedTickets,
+        COALESCE(SUM(CASE WHEN status = 'VALID' THEN 1 ELSE 0 END), 0) AS validTickets,
+        MAX(
+            CASE
+                WHEN status = 'USED'
+                THEN NULLIF(metadata ->> 'checkInTime', '')::timestamp
+            END
+        ) AS lastCheckIn
+    FROM tickets
+    WHERE event_id = :eventId
+    """, nativeQuery = true)
+    List<Object[]> findAttendanceSummaryByEventId(@Param("eventId") Long eventId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = """
