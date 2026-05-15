@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 
 @ExtendWith(MockitoExtension.class)
 class BookingSagaConsumerTest {
@@ -61,8 +60,8 @@ class BookingSagaConsumerTest {
     }
 
     @Test
-    void unsupportedRoutingKeyIsRejectedToDlq() {
-        assertThrows(AmqpRejectAndDontRequeueException.class, () ->
+    void unsupportedRoutingKeyThrowsForSpringRetryAndDlqRouting() {
+        assertThrows(IllegalStateException.class, () ->
                 consumer.consumeBookingEvent(
                         new BookingPlacedEvent(55L, 9L, 77L),
                         "booking.unknown",

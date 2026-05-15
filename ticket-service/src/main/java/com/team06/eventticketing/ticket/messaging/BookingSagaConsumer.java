@@ -8,7 +8,6 @@ import com.team06.eventticketing.ticket.service.TicketService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.messaging.handler.annotation.Header;
@@ -45,7 +44,7 @@ public class BookingSagaConsumer {
                 default -> throw new IllegalArgumentException("Unsupported booking routing key: " + routingKey);
             }
         } catch (Exception exception) {
-            throw new AmqpRejectAndDontRequeueException(
+            throw new IllegalStateException(
                     "Failed to process ticket-service saga event for routing key " + routingKey,
                     exception);
         }
