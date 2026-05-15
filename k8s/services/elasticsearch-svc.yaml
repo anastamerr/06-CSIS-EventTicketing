@@ -1,2 +1,13 @@
-# Placeholder for the M3 Elasticsearch Service manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: eventticketing
+spec:
+  type: ClusterIP
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http

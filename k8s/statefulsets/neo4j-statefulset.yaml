@@ -1,2 +1,45 @@
-# Placeholder for the M3 Neo4j StatefulSet manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  namespace: eventticketing
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+    spec:
+      containers:
+        - name: neo4j
+          image: neo4j:5
+          ports:
+            - name: http
+              containerPort: 7474
+            - name: bolt
+              containerPort: 7687
+          env:
+            - name: NEO4J_AUTH
+              value: neo4j/neo4jpass
+            - name: NEO4J_server_memory_heap_initial__size
+              value: 128m
+            - name: NEO4J_server_memory_heap_max__size
+              value: 256m
+            - name: NEO4J_server_memory_pagecache_size
+              value: 128m
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi

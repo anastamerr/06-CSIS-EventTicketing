@@ -1,2 +1,13 @@
-# Placeholder for the M3 MongoDB Service manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo
+  namespace: eventticketing
+spec:
+  type: ClusterIP
+  selector:
+    app: mongo
+  ports:
+    - name: mongodb
+      port: 27017
+      targetPort: mongodb

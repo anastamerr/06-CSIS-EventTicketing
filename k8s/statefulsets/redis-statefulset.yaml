@@ -21,7 +21,15 @@ spec:
             - name: redis
               containerPort: 6379
           command: ["redis-server"]
-          args: ["--appendonly", "yes"]
+          args:
+            - --appendonly
+            - "yes"
+            - --requirepass
+            - redispass
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - allkeys-lru
           volumeMounts:
             - name: redis-storage
               mountPath: /data

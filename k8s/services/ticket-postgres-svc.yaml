@@ -1,2 +1,13 @@
-# Placeholder for the M3 ticket PostgreSQL Service manifest.
-# Populate according to M3.md when the ticket-service slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticket-postgres
+  namespace: eventticketing
+spec:
+  clusterIP: None
+  selector:
+    app: ticket-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
