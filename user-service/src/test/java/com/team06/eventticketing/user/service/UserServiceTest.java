@@ -482,42 +482,38 @@ class UserServiceTest {
     }
 
     @Test
-    void getTopAttendeesBySpending_whenOneFeignCallFails_shouldExcludeThatUserAndReturnRest() {
+    void getTopAttendeesBySpending_whenFeignCallFails_shouldPropagate503() {
         LocalDate startDate = LocalDate.of(2026, 3, 1);
         LocalDate endDate = LocalDate.of(2026, 3, 31);
         Long userIdOne = 1L;
         Long userIdTwo = 2L;
-        Long userIdThree = 3L;
         BigDecimal spendingUserOne = BigDecimal.valueOf(1000);
-        BigDecimal spendingUserThree = BigDecimal.valueOf(2000);
         User userOne = new User(); userOne.setId(userIdOne); userOne.setName("User One"); userOne.setRole(UserRole.ATTENDEE);
         User userTwo = new User(); userTwo.setId(userIdTwo); userTwo.setName("User Two"); userTwo.setRole(UserRole.ATTENDEE);
-        User userThree = new User(); userThree.setId(userIdThree); userThree.setName("User Three"); userThree.setRole(UserRole.ATTENDEE);
-        when(userRepository.findAll()).thenReturn(List.of(userOne, userTwo, userThree));
+        when(userRepository.findAll()).thenReturn(List.of(userOne, userTwo));
         when(bookingServiceClient.getUserCompletedBookingTotal(userIdOne, "2026-03-01", "2026-03-31")).thenReturn(spendingUserOne);
         when(bookingServiceClient.getUserCompletedBookingTotal(userIdTwo, "2026-03-01", "2026-03-31")).thenThrow(mock(FeignException.class));
-        when(bookingServiceClient.getUserCompletedBookingTotal(userIdThree, "2026-03-01", "2026-03-31")).thenReturn(spendingUserThree);
         when(bookingServiceClient.getUserBookingCount(userIdOne, "COMPLETED")).thenReturn(2L);
-        when(bookingServiceClient.getUserBookingCount(userIdThree, "COMPLETED")).thenReturn(3L);
-        List<TopAttendeeDTO> result = userService.getTopAttendeesBySpending(startDate, endDate, 3);
-        assertEquals(2, result.size());
-        assertEquals(userIdThree, result.get(0).getUserId());
-        assertEquals(spendingUserThree, result.get(0).getTotalSpent());
-        assertEquals(userIdOne, result.get(1).getUserId());
-        assertEquals(spendingUserOne, result.get(1).getTotalSpent());
-        assertTrue(result.stream().noneMatch(dto -> dto.getUserId().equals(userIdTwo)));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getTopAttendeesBySpending(startDate, endDate, 3));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatusCode());
     }
 
     @Test
-    void getTopAttendeesBySpending_whenAllFeignCallsFail_shouldReturnEmptyList() {
+    void getTopAttendeesBySpending_whenFirstFeignCallFails_shouldPropagate503() {
         LocalDate startDate = LocalDate.of(2026, 3, 1);
         LocalDate endDate = LocalDate.of(2026, 3, 31);
         User userOne = new User(); userOne.setId(1L); userOne.setRole(UserRole.ATTENDEE);
         User userTwo = new User(); userTwo.setId(2L); userTwo.setRole(UserRole.ATTENDEE);
         when(userRepository.findAll()).thenReturn(List.of(userOne, userTwo));
         when(bookingServiceClient.getUserCompletedBookingTotal(anyLong(), any(), any())).thenThrow(mock(FeignException.class));
-        List<TopAttendeeDTO> result = userService.getTopAttendeesBySpending(startDate, endDate, 2);
-        assertEquals(0, result.size());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getTopAttendeesBySpending(startDate, endDate, 2));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatusCode());
     }
 
     @Test
