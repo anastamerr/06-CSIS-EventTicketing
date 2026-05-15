@@ -270,13 +270,20 @@ public class UserService {
 
         return userRepository.findAll().stream()
                 .filter(user -> user.getRole() == null || user.getRole() == UserRole.ATTENDEE)
-                .map(user -> TopAttendeeDTO.builder()
-                        .userId(user.getId())
-                        .name(user.getName())
-                        .totalSpent(getCompletedBookingTotal(user.getId(), start, end))
-                        .bookingCount(getCompletedBookingCount(user.getId()))
-                        .build())
-                .filter(attendee -> attendee.getTotalSpent().compareTo(BigDecimal.ZERO) > 0)
+                .map(user -> {
+                    BigDecimal total = getCompletedBookingTotalSafe(user.getId(), start, end);
+                    if (total.compareTo(BigDecimal.ZERO) <= 0) {
+                        return null;
+                    }
+                    long count = getCompletedBookingCount(user.getId());
+                    return TopAttendeeDTO.builder()
+                            .userId(user.getId())
+                            .name(user.getName())
+                            .totalSpent(total)
+                            .bookingCount(count)
+                            .build();
+                })
+                .filter(attendee -> attendee != null)
                 .sorted(Comparator.comparing(TopAttendeeDTO::getTotalSpent).reversed()
                         .thenComparing(TopAttendeeDTO::getBookingCount, Comparator.reverseOrder())
                         .thenComparing(TopAttendeeDTO::getUserId))
@@ -626,6 +633,16 @@ public class UserService {
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Booking service temporarily unavailable",
                     exception);
+        }
+    }
+
+    private BigDecimal getCompletedBookingTotalSafe(Long userId, String startDate, String endDate) {
+        try {
+            BigDecimal total = bookingClient().getUserCompletedBookingTotal(userId, startDate, endDate);
+            return total == null ? BigDecimal.ZERO : total;
+        } catch (FeignException e) {
+            log.warn("Failed to fetch booking total for userId={}: {}", userId, e.getMessage());
+            return BigDecimal.ZERO;
         }
     }
 
