@@ -314,6 +314,14 @@ public class TicketService {
     }
 
     @Transactional(readOnly = true)
+    public int getUsedTicketCountForBooking(Long bookingId) {
+        if (bookingId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required");
+        }
+        return Math.toIntExact(ticketRepository.countByBookingIdAndStatus(bookingId, TicketStatus.USED));
+    }
+
+    @Transactional(readOnly = true)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(Long eventId) {
         List<Ticket> tickets = ticketRepository.findByEventId(eventId);
         long totalTickets = tickets.size();

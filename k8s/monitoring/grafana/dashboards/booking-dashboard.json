@@ -1,104 +1,88 @@
 {
-  "title": "Booking Service Dashboard",
-  "timezone": "browser",
-  "schemaVersion": 36,
-  "version": 1,
+  "title": "Booking Service",
+  "uid": "booking-service",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "15s",
+  "tags": ["eventticketing", "booking-service"],
   "panels": [
     {
       "id": 1,
-      "title": "Booking Logs Count",
+      "title": "Booking HTTP Request Rate",
       "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(count_over_time({app=\"booking-service\"}[5m]))",
-          "legendFormat": "logs"
+          "expr": "sum by (uri, method, status) (rate(http_server_requests_seconds_count{job=\"booking-service\"}[5m]))",
+          "refId": "A"
         }
       ],
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 }
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
     },
     {
       "id": 2,
-      "title": "Error Logs",
+      "title": "Booking HTTP P95 Latency",
       "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(count_over_time({app=\"booking-service\",level=\"ERROR\"}[5m]))",
-          "legendFormat": "errors"
+          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"booking-service\"}[5m])))",
+          "refId": "A"
         }
       ],
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 8 }
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
     },
     {
       "id": 3,
-      "title": "Booking Completed Events",
+      "title": "Booking JVM Heap Used",
       "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(count_over_time({app=\"booking-service\"} |= \"BOOKING_COMPLETED\" [5m]))",
-          "legendFormat": "completed"
+          "expr": "sum(jvm_memory_used_bytes{job=\"booking-service\", area=\"heap\"})",
+          "refId": "A"
         }
       ],
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 8 }
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
     },
     {
       "id": 4,
-      "title": "HTTP Request Rate",
+      "title": "Booking Error Logs",
       "type": "timeseries",
+      "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "rate(http_server_requests_seconds_count{application=\"booking-service\"}[5m])",
-          "legendFormat": "requests/sec"
+          "expr": "sum by (level) (count_over_time({app=\"booking-service\", service=\"booking-service\", level=\"ERROR\"} | json [1m]))",
+          "refId": "A"
         }
       ],
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 }
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}
     },
     {
       "id": 5,
-      "title": "JVM Memory Usage",
+      "title": "Booking Feign Activity",
       "type": "timeseries",
+      "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{application=\"booking-service\"}",
-          "legendFormat": "{{area}}"
+          "expr": "sum(count_over_time({app=\"booking-service\", service=\"booking-service\"} | json | message=~\".*Feign.*\" [5m]))",
+          "refId": "A"
         }
       ],
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 }
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}
     },
     {
       "id": 6,
-      "title": "CPU Usage",
+      "title": "Booking Event Logs",
       "type": "timeseries",
+      "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "process_cpu_usage{application=\"booking-service\"}",
-          "legendFormat": "cpu"
+          "expr": "sum(count_over_time({app=\"booking-service\", service=\"booking-service\"} | json | message=~\".*booking\\\\.(placed|completed|cancelled).*\" [5m]))",
+          "refId": "A"
         }
       ],
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 }
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
     }
   ]
 }
