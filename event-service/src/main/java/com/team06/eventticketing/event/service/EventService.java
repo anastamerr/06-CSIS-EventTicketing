@@ -366,6 +366,8 @@ public class EventService {
                             "bookingId", request.getBookingId())));
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service temporarily unavailable", exception);
         } finally {
             clearEventMdc();
         }
@@ -420,6 +422,8 @@ public class EventService {
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found"));
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Verifier must be an admin user");
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "User service temporarily unavailable", exception);
         } finally {
             clearEventMdc();
         }
@@ -451,6 +455,10 @@ public class EventService {
             notifyObservers("STATUS_CHANGED", Map.of(
                     "eventId", eventId,
                     "details", Map.of("status", request.getStatus().name())));
+        } catch (FeignException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event booking summary not found", exception);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service temporarily unavailable", exception);
         } finally {
             clearEventMdc();
         }
@@ -606,6 +614,8 @@ public class EventService {
             return bookingServiceClient.getEventRevenue(eventId, startDate, endDate);
         } catch (FeignException.NotFound exception) {
             return new EventBookingRevenueDTO(0L, 0.0, 0.0);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service temporarily unavailable", exception);
         }
     }
 
@@ -614,6 +624,8 @@ public class EventService {
             return ticketServiceClient.getEventTicketSummary(eventId);
         } catch (FeignException.NotFound exception) {
             return new EventTicketSummaryDTO(0L, 0L);
+        } catch (FeignException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Ticket service temporarily unavailable", exception);
         }
     }
 

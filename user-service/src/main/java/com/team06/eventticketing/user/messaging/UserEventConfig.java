@@ -2,7 +2,6 @@ package com.team06.eventticketing.user.messaging;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
@@ -34,8 +33,8 @@ public class UserEventConfig {
     }
 
     @Bean
-    public DirectExchange bookingDeadLetterExchange() {
-        return new DirectExchange(BOOKING_DLX, true, false);
+    public TopicExchange bookingDeadLetterExchange() {
+        return new TopicExchange(BOOKING_DLX, true, false);
     }
 
     @Bean

@@ -611,6 +611,8 @@ public class TicketService {
             return eventServiceClient.getEvent(eventId);
         } catch (FeignException.NotFound ex) {
             return null;
+        } catch (FeignException ex) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service temporarily unavailable", ex);
         }
     }
 
@@ -622,6 +624,8 @@ public class TicketService {
             return eventServiceClient.getEventVenueCoords(eventId);
         } catch (FeignException.NotFound ex) {
             return null;
+        } catch (FeignException ex) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Event service temporarily unavailable", ex);
         }
     }
 
