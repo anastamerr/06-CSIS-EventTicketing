@@ -4,11 +4,10 @@ metadata:
   name: api-gateway
   namespace: eventticketing
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: api-gateway
   ports:
     - name: http
       port: 8080
       targetPort: 8080
-      nodePort: 30080

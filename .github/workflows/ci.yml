@@ -1,0 +1,123 @@
+name: Event Ticketing CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/eventticketing
+  JAVA_VERSION: '25'
+
+jobs:
+  build-test:
+    name: Maven build and tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: oracle
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Build and test reactor
+        run: ./user-service/mvnw -B -am test
+
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: build-test
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        service:
+          - user-service
+          - event-service
+          - booking-service
+          - ticket-service
+          - sales-service
+          - api-gateway
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: oracle
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Package service jar
+        if: matrix.service != 'api-gateway'
+        run: ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
+
+      - name: Build image
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}"
+          if [ "${{ matrix.service }}" = "api-gateway" ]; then
+            docker build -f api-gateway/Dockerfile -t "$IMAGE:${{ github.sha }}" .
+          else
+            docker build -t "$IMAGE:${{ github.sha }}" ./${{ matrix.service }}
+          fi
+
+  docker-push:
+    name: Push images on main
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - user-service
+          - event-service
+          - booking-service
+          - ticket-service
+          - sales-service
+          - api-gateway
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: oracle
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        run: |
+          if [ "${{ matrix.service }}" != "api-gateway" ]; then
+            ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
+          fi
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}"
+          if [ "${{ matrix.service }}" = "api-gateway" ]; then
+            docker build -f api-gateway/Dockerfile -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          else
+            docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" ./${{ matrix.service }}
+          fi
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"

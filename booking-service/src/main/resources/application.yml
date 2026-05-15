@@ -52,6 +52,8 @@ server:
   port: 8080
 
 feign:
+  circuitbreaker:
+    enabled: true
   user-service:
     url: ${FEIGN_USER_SERVICE_URL:http://user-service:8080}
   event-service:
@@ -60,6 +62,21 @@ feign:
     url: ${FEIGN_TICKET_SERVICE_URL:http://ticket-service:8080}
   sales-service:
     url: ${FEIGN_SALES_SERVICE_URL:http://sales-service:8080}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 5s
+        permitted-number-of-calls-in-half-open-state: 2
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 2s
 
 management:
   endpoints:
