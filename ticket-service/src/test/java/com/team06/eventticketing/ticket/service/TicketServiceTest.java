@@ -585,6 +585,32 @@ class TicketServiceTest {
         verify(ticketEventPublisher).publishTicketCancelled(new TicketCancelledEvent(303L, 55L), 77L);
     }
 
+    @Test
+    void cancelTicketsForBookingCompensationCancelsValidAndUsedTickets() {
+        Ticket validTicket = ticket("A", "TIX-VALID");
+        validTicket.setId(401L);
+        validTicket.setBookingId(55L);
+        validTicket.setEventId(77L);
+        validTicket.setStatus(TicketStatus.VALID);
+
+        Ticket usedTicket = ticket("B", "TIX-USED");
+        usedTicket.setId(402L);
+        usedTicket.setBookingId(55L);
+        usedTicket.setEventId(77L);
+        usedTicket.setStatus(TicketStatus.USED);
+
+        when(ticketRepository.findByBookingId(55L)).thenReturn(List.of(validTicket, usedTicket));
+        when(ticketRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        int cancelled = ticketService.cancelTicketsForBooking(55L, true);
+
+        assertEquals(2, cancelled);
+        assertEquals(TicketStatus.CANCELLED, validTicket.getStatus());
+        assertEquals(TicketStatus.CANCELLED, usedTicket.getStatus());
+        verify(ticketEventPublisher).publishTicketCancelled(new TicketCancelledEvent(401L, 55L), 77L);
+        verify(ticketEventPublisher).publishTicketCancelled(new TicketCancelledEvent(402L, 55L), 77L);
+    }
+
     private Ticket ticket(String attendeeName, String ticketCode) {
         Ticket ticket = new Ticket();
         ticket.setAttendeeName(attendeeName);

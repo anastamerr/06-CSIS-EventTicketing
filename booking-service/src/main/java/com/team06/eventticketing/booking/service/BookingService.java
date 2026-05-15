@@ -262,7 +262,7 @@ public class BookingService {
                 saved.getId(),
                 saved.getUserId(),
                 saved.getEventId(),
-                reason == null || reason.isBlank() ? "payment_failed" : reason));
+                "payment_failed"));
         notifyObservers("PAYMENT_FAILED", Map.of(
                 "bookingId", saved.getId(),
                 "details", buildBookingDetails(saved)));

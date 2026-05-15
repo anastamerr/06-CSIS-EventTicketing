@@ -704,9 +704,15 @@ public class TicketService {
 
     @Transactional
     public int cancelTicketsForBooking(Long bookingId) {
+        return cancelTicketsForBooking(bookingId, false);
+    }
+
+    @Transactional
+    public int cancelTicketsForBooking(Long bookingId, boolean includeUsedTickets) {
         requireSagaField(bookingId, "bookingId");
         List<Ticket> cancellableTickets = ticketRepository.findByBookingId(bookingId).stream()
-                .filter(ticket -> ticket.getStatus() == TicketStatus.VALID)
+                .filter(ticket -> ticket.getStatus() == TicketStatus.VALID
+                        || (includeUsedTickets && ticket.getStatus() == TicketStatus.USED))
                 .map(ticket -> {
                     ticket.setStatus(TicketStatus.CANCELLED);
                     return ticket;
