@@ -13,4 +13,4 @@ data:
   FEIGN_EVENT_SERVICE_URL: http://event-service:8080
   FEIGN_TICKET_SERVICE_URL: http://ticket-service:8080
   FEIGN_SALES_SERVICE_URL: http://sales-service:8080
-  LOKI_URL: http://loki.monitoring:3100/loki/api/v1/push
+  LOKI_URL: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push

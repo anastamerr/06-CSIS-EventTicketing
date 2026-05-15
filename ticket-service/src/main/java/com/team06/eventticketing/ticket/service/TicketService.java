@@ -655,11 +655,6 @@ public class TicketService {
         }
     }
 
-    @Transactional(readOnly = true)
-    public long getUsedTicketCountForBooking(Long bookingId) {
-        return ticketRepository.countUsedByBookingId(bookingId);
-    }
-
     @Transactional
     public int captureEventIdForBooking(Long bookingId, Long eventId) {
         requireSagaField(bookingId, "bookingId");
