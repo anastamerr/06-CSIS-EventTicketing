@@ -1,2 +1,13 @@
-# Placeholder for the M3 Redis Service manifest.
-# Populate according to M3.md when the owning slice is implemented.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: eventticketing
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
