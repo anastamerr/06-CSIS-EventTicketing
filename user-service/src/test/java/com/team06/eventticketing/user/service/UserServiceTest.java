@@ -3,13 +3,17 @@ package com.team06.eventticketing.user.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import feign.FeignException;
 
 import com.team06.eventticketing.contracts.dto.BookingSummaryDTO;
 import com.team06.eventticketing.contracts.feign.BookingServiceClient;
@@ -451,6 +455,80 @@ class UserServiceTest {
         verify(favoriteVenueRepository, never()).clearDefaultsForUser(7L);
         verify(favoriteVenueRepository, never()).save(any(FavoriteVenue.class));
         verify(userRepository, never()).findByIdWithFavoriteVenues(7L);
+    }
+
+    @Test
+    void getUserBookingSummary_whenFeignThrowsGenericException_shouldPropagate503() {
+        User user = new User();
+        user.setId(1L);
+        user.setName("Test User");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(bookingServiceClient.getUserBookingSummary(1L)).thenThrow(mock(FeignException.class));
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getUserBookingSummary(1L));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatusCode());
+    }
+
+    @Test
+    void deactivateUser_whenFeignThrowsOnActiveCount_shouldPropagate503() {
+        User user = new User();
+        user.setId(1L);
+        user.setStatus(UserStatus.ACTIVE);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(bookingServiceClient.getUserActiveBookingCount(1L)).thenThrow(mock(FeignException.class));
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.deactivateUser(1L));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatusCode());
+    }
+
+    @Test
+    void getTopAttendeesBySpending_whenOneFeignCallFails_shouldExcludeThatUserAndReturnRest() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        Long userIdOne = 1L;
+        Long userIdTwo = 2L;
+        Long userIdThree = 3L;
+        BigDecimal spendingUserOne = BigDecimal.valueOf(1000);
+        BigDecimal spendingUserThree = BigDecimal.valueOf(2000);
+        User userOne = new User(); userOne.setId(userIdOne); userOne.setName("User One"); userOne.setRole(UserRole.ATTENDEE);
+        User userTwo = new User(); userTwo.setId(userIdTwo); userTwo.setName("User Two"); userTwo.setRole(UserRole.ATTENDEE);
+        User userThree = new User(); userThree.setId(userIdThree); userThree.setName("User Three"); userThree.setRole(UserRole.ATTENDEE);
+        when(userRepository.findAll()).thenReturn(List.of(userOne, userTwo, userThree));
+        when(bookingServiceClient.getUserCompletedBookingTotal(userIdOne, "2026-03-01", "2026-03-31")).thenReturn(spendingUserOne);
+        when(bookingServiceClient.getUserCompletedBookingTotal(userIdTwo, "2026-03-01", "2026-03-31")).thenThrow(mock(FeignException.class));
+        when(bookingServiceClient.getUserCompletedBookingTotal(userIdThree, "2026-03-01", "2026-03-31")).thenReturn(spendingUserThree);
+        when(bookingServiceClient.getUserBookingCount(userIdOne, "COMPLETED")).thenReturn(2L);
+        when(bookingServiceClient.getUserBookingCount(userIdThree, "COMPLETED")).thenReturn(3L);
+        List<TopAttendeeDTO> result = userService.getTopAttendeesBySpending(startDate, endDate, 3);
+        assertEquals(2, result.size());
+        assertEquals(userIdThree, result.get(0).getUserId());
+        assertEquals(spendingUserThree, result.get(0).getTotalSpent());
+        assertEquals(userIdOne, result.get(1).getUserId());
+        assertEquals(spendingUserOne, result.get(1).getTotalSpent());
+        assertTrue(result.stream().noneMatch(dto -> dto.getUserId().equals(userIdTwo)));
+    }
+
+    @Test
+    void getTopAttendeesBySpending_whenAllFeignCallsFail_shouldReturnEmptyList() {
+        LocalDate startDate = LocalDate.of(2026, 3, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 31);
+        User userOne = new User(); userOne.setId(1L); userOne.setRole(UserRole.ATTENDEE);
+        User userTwo = new User(); userTwo.setId(2L); userTwo.setRole(UserRole.ATTENDEE);
+        when(userRepository.findAll()).thenReturn(List.of(userOne, userTwo));
+        when(bookingServiceClient.getUserCompletedBookingTotal(anyLong(), any(), any())).thenThrow(mock(FeignException.class));
+        List<TopAttendeeDTO> result = userService.getTopAttendeesBySpending(startDate, endDate, 2);
+        assertEquals(0, result.size());
+    }
+
+    @Test
+    void getUsersByFavoriteCategoryAndMinBookings_whenFeignThrows_shouldPropagate() {
+        Long userId = 10L;
+        User user = new User(); user.setId(userId);
+        when(userRepository.findByFavoriteCategory("CONCERT")).thenReturn(List.of(user));
+        when(bookingServiceClient.getUserBookingCount(userId, "COMPLETED")).thenThrow(mock(FeignException.class));
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class,
+                () -> userService.getUsersByFavoriteCategoryAndMinBookings("CONCERT", 3));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, exception.getStatusCode());
     }
 
     private FavoriteVenue venue(Long id, User user, boolean isDefault) {
