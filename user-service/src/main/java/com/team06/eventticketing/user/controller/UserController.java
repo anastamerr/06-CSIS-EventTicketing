@@ -178,13 +178,13 @@ public class UserController {
     }
 
     @GetMapping("/preferences/search")
-    @CachedFeature(service = "user-service", featureId = "S1-F9", ttlSeconds = 600)
+    @CachedFeature(service = "user-service", featureId = "S1-F5", ttlSeconds = 300)
     public List<User> filterByPreference(@RequestParam String key, @RequestParam String value) {
         return userService.filterByPreference(key, value);
     }
 
     @GetMapping("/preferences/category")
-    @CachedFeature(service = "user-service", featureId = "S1-F5", ttlSeconds = 300)
+    @CachedFeature(service = "user-service", featureId = "S1-F9", ttlSeconds = 600)
     public List<User> getUsersByFavoriteCategory(
             @RequestParam String category,
             @RequestParam int minBookings) {

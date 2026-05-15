@@ -271,7 +271,7 @@ public class UserService {
         return userRepository.findAll().stream()
                 .filter(user -> user.getRole() == null || user.getRole() == UserRole.ATTENDEE)
                 .map(user -> {
-                    BigDecimal total = getCompletedBookingTotalSafe(user.getId(), start, end);
+                    BigDecimal total = getCompletedBookingTotal(user.getId(), start, end);
                     if (total.compareTo(BigDecimal.ZERO) <= 0) {
                         return null;
                     }
@@ -633,16 +633,6 @@ public class UserService {
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "Booking service temporarily unavailable",
                     exception);
-        }
-    }
-
-    private BigDecimal getCompletedBookingTotalSafe(Long userId, String startDate, String endDate) {
-        try {
-            BigDecimal total = bookingClient().getUserCompletedBookingTotal(userId, startDate, endDate);
-            return total == null ? BigDecimal.ZERO : total;
-        } catch (FeignException e) {
-            log.warn("Failed to fetch booking total for userId={}: {}", userId, e.getMessage());
-            return BigDecimal.ZERO;
         }
     }
 

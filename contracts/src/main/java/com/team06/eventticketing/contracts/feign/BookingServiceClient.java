@@ -31,8 +31,16 @@ public interface BookingServiceClient {
     @GetMapping("/api/bookings/user/{userId}/active-count")
     int getUserActiveBookingCount(@PathVariable Long userId);
 
+    default int getActiveBookingCount(Long userId) {
+        return getUserActiveBookingCount(userId);
+    }
+
     @GetMapping("/api/bookings/user/{userId}/count")
     long getUserBookingCount(@PathVariable Long userId, @RequestParam(required = false) String status);
+
+    default long getTotalBookingCount(Long userId, String status) {
+        return getUserBookingCount(userId, status);
+    }
 
     @GetMapping("/api/bookings/user/{userId}/total")
     BigDecimal getUserCompletedBookingTotal(
@@ -40,4 +48,8 @@ public interface BookingServiceClient {
             @RequestParam String startDate,
             @RequestParam String endDate
     );
+
+    default BigDecimal getUserBookingTotal(Long userId, String startDate, String endDate) {
+        return getUserCompletedBookingTotal(userId, startDate, endDate);
+    }
 }
