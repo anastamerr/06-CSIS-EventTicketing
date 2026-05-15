@@ -6,6 +6,8 @@ import com.team06.eventticketing.common.observer.EntityObserver;
 import com.team06.eventticketing.common.observer.EventFactory;
 import com.team06.eventticketing.common.observer.EventType;
 import com.team06.eventticketing.common.observer.MongoEventLogger;
+import com.team06.eventticketing.contracts.events.TicketCancelledEvent;
+import com.team06.eventticketing.contracts.events.TicketStatusChangedEvent;
 import com.team06.eventticketing.ticket.adapter.CassandraRowAdapter;
 import com.team06.eventticketing.ticket.adapter.EventAttendanceSummaryAdapter;
 import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
@@ -301,7 +303,7 @@ public class TicketService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Booking service client is not configured");
         }
         try {
-            BookingDTO booking = bookingServiceClient.getBookingContract(bookingId);
+            BookingDTO booking = bookingServiceClient.getBooking(bookingId);
             if (booking == null) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found");
             }
@@ -617,7 +619,7 @@ public class TicketService {
             return null;
         }
         try {
-            return eventServiceClient.getVenueCoords(eventId);
+            return eventServiceClient.getEventVenueCoords(eventId);
         } catch (FeignException.NotFound ex) {
             return null;
         }
@@ -658,6 +660,65 @@ public class TicketService {
         return ticketRepository.countUsedByBookingId(bookingId);
     }
 
+    @Transactional
+    public int captureEventIdForBooking(Long bookingId, Long eventId) {
+        requireSagaField(bookingId, "bookingId");
+        requireSagaField(eventId, "eventId");
+        int updated = ticketRepository.backfillEventIdByBookingId(bookingId, eventId);
+        if (updated > 0) {
+            invalidateTicketCaches(ticketRepository.findByBookingId(bookingId));
+        }
+        return updated;
+    }
+
+    @Transactional
+    public int publishStatusChangedAuditSignals(Long bookingId) {
+        requireSagaField(bookingId, "bookingId");
+        List<Ticket> tickets = ticketRepository.findByBookingId(bookingId);
+        int published = 0;
+        for (Ticket ticket : tickets) {
+            if (ticket.getId() == null || ticket.getStatus() == null) {
+                continue;
+            }
+            if (ticketEventPublisher != null) {
+                ticketEventPublisher.publishTicketStatusChanged(
+                        new TicketStatusChangedEvent(
+                                ticket.getId(),
+                                ticket.getBookingId(),
+                                ticket.getStatus().name()),
+                        ticket.getEventId());
+            }
+            published++;
+        }
+        return published;
+    }
+
+    @Transactional
+    public int cancelTicketsForBooking(Long bookingId) {
+        requireSagaField(bookingId, "bookingId");
+        List<Ticket> cancellableTickets = ticketRepository.findByBookingId(bookingId).stream()
+                .filter(ticket -> ticket.getStatus() == TicketStatus.VALID)
+                .map(ticket -> {
+                    ticket.setStatus(TicketStatus.CANCELLED);
+                    return ticket;
+                })
+                .toList();
+        if (cancellableTickets.isEmpty()) {
+            return 0;
+        }
+
+        List<Ticket> cancelledTickets = ticketRepository.saveAll(cancellableTickets);
+        invalidateTicketCaches(cancelledTickets);
+        for (Ticket ticket : cancelledTickets) {
+            if (ticketEventPublisher != null && ticket.getId() != null) {
+                ticketEventPublisher.publishTicketCancelled(
+                        new TicketCancelledEvent(ticket.getId(), ticket.getBookingId()),
+                        ticket.getEventId());
+            }
+        }
+        return cancelledTickets.size();
+    }
+
     private void publishTicketIssued(Ticket ticket) {
         if (ticketEventPublisher == null) {
             return;  // test-only constructor path; no broker wired
@@ -670,5 +731,23 @@ public class TicketService {
                         ticket.getTicketCode()
                 )
         );
+    }
+
+    private void invalidateTicketCaches(List<Ticket> tickets) {
+        if (redisCacheService == null) {
+            return;
+        }
+        for (Ticket ticket : tickets) {
+            if (ticket.getId() != null) {
+                redisCacheService.delete("ticket-service::ticket::" + ticket.getId());
+            }
+        }
+        redisCacheService.deleteByPattern("ticket-service::S4-F*::*");
+    }
+
+    private void requireSagaField(Object value, String fieldName) {
+        if (value == null) {
+            throw new IllegalArgumentException(fieldName + " is required");
+        }
     }
 }
