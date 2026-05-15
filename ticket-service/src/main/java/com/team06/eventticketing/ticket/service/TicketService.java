@@ -9,6 +9,7 @@ import com.team06.eventticketing.common.observer.MongoEventLogger;
 import com.team06.eventticketing.ticket.adapter.CassandraRowAdapter;
 import com.team06.eventticketing.ticket.adapter.EventAttendanceSummaryAdapter;
 import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
+import com.team06.eventticketing.ticket.dto.EventTicketSummaryDTO;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.dto.TicketAnalyticsDTO;
@@ -342,6 +343,18 @@ public class TicketService {
     }
 
     @Transactional(readOnly = true)
+    public EventTicketSummaryDTO getEventTicketSummary(Long eventId) {
+        List<Object[]> rows = ticketRepository.findAttendanceSummaryByEventId(eventId);
+        if (rows.isEmpty()) {
+            return new EventTicketSummaryDTO(0L, 0L);
+        }
+        Object[] row = rows.getFirst();
+        long totalTicketsSold = toLong(row[0]);
+        long usedCount = toLong(row[1]);
+        return new EventTicketSummaryDTO(totalTicketsSold, usedCount);
+    }
+
+    @Transactional(readOnly = true)
     public List<Ticket> searchTicketsByMetadata(String key, String operator, String value) {
         String normalizedKey = requireText(key, "key");
         String normalizedOperator = requireText(operator, "operator").toLowerCase();
@@ -424,11 +437,12 @@ public class TicketService {
             ticket.setStatus(TicketStatus.VALID);
         }
         List<Ticket> savedTickets = ticketRepository.saveAll(tickets);
+        savedTickets.forEach(this::publishTicketIssued);
         notifyObservers("BATCH_ISSUED", Map.of(
                 "ticketId", savedTickets.isEmpty() ? 0L : savedTickets.getFirst().getId(),
                 "details", Map.of("count", savedTickets.size(), "bookingId", bookingId)));
 
-        return Map.of("count", tickets.size());
+        return Map.of("count", savedTickets.size());
     }
 
     @Transactional

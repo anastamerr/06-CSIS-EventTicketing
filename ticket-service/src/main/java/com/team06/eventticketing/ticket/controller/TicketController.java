@@ -4,6 +4,7 @@ import com.team06.eventticketing.common.cache.CachedDetail;
 import com.team06.eventticketing.common.cache.CachedFeature;
 import com.team06.eventticketing.common.cache.InvalidateServiceCaches;
 import com.team06.eventticketing.ticket.dto.EventAttendanceSummaryDTO;
+import com.team06.eventticketing.ticket.dto.EventTicketSummaryDTO;
 import com.team06.eventticketing.ticket.dto.NearbyTicketResponseDTO;
 import com.team06.eventticketing.ticket.dto.PurgeTicketsResponseDTO;
 import com.team06.eventticketing.ticket.dto.TicketAnalyticsDTO;
@@ -102,6 +103,12 @@ public class TicketController {
     @CachedFeature(service = "ticket-service", featureId = "S4-F3", ttlSeconds = 600)
     public EventAttendanceSummaryDTO getEventAttendanceSummary(@PathVariable Long eventId) {
         return ticketService.getEventAttendanceSummary(eventId);
+    }
+
+    @GetMapping("/event/{eventId}/ticket-summary")
+    @CachedFeature(service = "ticket-service", featureId = "S4-F8", ttlSeconds = 600)
+    public EventTicketSummaryDTO getEventTicketSummary(@PathVariable Long eventId) {
+        return ticketService.getEventTicketSummary(eventId);
     }
 
     @PostMapping("/booking/{bookingId}")
@@ -247,10 +254,5 @@ public class TicketController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, fieldName + " is required");
         }
         return text;
-    }
-
-    @GetMapping("/booking/{bookingId}/used-count")
-    public long getUsedTicketCount(@PathVariable Long bookingId) {
-        return ticketService.getUsedTicketCountForBooking(bookingId);
     }
 }
