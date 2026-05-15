@@ -606,7 +606,7 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not active");
         }
 
-        int usedTicketCount = getUsedTicketCountForBooking(booking.getId());
+        int usedTicketCount = getActiveTicketCountForBooking(booking.getId());
         if (usedTicketCount < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No attendance recorded for this booking");
         }
@@ -698,7 +698,7 @@ public class BookingService {
 
     private AvgCapacityDTO getAverageCapacity(Long eventId) {
         try {
-            return eventServiceClient.getEventAverageSessionCapacity(eventId);
+            return eventServiceClient.getEventAvgCapacity(eventId);
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Event not found", exception);
         } catch (FeignException exception) {
@@ -726,9 +726,9 @@ public class BookingService {
         }
     }
 
-    private int getUsedTicketCountForBooking(Long bookingId) {
+    private int getActiveTicketCountForBooking(Long bookingId) {
         try {
-            return ticketServiceClient.getUsedTicketCountForBooking(bookingId);
+            return ticketServiceClient.getActiveTicketCountForBooking(bookingId);
         } catch (FeignException.NotFound exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tickets not found", exception);
         } catch (FeignException exception) {

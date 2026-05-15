@@ -65,7 +65,7 @@ class BookingServiceTest {
 
     @Test
     void estimateBookingCostUsesEventServiceAverageCapacity() {
-        when(eventServiceClient.getEventAverageSessionCapacity(77L)).thenReturn(new AvgCapacityDTO(500.0));
+        when(eventServiceClient.getEventAvgCapacity(77L)).thenReturn(new AvgCapacityDTO(500.0));
         when(bookingRepository.countActiveBookingsByEventId(77L)).thenReturn(0L);
 
         BookingCostEstimateDTO result = bookingService.estimateBookingCost(new BookingEstimateRequest(77L, 2, "VIP"));
@@ -121,7 +121,7 @@ class BookingServiceTest {
         when(eventServiceClient.getEvent(5L)).thenReturn(new EventDTO(
                 5L, "Concert", "Hall", null, "CONCERT", "ONGOING", 0.0, null));
         when(userServiceClient.getUser(7L)).thenReturn(new UserDTO(7L, "Ibrahim", "ibrahim@example.com", "USER", "ACTIVE"));
-        when(ticketServiceClient.getUsedTicketCountForBooking(10L)).thenReturn(1);
+        when(ticketServiceClient.getActiveTicketCountForBooking(10L)).thenReturn(1);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         Booking result = bookingService.completeBooking(10L);
@@ -178,7 +178,7 @@ class BookingServiceTest {
         when(eventServiceClient.getEvent(5L)).thenReturn(new EventDTO(
                 5L, "Concert", "Hall", null, "CONCERT", "ONGOING", 0.0, null));
         when(userServiceClient.getUser(7L)).thenReturn(new UserDTO(7L, "Ibrahim", "ibrahim@example.com", "USER", "ACTIVE"));
-        when(ticketServiceClient.getUsedTicketCountForBooking(10L)).thenReturn(0);
+        when(ticketServiceClient.getActiveTicketCountForBooking(10L)).thenReturn(0);
 
         ResponseStatusException exception = assertThrows(
                 ResponseStatusException.class,
