@@ -354,10 +354,10 @@ public class BookingService {
     @Transactional
     public Booking cancelBooking(Long bookingId) {
         Booking booking = getBookingByIdForUpdate(bookingId);
-        if (!isRequested(booking) && booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Only requested or confirmed bookings can be cancelled"
+                    "Only pending or confirmed bookings can be cancelled"
             );
         }
 
@@ -378,8 +378,8 @@ public class BookingService {
     public Booking confirmBooking(Long bookingId, Long eventId) {
         Booking booking = getBookingByIdForUpdate(bookingId);
 
-        if (!isRequested(booking) && booking.getStatus() != BookingStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only requested bookings can be confirmed");
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only pending bookings can be confirmed");
         }
 
         EventDTO event = getEvent(eventId);
@@ -641,20 +641,14 @@ public class BookingService {
     }
 
     private void validateAppendableBooking(Booking booking) {
-        if (!isRequested(booking)
-                && booking.getStatus() != BookingStatus.PENDING
+        if (booking.getStatus() != BookingStatus.PENDING
                 && booking.getStatus() != BookingStatus.CONFIRMED
-                && booking.getStatus() != BookingStatus.CHECKED_IN
-                && booking.getStatus() != BookingStatus.IN_PROGRESS) {
+                && booking.getStatus() != BookingStatus.CHECKED_IN) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Cannot add items to a booking with status " + booking.getStatus()
             );
         }
-    }
-
-    private boolean isRequested(Booking booking) {
-        return booking.getStatus() == BookingStatus.REQUESTED;
     }
 
     private void validateBookingItemsRequest(List<BookingItemRequest> items) {

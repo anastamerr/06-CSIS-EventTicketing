@@ -24,7 +24,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             SELECT COUNT(*)
             FROM bookings
             WHERE event_id = :eventId
-              AND status::text IN ('REQUESTED', 'PENDING', 'CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN')
+              AND status::text IN ('PENDING', 'CONFIRMED', 'CHECKED_IN', 'COMPLETING', 'PAYMENT_PENDING')
             """, nativeQuery = true)
     long countActiveBookingsByEventId(@Param("eventId") Long eventId);
 
@@ -33,11 +33,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             FROM Booking b
             WHERE b.userId = :userId
               AND b.status IN (
-                  com.team06.eventticketing.booking.model.BookingStatus.REQUESTED,
                   com.team06.eventticketing.booking.model.BookingStatus.PENDING,
                   com.team06.eventticketing.booking.model.BookingStatus.CONFIRMED,
-                  com.team06.eventticketing.booking.model.BookingStatus.IN_PROGRESS,
-                  com.team06.eventticketing.booking.model.BookingStatus.CHECKED_IN
+                  com.team06.eventticketing.booking.model.BookingStatus.CHECKED_IN,
+                  com.team06.eventticketing.booking.model.BookingStatus.COMPLETING,
+                  com.team06.eventticketing.booking.model.BookingStatus.PAYMENT_PENDING
               )
             """)
     long countActiveBookingsByUserId(@Param("userId") Long userId);

@@ -192,7 +192,7 @@ class BookingServiceTest {
     @Test
     void completeBookingRejectsNonCheckedInBooking() {
         Booking booking = checkedInBooking();
-        booking.setStatus(BookingStatus.IN_PROGRESS);
+        booking.setStatus(BookingStatus.CONFIRMED);
 
         when(bookingRepository.findByIdWithBookingItemsForUpdate(10L)).thenReturn(Optional.of(booking));
 
