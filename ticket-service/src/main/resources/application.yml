@@ -60,15 +60,15 @@ feign:
   circuitbreaker:
     enabled: true
   user-service:
-    url: http://user-service:8080
+    url: ${FEIGN_USER_SERVICE_URL:http://user-service:8080}
   event-service:
-    url: http://event-service:8080
+    url: ${FEIGN_EVENT_SERVICE_URL:http://event-service:8080}
   booking-service:
-    url: http://booking-service:8080
+    url: ${FEIGN_BOOKING_SERVICE_URL:http://booking-service:8080}
   ticket-service:
-    url: http://ticket-service:8080
+    url: ${FEIGN_TICKET_SERVICE_URL:http://ticket-service:8080}
   sales-service:
-    url: http://sales-service:8080
+    url: ${FEIGN_SALES_SERVICE_URL:http://sales-service:8080}
 
 resilience4j:
   circuitbreaker:

@@ -387,8 +387,10 @@ public class TicketService {
 
     public List<NearbyTicketResponseDTO> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
         validateGeoParameters(latitude, longitude, radiusKm);
-        return ticketRepository.findByStatusAndEventIdIsNotNull(TicketStatus.VALID).stream()
-                .map(ticket -> toNearbyTicketResponse(ticket, latitude, longitude))
+        Map<Long, EventResponse> eventCache = new LinkedHashMap<>();
+        Map<Long, VenueCoordsDTO> coordsCache = new LinkedHashMap<>();
+        return ticketRepository.findByStatus(TicketStatus.VALID).stream()
+                .map(ticket -> toNearbyTicketResponse(ticket, latitude, longitude, eventCache, coordsCache))
                 .filter(dto -> dto != null && dto.getDistanceKm() <= radiusKm)
                 .sorted(Comparator.comparing(NearbyTicketResponseDTO::getDistanceKm).thenComparing(NearbyTicketResponseDTO::getTicketId))
                 .toList();
@@ -584,9 +586,17 @@ public class TicketService {
                 .build();
     }
 
-    private NearbyTicketResponseDTO toNearbyTicketResponse(Ticket ticket, double latitude, double longitude) {
-        EventResponse event = fetchEvent(ticket.getEventId());
-        VenueCoordsDTO coords = fetchVenueCoords(ticket.getEventId());
+    private NearbyTicketResponseDTO toNearbyTicketResponse(
+            Ticket ticket,
+            double latitude,
+            double longitude,
+            Map<Long, EventResponse> eventCache,
+            Map<Long, VenueCoordsDTO> coordsCache
+    ) {
+        BookingDTO booking = fetchBooking(ticket.getBookingId());
+        Long eventId = booking.eventId();
+        EventResponse event = eventCache.computeIfAbsent(eventId, this::fetchEvent);
+        VenueCoordsDTO coords = coordsCache.computeIfAbsent(eventId, this::fetchVenueCoords);
         if (event == null || coords == null || coords.venueLat() == null || coords.venueLon() == null) {
             return null;
         }

@@ -70,16 +70,8 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
             """, nativeQuery = true)
     int deletePurgeableTickets(@Param("cutoff") LocalDateTime cutoff);
 
-    default boolean existsBookingById(Long bookingId) {
-        return false;
-    }
-
     @Query("SELECT t FROM Ticket t WHERE t.status = com.team06.eventticketing.ticket.model.TicketStatus.VALID AND t.eventId IS NOT NULL ORDER BY t.eventId ASC, t.id ASC")
     List<Ticket> findValidTicketsWithEventId();
-
-    default List<NearbyTicketProjection> findTicketsNearVenue(double latitude, double longitude, double radiusKm) {
-        return List.of();
-    }
 
     @Query(value = """
             SELECT *
