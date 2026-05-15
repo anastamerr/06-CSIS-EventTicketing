@@ -297,12 +297,12 @@ class EventServiceTest {
         request.setRating(6);
 
         when(eventRepository.findById(10L)).thenReturn(Optional.of(event));
-        when(bookingServiceClient.getBooking(20L)).thenReturn(new BookingDTO(20L, 1L, 10L, "COMPLETED", 300.0));
 
         ResponseStatusException exception = assertThrows(ResponseStatusException.class,
                 () -> eventService.rateEvent(10L, request));
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(bookingServiceClient, never()).getBooking(20L);
         verify(eventRepository, never()).save(event);
     }
 

@@ -329,6 +329,10 @@ public class EventService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bookingId is required");
         }
 
+        if (request.getRating() < 1 || request.getRating() > 5) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
+        }
+
         withEventMdc(eventId);
         try {
             BookingDTO booking;
@@ -344,10 +348,6 @@ public class EventService {
 
             if (!"COMPLETED".equals(booking.status())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking must be completed");
-            }
-
-            if (request.getRating() < 1 || request.getRating() > 5) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rating must be between 1 and 5");
             }
 
             double oldRating = event.getRating() == null ? 0.0 : event.getRating();
