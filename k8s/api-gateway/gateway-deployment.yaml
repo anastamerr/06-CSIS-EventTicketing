@@ -21,7 +21,7 @@ spec:
             - containerPort: 8080
           envFrom:
             - configMapRef:
-                name: gateway-config
+                name: gateway-configmap
             - secretRef:
                 name: jwt-secret
           readinessProbe:

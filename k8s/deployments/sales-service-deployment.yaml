@@ -24,9 +24,28 @@ spec:
               containerPort: 8080
           envFrom:
             - configMapRef:
-                name: sales-service-config
-            - secretRef:
-                name: sales-postgres-secret
+                name: sales-service-configmap
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sales-postgres-secret
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sales-postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_SECRET
+            - name: JWT_EXPIRATION_MS
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_EXPIRATION_MS
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: sales-service-config
+  name: sales-service-configmap
   namespace: eventticketing
 data:
   SPRING_DATASOURCE_URL: jdbc:postgresql://sales-postgres:5432/etdb-sales

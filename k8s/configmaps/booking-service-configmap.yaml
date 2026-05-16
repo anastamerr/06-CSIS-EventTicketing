@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: booking-service-config
+  name: booking-service-configmap
   namespace: eventticketing
 data:
   SPRING_DATASOURCE_URL: jdbc:postgresql://booking-postgres:5432/etdb-bookings
