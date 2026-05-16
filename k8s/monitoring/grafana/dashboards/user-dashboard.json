@@ -11,36 +11,36 @@
   "panels": [
     {
       "id": 1,
-      "type": "logs",
+      "type": "timeseries",
       "title": "User Service Errors",
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{app=\"eventticketing\", service=\"user-service\", level=\"ERROR\"}",
+          "expr": "sum by (service) (count_over_time({app=\"eventticketing\", service=\"user-service\", level=\"ERROR\"} | json [1m]))",
           "refId": "A"
         }
       ]
     },
     {
       "id": 2,
-      "type": "logs",
+      "type": "timeseries",
       "title": "Booking Feign Calls",
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{app=\"eventticketing\", service=\"user-service\"} |= \"Booking service\"",
+          "expr": "sum(count_over_time({app=\"eventticketing\", service=\"user-service\"} | json | message=~\".*Booking service.*\" [5m]))",
           "refId": "A"
         }
       ]
     },
     {
       "id": 3,
-      "type": "logs",
+      "type": "timeseries",
       "title": "RabbitMQ User Events",
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{app=\"eventticketing\", service=\"user-service\"} | json | routingKey =~ \"user\\\\.registered|user\\\\.deactivated\"",
+          "expr": "sum by (routingKey) (count_over_time({app=\"eventticketing\", service=\"user-service\"} | json | routingKey=~\"user\\\\.registered|user\\\\.deactivated\" [5m]))",
           "refId": "A"
         }
       ]
@@ -52,7 +52,7 @@
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
-          "expr": "{app=\"eventticketing\", service=\"user-service\"} | json | routingKey =~ \"booking\\\\.completed|booking\\\\.cancelled\"",
+          "expr": "sum by (routingKey) (count_over_time({app=\"eventticketing\", service=\"user-service\"} | json | routingKey=~\"booking\\\\.completed|booking\\\\.cancelled\" [5m]))",
           "refId": "A"
         }
       ]
@@ -95,12 +95,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{job=\"user-service\", area=\"heap\"}",
+          "expr": "avg_over_time(jvm_memory_used_bytes{job=\"user-service\", area=\"heap\"}[5m])",
           "refId": "A",
           "legendFormat": "heap used"
         },
         {
-          "expr": "jvm_memory_max_bytes{job=\"user-service\", area=\"heap\"}",
+          "expr": "avg_over_time(jvm_memory_max_bytes{job=\"user-service\", area=\"heap\"}[5m])",
           "refId": "B",
           "legendFormat": "heap max"
         }

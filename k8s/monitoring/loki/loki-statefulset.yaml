@@ -36,7 +36,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: loki-config
+            name: loki-configmap
         - name: storage
           persistentVolumeClaim:
             claimName: loki-pvc

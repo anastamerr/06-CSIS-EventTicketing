@@ -62,7 +62,7 @@
       "type": "timeseries",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
-        {"expr": "sum(jvm_memory_used_bytes{job=\"event-service\", area=\"heap\"})"}
+            {"expr": "avg_over_time(jvm_memory_used_bytes{job=\"event-service\", area=\"heap\"}[5m])"}
       ],
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
     }

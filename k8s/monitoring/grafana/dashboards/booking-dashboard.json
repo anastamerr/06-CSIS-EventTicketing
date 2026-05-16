@@ -39,7 +39,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(jvm_memory_used_bytes{job=\"booking-service\", area=\"heap\"})",
+              "expr": "avg_over_time(jvm_memory_used_bytes{job=\"booking-service\", area=\"heap\"}[5m])",
           "refId": "A"
         }
       ],

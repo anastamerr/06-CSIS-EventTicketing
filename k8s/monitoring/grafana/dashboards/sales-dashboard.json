@@ -41,7 +41,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "sum(jvm_memory_used_bytes{job=\"sales-service\"}) by (area)",
+          "expr": "sum by (area) (avg_over_time(jvm_memory_used_bytes{job=\"sales-service\"}[5m]))",
           "legendFormat": "{{area}}"
         }
       ],
@@ -50,11 +50,11 @@
     {
       "id": 4,
       "title": "Saga Payment Events",
-      "type": "logs",
+      "type": "timeseries",
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"sales-service\"} |= \"payment.\""
+          "expr": "sum by (routingKey) (count_over_time({app=\"eventticketing\", service=\"sales-service\"} | json | routingKey=~\"payment\\\\..*\" [5m]))"
         }
       ],
       "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}
@@ -62,11 +62,11 @@
     {
       "id": 5,
       "title": "Booking Event Consumption",
-      "type": "logs",
+      "type": "timeseries",
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"sales-service\"} |~ \"booking.completed|booking.cancelled\""
+          "expr": "sum by (routingKey) (count_over_time({app=\"eventticketing\", service=\"sales-service\"} | json | routingKey=~\"booking\\\\.completed|booking\\\\.cancelled\" [5m]))"
         }
       ],
       "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}
@@ -74,11 +74,11 @@
     {
       "id": 6,
       "title": "Sales Errors",
-      "type": "logs",
+      "type": "timeseries",
       "datasource": {"type": "loki", "uid": "loki"},
       "targets": [
         {
-          "expr": "{app=\"sales-service\"} |~ \"ERROR|Exception|failed\""
+          "expr": "sum by (level) (count_over_time({app=\"eventticketing\", service=\"sales-service\", level=\"ERROR\"} | json [1m]))"
         }
       ],
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}
