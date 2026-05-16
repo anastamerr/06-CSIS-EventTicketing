@@ -25,4 +25,4 @@ $env:EVENT_SERVICE_URL="http://localhost:8082"
 npm test
 ```
 
-Defaults match `docker-compose.yaml`: user service on `8081` and event service on `8082`.
+Defaults match `docker-compose.yml`: user service on `8081` and event service on `8082`.
