@@ -25,20 +25,20 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum by (service) (count_over_time({app=\"eventticketing\", service=\"ticket-service\", level=\"ERROR\"}[1m]))",
+              "expr": "sum by (service) (count_over_time({app=\"eventticketing\", service=\"ticket-service\", level=\"ERROR\"} | json [1m]))",
           "refId": "A"
         }
       ]
     },
     {
       "id": 2,
-      "type": "logs",
+          "type": "timeseries",
       "title": "Correlation ID trace",
       "datasource": { "type": "loki", "uid": "loki" },
       "gridPos": { "h": 12, "w": 24, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "{app=\"eventticketing\"} | json | correlationId=~\"$corrId\"",
+              "expr": "sum by (service) (count_over_time({app=\"eventticketing\"} | json | correlationId=~\"$corrId\" [5m]))",
           "refId": "A"
         }
       ]
@@ -90,7 +90,7 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
       "targets": [
         {
-          "expr": "sum by (area) (jvm_memory_used_bytes{job=\"ticket-service\"}) / sum by (area) (jvm_memory_max_bytes{job=\"ticket-service\"})",
+              "expr": "sum by (area) (avg_over_time(jvm_memory_used_bytes{job=\"ticket-service\"}[5m])) / sum by (area) (avg_over_time(jvm_memory_max_bytes{job=\"ticket-service\"}[5m]))",
           "refId": "A"
         }
       ]

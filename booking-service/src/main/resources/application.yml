@@ -82,11 +82,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,prometheus,info,metrics
+        include: "prometheus,health,info"
   endpoint:
     health:
       probes:
         enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 loki:
   url: ${LOKI_URL:http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push}
