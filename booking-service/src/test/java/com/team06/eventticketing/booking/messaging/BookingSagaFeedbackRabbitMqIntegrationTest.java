@@ -9,8 +9,12 @@ import com.team06.eventticketing.contracts.events.PaymentFailedEvent;
 import com.team06.eventticketing.contracts.messaging.EventTicketingMessagingContracts;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.opentest4j.TestAbortedException;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
@@ -22,13 +26,10 @@ import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.testcontainers.containers.RabbitMQContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers(disabledWithoutDocker = true)
+@DisabledIfEnvironmentVariable(named = "TESTCONTAINERS_DISABLED", matches = "true")
 class BookingSagaFeedbackRabbitMqIntegrationTest {
 
-    @Container
     static final RabbitMQContainer RABBIT = new RabbitMQContainer("rabbitmq:3.13-management");
 
     private CachingConnectionFactory connectionFactory;
@@ -36,6 +37,20 @@ class BookingSagaFeedbackRabbitMqIntegrationTest {
     private MessageConverter messageConverter;
     private SimpleMessageListenerContainer listenerContainer;
     private BookingService bookingService;
+
+    @BeforeAll
+    static void startRabbitMq() {
+        try {
+            RABBIT.start();
+        } catch (RuntimeException ex) {
+            throw new TestAbortedException("Docker is not available for RabbitMQ integration test", ex);
+        }
+    }
+
+    @AfterAll
+    static void stopRabbitMq() {
+        RABBIT.stop();
+    }
 
     @BeforeEach
     void setUp() {

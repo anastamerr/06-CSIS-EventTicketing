@@ -16,8 +16,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.opentest4j.TestAbortedException;
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Message;
@@ -30,10 +34,8 @@ import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.testcontainers.containers.RabbitMQContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
-@Testcontainers(disabledWithoutDocker = true)
+@DisabledIfEnvironmentVariable(named = "TESTCONTAINERS_DISABLED", matches = "true")
 class BookingSagaE2ERabbitMqBonusTest {
 
     private static final String SALES_SIM_QUEUE = "bonus.sales.sim";
@@ -42,7 +44,6 @@ class BookingSagaE2ERabbitMqBonusTest {
     private static final String TICKET_OBSERVED_QUEUE = "bonus.ticket.observed";
     private static final String TICKET_STATUS_CHANGED_ROUTING_KEY = "ticket.status-changed";
 
-    @Container
     static final RabbitMQContainer RABBIT = new RabbitMQContainer("rabbitmq:3.13-management");
 
     private final List<SimpleMessageListenerContainer> listenerContainers = new ArrayList<>();
@@ -50,6 +51,20 @@ class BookingSagaE2ERabbitMqBonusTest {
     private RabbitTemplate rabbitTemplate;
     private MessageConverter messageConverter;
     private BookingService bookingService;
+
+    @BeforeAll
+    static void startRabbitMq() {
+        try {
+            RABBIT.start();
+        } catch (RuntimeException ex) {
+            throw new TestAbortedException("Docker is not available for RabbitMQ integration test", ex);
+        }
+    }
+
+    @AfterAll
+    static void stopRabbitMq() {
+        RABBIT.stop();
+    }
 
     @BeforeEach
     void setUp() {
