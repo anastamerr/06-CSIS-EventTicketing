@@ -13,6 +13,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/eventticketing
   JAVA_VERSION: '25'
+  TESTCONTAINERS_DISABLED: 'true'
 
 jobs:
   build-test:
@@ -27,12 +28,12 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: oracle
+          distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
       - name: Build and test reactor
-        run: bash ./user-service/mvnw -B -am test
+        run: bash ./user-service/mvnw -f pom.xml -B test
 
   docker-build:
     name: Docker build
@@ -56,13 +57,13 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: oracle
+          distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
       - name: Package service jar
         if: matrix.service != 'api-gateway'
-        run: bash ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
+        run: bash ./user-service/mvnw -f pom.xml -B -pl ${{ matrix.service }} -am -DskipTests package
 
       - name: Build image
         run: |
@@ -97,7 +98,7 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: oracle
+          distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
@@ -111,7 +112,7 @@ jobs:
       - name: Build and push image
         run: |
           if [ "${{ matrix.service }}" != "api-gateway" ]; then
-            bash ./user-service/mvnw -B -pl ${{ matrix.service }} -am -DskipTests package
+            bash ./user-service/mvnw -f pom.xml -B -pl ${{ matrix.service }} -am -DskipTests package
           fi
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}"
           if [ "${{ matrix.service }}" = "api-gateway" ]; then
