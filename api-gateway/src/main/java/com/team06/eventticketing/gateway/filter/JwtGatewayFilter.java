@@ -32,7 +32,7 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
         String correlationId = correlationId(exchange);
         String path = exchange.getRequest().getURI().getPath();
 
-        if (path.startsWith("/api/auth/") || path.startsWith("/actuator/health")) {
+        if (path.equals("/api/auth") || path.startsWith("/api/auth/") || path.startsWith("/actuator/health")) {
             return forward(exchange, chain, correlationId, null, null);
         }
 
@@ -67,13 +67,17 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
             String role
     ) {
         ServerHttpRequest.Builder request = exchange.getRequest().mutate()
-                .header(CORRELATION_ID_HEADER, correlationId);
-        if (userId != null) {
-            request.header(USER_ID_HEADER, userId);
-        }
-        if (role != null) {
-            request.header(USER_ROLE_HEADER, role);
-        }
+                .headers(headers -> {
+                    headers.set(CORRELATION_ID_HEADER, correlationId);
+                    headers.remove(USER_ID_HEADER);
+                    headers.remove(USER_ROLE_HEADER);
+                    if (userId != null) {
+                        headers.set(USER_ID_HEADER, userId);
+                    }
+                    if (role != null) {
+                        headers.set(USER_ROLE_HEADER, role);
+                    }
+                });
         return chain.filter(exchange.mutate().request(request.build()).build());
     }
 
