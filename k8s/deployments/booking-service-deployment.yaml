@@ -31,9 +31,7 @@ spec:
               memory: 1Gi
           envFrom:
             - configMapRef:
-                name: booking-service-config
-            - secretRef:
-                name: jwt-secret
+                name: booking-service-configmap
           env:
             - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
@@ -45,6 +43,16 @@ spec:
                 secretKeyRef:
                   name: booking-postgres-secret
                   key: POSTGRES_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_SECRET
+            - name: JWT_EXPIRATION_MS
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_EXPIRATION_MS
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness

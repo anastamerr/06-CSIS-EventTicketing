@@ -37,7 +37,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: jwt-secret
-                  key: jwt-secret
+                  key: JWT_SECRET
+            - name: JWT_EXPIRATION_MS
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: JWT_EXPIRATION_MS
           readinessProbe:
             httpGet:
               path: /actuator/health
