@@ -56,6 +56,8 @@ feign:
     enabled: true
   user-service:
     url: ${FEIGN_USER_SERVICE_URL:http://user-service:8080}
+  booking-service:
+    url: ${FEIGN_BOOKING_SERVICE_URL:http://booking-service:8080}
   event-service:
     url: ${FEIGN_EVENT_SERVICE_URL:http://event-service:8080}
   ticket-service:

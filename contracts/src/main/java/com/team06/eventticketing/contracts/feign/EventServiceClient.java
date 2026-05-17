@@ -12,15 +12,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface EventServiceClient {
 
     @GetMapping("/api/events/{id}")
-    EventDTO getEvent(@PathVariable Long id);
+    EventDTO getEvent(@PathVariable("id") Long id);
 
     @GetMapping("/api/events/{id}/sessions/avg-capacity")
-    AvgCapacityDTO getEventAvgCapacity(@PathVariable Long id);
+    AvgCapacityDTO getEventAvgCapacity(@PathVariable("id") Long id);
 
     default AvgCapacityDTO getEventAverageSessionCapacity(Long id) {
         return getEventAvgCapacity(id);
     }
 
     @GetMapping("/api/events/{id}/venue-coords")
-    VenueCoordsDTO getEventVenueCoords(@PathVariable Long id);
+    VenueCoordsDTO getEventVenueCoords(@PathVariable("id") Long id);
 }

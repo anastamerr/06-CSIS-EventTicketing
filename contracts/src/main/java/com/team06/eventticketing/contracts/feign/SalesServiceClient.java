@@ -15,12 +15,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 public interface SalesServiceClient {
 
     @GetMapping("/api/sales/user/{userId}/summary")
-    UserSaleSummaryDTO getUserSaleSummary(@PathVariable Long userId);
+    UserSaleSummaryDTO getUserSaleSummary(@PathVariable("userId") Long userId);
 
     @PostMapping("/api/sales/booking/{bookingId}")
     TicketSaleResponseDTO processBookingSale(
-            @PathVariable Long bookingId,
+            @PathVariable("bookingId") Long bookingId,
             @RequestBody ProcessBookingSaleRequest request,
-            @RequestParam(defaultValue = "false") boolean simulateFailure
+            @RequestParam(value = "simulateFailure", defaultValue = "false") boolean simulateFailure
     );
 }

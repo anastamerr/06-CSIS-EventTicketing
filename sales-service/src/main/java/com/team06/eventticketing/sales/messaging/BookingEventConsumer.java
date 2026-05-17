@@ -3,15 +3,17 @@ package com.team06.eventticketing.sales.messaging;
 import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
 import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
 import com.team06.eventticketing.sales.service.TicketSaleService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.messaging.handler.annotation.Header;
-import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -20,14 +22,23 @@ public class BookingEventConsumer {
     private static final Logger log = LoggerFactory.getLogger(BookingEventConsumer.class);
 
     private final TicketSaleService ticketSaleService;
+    private final ObjectMapper objectMapper;
 
-    public BookingEventConsumer(TicketSaleService ticketSaleService) {
+    public BookingEventConsumer(TicketSaleService ticketSaleService, ObjectMapper objectMapper) {
         this.ticketSaleService = ticketSaleService;
+        this.objectMapper = objectMapper;
     }
 
     @RabbitListener(queues = PaymentEventConfig.PAYMENT_SAGA_QUEUE)
+    public void consumeBookingMessage(
+            Message message,
+            @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey
+    ) {
+        consumeBookingEvent(readPayload(message, routingKey), routingKey);
+    }
+
     public void consumeBookingEvent(
-            @Payload Object event,
+            Object event,
             @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey
     ) {
         MDC.put("routingKey", routingKey);
@@ -49,6 +60,18 @@ public class BookingEventConsumer {
             }
         } finally {
             MDC.remove("routingKey");
+        }
+    }
+
+    private Object readPayload(Message message, String routingKey) {
+        try {
+            return switch (routingKey) {
+                case "booking.completed" -> objectMapper.readValue(message.getBody(), BookingCompletedEvent.class);
+                case "booking.cancelled" -> objectMapper.readValue(message.getBody(), BookingCancelledEvent.class);
+                default -> throw new IllegalArgumentException("Unsupported booking routing key: " + routingKey);
+            };
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Unable to deserialize booking saga payload for " + routingKey, exception);
         }
     }
 

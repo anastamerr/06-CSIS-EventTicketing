@@ -28,18 +28,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             """, nativeQuery = true)
     long countActiveBookingsByEventId(@Param("eventId") Long eventId);
 
-    @Query("""
-            SELECT COUNT(b)
-            FROM Booking b
-            WHERE b.userId = :userId
-              AND b.status IN (
-                  com.team06.eventticketing.booking.model.BookingStatus.PENDING,
-                  com.team06.eventticketing.booking.model.BookingStatus.CONFIRMED,
-                  com.team06.eventticketing.booking.model.BookingStatus.CHECKED_IN,
-                  com.team06.eventticketing.booking.model.BookingStatus.COMPLETING,
-                  com.team06.eventticketing.booking.model.BookingStatus.PAYMENT_PENDING
-              )
-            """)
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM bookings
+            WHERE user_id = :userId
+              AND status::text IN ('PENDING', 'CONFIRMED', 'CHECKED_IN', 'COMPLETING', 'PAYMENT_PENDING')
+            """, nativeQuery = true)
     long countActiveBookingsByUserId(@Param("userId") Long userId);
 
     @Query("SELECT DISTINCT b FROM Booking b LEFT JOIN FETCH b.bookingItems WHERE b.id = :id")
@@ -73,21 +67,21 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     long countByUserIdAndStatus(Long userId, BookingStatus status);
 
-    @Query("""
-            SELECT COALESCE(SUM(b.totalAmount), 0)
-            FROM Booking b
-            WHERE b.userId = :userId
-              AND b.status = com.team06.eventticketing.booking.model.BookingStatus.COMPLETED
-            """)
+    @Query(value = """
+            SELECT COALESCE(SUM(total_amount), 0)
+            FROM bookings
+            WHERE user_id = :userId
+              AND status::text = 'COMPLETED'
+            """, nativeQuery = true)
     BigDecimal sumCompletedAmountByUserId(@Param("userId") Long userId);
 
-    @Query("""
-            SELECT COALESCE(SUM(b.totalAmount), 0)
-            FROM Booking b
-            WHERE b.userId = :userId
-              AND b.status = com.team06.eventticketing.booking.model.BookingStatus.COMPLETED
-              AND b.bookingDate BETWEEN :startDate AND :endDate
-            """)
+    @Query(value = """
+            SELECT COALESCE(SUM(total_amount), 0)
+            FROM bookings
+            WHERE user_id = :userId
+              AND status::text = 'COMPLETED'
+              AND booking_date BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
     BigDecimal sumCompletedAmountByUserIdAndDateRange(
             @Param("userId") Long userId,
             @Param("startDate") LocalDateTime startDate,
@@ -107,13 +101,13 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             LocalDateTime endDate
     );
 
-    @Query("""
-            SELECT COALESCE(SUM(b.totalAmount), 0)
-            FROM Booking b
-            WHERE b.eventId = :eventId
-              AND b.status = com.team06.eventticketing.booking.model.BookingStatus.COMPLETED
-              AND b.bookingDate BETWEEN :startDate AND :endDate
-            """)
+    @Query(value = """
+            SELECT COALESCE(SUM(total_amount), 0)
+            FROM bookings
+            WHERE event_id = :eventId
+              AND status::text = 'COMPLETED'
+              AND booking_date BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
     BigDecimal sumCompletedAmountByEventIdAndDateRange(
             @Param("eventId") Long eventId,
             @Param("startDate") LocalDateTime startDate,
