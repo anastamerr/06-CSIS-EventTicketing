@@ -5,13 +5,14 @@ import com.team06.eventticketing.contracts.events.BookingCancelledEvent;
 import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
 import com.team06.eventticketing.contracts.events.BookingPlacedEvent;
 import com.team06.eventticketing.ticket.service.TicketService;
+import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.messaging.handler.annotation.Header;
-import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -28,10 +29,18 @@ public class BookingSagaConsumer {
     }
 
     @RabbitListener(queues = TicketEventConfig.TICKET_BOOKING_SAGA_QUEUE)
-    public void consumeBookingEvent(
-            @Payload Object event,
+    public void consumeBookingMessage(
+            Message message,
             @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey,
             @Header(name = "correlationId", required = false) String correlationId
+    ) {
+        consumeBookingEvent(readPayload(message, routingKey), routingKey, correlationId);
+    }
+
+    public void consumeBookingEvent(
+            Object event,
+            String routingKey,
+            String correlationId
     ) {
         try {
             switch (routingKey) {
@@ -47,6 +56,22 @@ public class BookingSagaConsumer {
             throw new IllegalStateException(
                     "Failed to process ticket-service saga event for routing key " + routingKey,
                     exception);
+        }
+    }
+
+    private Object readPayload(Message message, String routingKey) {
+        try {
+            return switch (routingKey) {
+                case TicketEventConfig.BOOKING_PLACED_ROUTING_KEY ->
+                        objectMapper.readValue(message.getBody(), BookingPlacedEvent.class);
+                case TicketEventConfig.BOOKING_COMPLETED_ROUTING_KEY ->
+                        objectMapper.readValue(message.getBody(), BookingCompletedEvent.class);
+                case TicketEventConfig.BOOKING_CANCELLED_ROUTING_KEY ->
+                        objectMapper.readValue(message.getBody(), BookingCancelledEvent.class);
+                default -> throw new IllegalArgumentException("Unsupported booking routing key: " + routingKey);
+            };
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Unable to deserialize booking saga payload for " + routingKey, exception);
         }
     }
 

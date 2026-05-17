@@ -10,10 +10,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 public interface TicketServiceClient {
 
     @GetMapping("/api/tickets/event/{eventId}/summary")
-    EventTicketSummaryDTO getEventTicketSummary(@PathVariable Long eventId);
+    EventTicketSummaryDTO getEventTicketSummary(@PathVariable("eventId") Long eventId);
 
     @GetMapping("/api/tickets/booking/{bookingId}/used-count")
-    int getActiveTicketCountForBooking(@PathVariable Long bookingId);
+    int getActiveTicketCountForBooking(@PathVariable("bookingId") Long bookingId);
 
     default int getUsedTicketCountForBooking(Long bookingId) {
         return getActiveTicketCountForBooking(bookingId);
