@@ -26,11 +26,11 @@ spec:
             - name: CASSANDRA_DC
               value: datacenter1
             - name: MAX_HEAP_SIZE
-              value: 512M
+              value: 256M
             - name: HEAP_NEWSIZE
-              value: 128M
+              value: 64M
             - name: JVM_EXTRA_OPTS
-              value: -XX:MaxDirectMemorySize=256M
+              value: -XX:MaxDirectMemorySize=128M
           volumeMounts:
             - name: data
               mountPath: /var/lib/cassandra

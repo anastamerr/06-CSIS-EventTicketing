@@ -4,7 +4,7 @@ metadata:
   name: mongo
   namespace: eventticketing
 spec:
-  type: ClusterIP
+  clusterIP: None
   selector:
     app: mongo
   ports:

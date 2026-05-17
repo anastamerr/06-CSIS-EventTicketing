@@ -15,7 +15,8 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: <your-registry>/user-service:latest
+          image: user-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           envFrom:
@@ -46,11 +47,15 @@ spec:
             httpGet:
               path: /actuator/health
               port: 8080
-            initialDelaySeconds: 30
+            initialDelaySeconds: 90
             periodSeconds: 10
+            timeoutSeconds: 20
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /actuator/health
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 180
             periodSeconds: 30
+            timeoutSeconds: 20
+            failureThreshold: 3

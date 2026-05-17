@@ -1,6 +1,8 @@
 package com.team06.eventticketing.user.messaging;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.team06.eventticketing.contracts.events.UserDeactivatedEvent;
 import com.team06.eventticketing.contracts.events.UserRegisteredEvent;
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 @ExtendWith(MockitoExtension.class)
@@ -24,9 +27,10 @@ class UserEventPublisherTest {
         publisher.publishUserRegistered(event);
 
         verify(rabbitTemplate).convertAndSend(
-                UserEventConfig.USER_EVENTS_EXCHANGE,
-                UserEventConfig.USER_REGISTERED_ROUTING_KEY,
-                event);
+                eq(UserEventConfig.USER_EVENTS_EXCHANGE),
+                eq(UserEventConfig.USER_REGISTERED_ROUTING_KEY),
+                eq(event),
+                any(MessagePostProcessor.class));
     }
 
     @Test
@@ -37,8 +41,9 @@ class UserEventPublisherTest {
         publisher.publishUserDeactivated(event);
 
         verify(rabbitTemplate).convertAndSend(
-                UserEventConfig.USER_EVENTS_EXCHANGE,
-                UserEventConfig.USER_DEACTIVATED_ROUTING_KEY,
-                event);
+                eq(UserEventConfig.USER_EVENTS_EXCHANGE),
+                eq(UserEventConfig.USER_DEACTIVATED_ROUTING_KEY),
+                eq(event),
+                any(MessagePostProcessor.class));
     }
 }

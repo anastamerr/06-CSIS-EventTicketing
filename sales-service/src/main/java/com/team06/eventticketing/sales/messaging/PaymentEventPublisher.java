@@ -22,30 +22,22 @@ public class PaymentEventPublisher {
     }
 
     public void publishPaymentInitiated(PaymentInitiatedEvent event) {
-        rabbitTemplate.convertAndSend(PaymentEventConfig.PAYMENT_EXCHANGE,
-                PaymentEventConfig.PAYMENT_INITIATED_ROUTING_KEY, event);
-        logPublished(PaymentEventConfig.PAYMENT_INITIATED_ROUTING_KEY, event.bookingId(), event.saleId());
+        publish(PaymentEventConfig.PAYMENT_INITIATED_ROUTING_KEY, event, event.bookingId(), event.saleId());
     }
 
     public void publishPaymentCompleted(PaymentCompletedEvent event) {
-        rabbitTemplate.convertAndSend(PaymentEventConfig.PAYMENT_EXCHANGE,
-                PaymentEventConfig.PAYMENT_COMPLETED_ROUTING_KEY, event);
-        logPublished(PaymentEventConfig.PAYMENT_COMPLETED_ROUTING_KEY, event.bookingId(), event.saleId());
+        publish(PaymentEventConfig.PAYMENT_COMPLETED_ROUTING_KEY, event, event.bookingId(), event.saleId());
     }
 
     public void publishPaymentFailed(PaymentFailedEvent event) {
-        rabbitTemplate.convertAndSend(PaymentEventConfig.PAYMENT_EXCHANGE,
-                PaymentEventConfig.PAYMENT_FAILED_ROUTING_KEY, event);
-        logPublished(PaymentEventConfig.PAYMENT_FAILED_ROUTING_KEY, event.bookingId(), event.saleId());
+        publish(PaymentEventConfig.PAYMENT_FAILED_ROUTING_KEY, event, event.bookingId(), event.saleId());
     }
 
     public void publishPaymentRefunded(PaymentRefundedEvent event) {
-        rabbitTemplate.convertAndSend(PaymentEventConfig.PAYMENT_EXCHANGE,
-                PaymentEventConfig.PAYMENT_REFUNDED_ROUTING_KEY, event);
-        logPublished(PaymentEventConfig.PAYMENT_REFUNDED_ROUTING_KEY, event.bookingId(), event.saleId());
+        publish(PaymentEventConfig.PAYMENT_REFUNDED_ROUTING_KEY, event, event.bookingId(), event.saleId());
     }
 
-    private void logPublished(String routingKey, Long bookingId, Long saleId) {
+    private void publish(String routingKey, Object event, Long bookingId, Long saleId) {
         MDC.put("routingKey", routingKey);
         if (bookingId != null) {
             MDC.put("bookingId", bookingId.toString());
@@ -53,7 +45,14 @@ public class PaymentEventPublisher {
         if (saleId != null) {
             MDC.put("saleId", saleId.toString());
         }
+        String correlationId = MDC.get("correlationId");
         try {
+            rabbitTemplate.convertAndSend(PaymentEventConfig.PAYMENT_EXCHANGE, routingKey, event, message -> {
+                if (correlationId != null && !correlationId.isBlank()) {
+                    message.getMessageProperties().setHeader("correlationId", correlationId);
+                }
+                return message;
+            });
             log.info("Published {}", routingKey);
         } finally {
             MDC.remove("saleId");
