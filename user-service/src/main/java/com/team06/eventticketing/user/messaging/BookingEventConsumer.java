@@ -29,7 +29,7 @@ public class BookingEventConsumer {
     @RabbitListener(queues = UserEventConfig.USER_BOOKING_SAGA_QUEUE)
     public void onBookingEvent(Message message, @Headers Map<String, Object> headers) throws IOException {
         String routingKey = (String) headers.get(AmqpHeaders.RECEIVED_ROUTING_KEY);
-        String correlationId = (String) headers.get("x-correlation-id");
+        String correlationId = correlationId(headers);
         if ("booking.completed".equals(routingKey)) {
             onBookingCompleted(objectMapper.readValue(message.getBody(), BookingCompletedEvent.class), correlationId);
             return;
@@ -39,6 +39,14 @@ public class BookingEventConsumer {
             return;
         }
         log.warn("Ignoring unsupported booking event routingKey={}", routingKey);
+    }
+
+    private String correlationId(Map<String, Object> headers) {
+        Object correlationId = headers.get("correlationId");
+        if (correlationId == null) {
+            correlationId = headers.get("x-correlation-id");
+        }
+        return correlationId == null ? null : correlationId.toString();
     }
 
     private void onBookingCompleted(BookingCompletedEvent event, String correlationId) {

@@ -3,35 +3,38 @@
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
     <springProperty scope="context" name="lokiUrl" source="loki.url" defaultValue="http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"/>
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="booking-service"/>
 
     <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
         <http>
             <url>${lokiUrl}</url>
         </http>
-        <format>
-            <label>
-                <pattern>app=eventticketing,service=${spring.application.name},level=%level,env=k8s</pattern>
-            </label>
-            <message>
-                <pattern>
-                    {
-                      "timestamp": "%d{ISO8601}",
-                      "level": "%level",
-                      "service": "${spring.application.name}",
-                      "thread": "%thread",
-                      "logger": "%logger{36}",
-                      "correlationId": "%X{correlationId:-}",
-                      "userId": "%X{userId:-}",
-                      "eventId": "%X{eventId:-}",
-                      "bookingId": "%X{bookingId:-}",
-                      "ticketId": "%X{ticketId:-}",
-                      "saleId": "%X{saleId:-}",
-                      "routingKey": "%X{routingKey:-}",
-                      "message": "%msg"
-                    }
-                </pattern>
-            </message>
-        </format>
+        <labels>
+            app=eventticketing
+            service=${appName}
+            level=%level
+            env=k8s
+        </labels>
+        <structuredMetadata>off</structuredMetadata>
+        <message class="com.github.loki4j.logback.JsonLayout">
+            <loggerName>
+                <fieldName>logger</fieldName>
+                <targetLength>36</targetLength>
+            </loggerName>
+            <threadName>
+                <fieldName>thread</fieldName>
+            </threadName>
+            <mdc>
+                <noPrefix>true</noPrefix>
+                <include>correlationId</include>
+                <include>userId</include>
+                <include>eventId</include>
+                <include>bookingId</include>
+                <include>ticketId</include>
+                <include>saleId</include>
+                <include>routingKey</include>
+            </mdc>
+        </message>
     </appender>
 
     <root level="INFO">

@@ -13,7 +13,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/eventticketing
   JAVA_VERSION: '25'
-  TESTCONTAINERS_DISABLED: 'true'
 
 jobs:
   build-test:

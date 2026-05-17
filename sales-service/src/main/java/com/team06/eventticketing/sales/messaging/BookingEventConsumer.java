@@ -32,16 +32,28 @@ public class BookingEventConsumer {
     @RabbitListener(queues = PaymentEventConfig.PAYMENT_SAGA_QUEUE)
     public void consumeBookingMessage(
             Message message,
-            @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey
+            @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey,
+            @Header(name = "correlationId", required = false) String correlationId
     ) {
-        consumeBookingEvent(readPayload(message, routingKey), routingKey);
+        consumeBookingEvent(readPayload(message, routingKey), routingKey, correlationId);
     }
 
     public void consumeBookingEvent(
             Object event,
             @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey
     ) {
+        consumeBookingEvent(event, routingKey, null);
+    }
+
+    public void consumeBookingEvent(
+            Object event,
+            String routingKey,
+            String correlationId
+    ) {
         MDC.put("routingKey", routingKey);
+        if (correlationId != null && !correlationId.isBlank()) {
+            MDC.put("correlationId", correlationId);
+        }
         try {
             if ("booking.completed".equals(routingKey) && event instanceof BookingCompletedEvent completedEvent) {
                 ticketSaleService.handleBookingCompleted(completedEvent);
@@ -59,6 +71,7 @@ public class BookingEventConsumer {
                 log.warn("Ignoring unsupported booking event type {}", event == null ? "null" : event.getClass().getName());
             }
         } finally {
+            MDC.remove("correlationId");
             MDC.remove("routingKey");
         }
     }
