@@ -38,19 +38,19 @@ spec:
               command:
                 - rabbitmq-diagnostics
                 - ping
-            initialDelaySeconds: 20
+            initialDelaySeconds: 60
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 6
+            timeoutSeconds: 20
+            failureThreshold: 12
           livenessProbe:
             exec:
               command:
                 - rabbitmq-diagnostics
                 - check_running
-            initialDelaySeconds: 60
+            initialDelaySeconds: 180
             periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 20
+            failureThreshold: 6
       volumes:
         - name: data
           persistentVolumeClaim:

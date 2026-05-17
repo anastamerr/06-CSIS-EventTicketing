@@ -51,8 +51,14 @@ public class TicketEventPublisher {
         putIfPresent("bookingId", bookingId);
         putIfPresent("eventId", eventId);
         putIfPresent("routingKey", routingKey);
+        String correlationId = MDC.get("correlationId");
         try {
-            rabbitTemplate.convertAndSend(TicketEventConfig.TICKET_EXCHANGE, routingKey, event);
+            rabbitTemplate.convertAndSend(TicketEventConfig.TICKET_EXCHANGE, routingKey, event, message -> {
+                if (correlationId != null && !correlationId.isBlank()) {
+                    message.getMessageProperties().setHeader("correlationId", correlationId);
+                }
+                return message;
+            });
             log.info("Published {}", routingKey);
         } finally {
             MDC.remove("routingKey");

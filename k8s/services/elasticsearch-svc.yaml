@@ -4,7 +4,7 @@ metadata:
   name: elasticsearch
   namespace: eventticketing
 spec:
-  type: ClusterIP
+  clusterIP: None
   selector:
     app: elasticsearch
   ports:
