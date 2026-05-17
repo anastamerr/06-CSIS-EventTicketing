@@ -4,7 +4,7 @@ metadata:
   name: cassandra
   namespace: eventticketing
 spec:
-  type: ClusterIP
+  clusterIP: None
   selector:
     app: cassandra
   ports:

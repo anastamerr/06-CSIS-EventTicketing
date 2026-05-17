@@ -4,7 +4,7 @@ metadata:
   name: neo4j
   namespace: eventticketing
 spec:
-  type: ClusterIP
+  clusterIP: None
   selector:
     app: neo4j
   ports:

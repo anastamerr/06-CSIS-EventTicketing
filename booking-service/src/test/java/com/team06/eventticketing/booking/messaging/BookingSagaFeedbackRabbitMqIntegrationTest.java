@@ -85,7 +85,7 @@ class BookingSagaFeedbackRabbitMqIntegrationTest {
         rabbitTemplate.convertAndSend(
                 BookingEventConfig.PAYMENT_EXCHANGE,
                 EventTicketingMessagingContracts.PAYMENT_FAILED_ROUTING_KEY,
-                new PaymentFailedEvent(80L, 81L, "card_declined"));
+                new PaymentFailedEvent(81L, 80L, "card_declined"));
 
         await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> verify(bookingService).markPaymentFailed(80L, "card_declined"));

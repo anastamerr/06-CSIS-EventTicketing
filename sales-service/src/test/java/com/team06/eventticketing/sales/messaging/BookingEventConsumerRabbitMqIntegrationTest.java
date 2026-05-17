@@ -4,6 +4,7 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.team06.eventticketing.contracts.events.BookingCompletedEvent;
 import com.team06.eventticketing.sales.service.TicketSaleService;
 import java.math.BigDecimal;
@@ -76,7 +77,7 @@ class BookingEventConsumerRabbitMqIntegrationTest {
 
     @Test
     void consumesBookingCompletedFromRealRabbitMqQueue() {
-        BookingEventConsumer consumer = new BookingEventConsumer(ticketSaleService);
+        BookingEventConsumer consumer = new BookingEventConsumer(ticketSaleService, new ObjectMapper());
         startListener(message -> consumer.consumeBookingEvent(
                 messageConverter.fromMessage(message),
                 message.getMessageProperties().getReceivedRoutingKey()));

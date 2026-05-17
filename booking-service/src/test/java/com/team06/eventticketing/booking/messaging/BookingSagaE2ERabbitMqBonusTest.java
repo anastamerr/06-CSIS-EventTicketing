@@ -117,7 +117,7 @@ class BookingSagaE2ERabbitMqBonusTest {
         rabbitTemplate.convertAndSend(
                 BookingEventConfig.PAYMENT_EXCHANGE,
                 EventTicketingMessagingContracts.PAYMENT_FAILED_ROUTING_KEY,
-                new PaymentFailedEvent(90L, 93L, "processor_declined"));
+                new PaymentFailedEvent(93L, 90L, "processor_declined"));
 
         await().atMost(Duration.ofSeconds(10))
                 .untilAsserted(() -> verify(bookingService).markPaymentFailed(90L, "processor_declined"));

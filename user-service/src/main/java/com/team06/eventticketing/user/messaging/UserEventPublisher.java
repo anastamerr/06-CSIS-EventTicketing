@@ -32,8 +32,14 @@ public class UserEventPublisher {
         if (userId != null) {
             MDC.put("userId", userId.toString());
         }
+        String correlationId = MDC.get("correlationId");
         try {
-            rabbitTemplate.convertAndSend(UserEventConfig.USER_EXCHANGE, routingKey, event);
+            rabbitTemplate.convertAndSend(UserEventConfig.USER_EXCHANGE, routingKey, event, message -> {
+                if (correlationId != null && !correlationId.isBlank()) {
+                    message.getMessageProperties().setHeader("correlationId", correlationId);
+                }
+                return message;
+            });
             log.info("Published {} event for userId={}", routingKey, userId);
         } finally {
             MDC.remove("routingKey");
